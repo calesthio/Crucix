@@ -7,9 +7,10 @@ export default {
   refreshIntervalMinutes: parseInt(process.env.REFRESH_INTERVAL_MINUTES) || 15,
 
   llm: {
-    provider: process.env.LLM_PROVIDER || null, // anthropic | openai | gemini | codex
+    provider: process.env.LLM_PROVIDER || null, // anthropic | openai | gemini | codex | cursor
     apiKey: process.env.LLM_API_KEY || null,
     model: process.env.LLM_MODEL || null,
+    cursorBaseUrl: process.env.LLM_CURSOR_BASE_URL || null,
   },
 
   telegram: {

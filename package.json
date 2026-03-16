@@ -12,7 +12,9 @@
     "brief:save": "node apis/save-briefing.mjs",
     "diag": "node diag.mjs",
     "clean": "node scripts/clean.mjs",
-    "fresh-start": "npm run clean && npm start"
+    "fresh-start": "npm run clean && npm start",
+    "test": "node --test test/",
+    "test:cursor-integration": "node --test test/llm-cursor-integration.test.mjs"
   },
   "keywords": ["osint", "intelligence", "dashboard", "geopolitical"],
   "author": "Crucix",
@@ -22,6 +24,7 @@
     "npm": ">=10"
   },
   "dependencies": {
+    "cursor-api-proxy": "^0.4.0",
     "express": "^5.1.0"
   },
   "optionalDependencies": {
