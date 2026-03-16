@@ -50,7 +50,7 @@ It was built for anyone who wants to understand what's actually happening in the
 ```bash
 # 1. Clone the repo
 git clone https://github.com/calesthio/Crucix.git
-cd crucix
+cd Crucix
 
 # 2. Install dependencies (just Express)
 npm install
@@ -76,7 +76,7 @@ The dashboard opens automatically at `http://localhost:3117` and immediately beg
 
 ```bash
 git clone https://github.com/calesthio/Crucix.git
-cd crucix
+cd Crucix
 cp .env.example .env    # add your API keys
 docker compose up -d
 ```
