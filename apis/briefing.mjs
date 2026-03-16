@@ -43,6 +43,9 @@ import { briefing as space } from './sources/space.mjs';
 // === Tier 5: Live Market Data ===
 import { briefing as yfinance } from './sources/yfinance.mjs';
 
+// === Tier 6: Social Sentiment ===
+import { briefing as adanos } from './sources/adanos.mjs';
+
 export async function runSource(name, fn, ...args) {
   const start = Date.now();
   try {
@@ -54,7 +57,7 @@ export async function runSource(name, fn, ...args) {
 }
 
 export async function fullBriefing() {
-  console.error('[Crucix] Starting intelligence sweep — 27 sources...');
+  console.error('[Crucix] Starting intelligence sweep — 28 sources...');
   const start = Date.now();
 
   const results = await Promise.allSettled([
@@ -94,6 +97,9 @@ export async function fullBriefing() {
 
     // Tier 5: Live Market Data
     runSource('YFinance', yfinance),
+
+    // Tier 6: Social Sentiment
+    runSource('Adanos', adanos),
   ]);
 
   const sources = results.map(r => r.status === 'fulfilled' ? r.value : { status: 'failed', error: r.reason?.message });
