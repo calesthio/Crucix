@@ -255,6 +255,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 
 /* IDEA HORIZON BADGE */
 .idea-horizon{font-family:var(--mono);font-size:8px;letter-spacing:0.08em;text-transform:uppercase;padding:1px 5px;border:1px solid rgba(100,240,200,0.15);color:var(--dim);margin-left:6px}
+
+/* DASHBOARD SCROLLBAR THEME */
+html,body,.feed,.delta-list{scrollbar-width:thin;scrollbar-color:rgba(100,240,200,0.5) rgba(6,14,22,0.35)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:linear-gradient(180deg,rgba(6,14,22,0.18),rgba(6,14,22,0.5));border:1px solid rgba(100,240,200,0.08)}
+::-webkit-scrollbar-thumb{background:linear-gradient(180deg,rgba(68,204,255,0.55),rgba(100,240,200,0.55));border:1px solid rgba(100,240,200,0.25);box-shadow:0 0 10px rgba(100,240,200,0.2) inset,0 0 8px rgba(68,204,255,0.18)}
+::-webkit-scrollbar-thumb:hover{background:linear-gradient(180deg,rgba(68,204,255,0.8),rgba(100,240,200,0.8));border-color:rgba(100,240,200,0.45)}
+::-webkit-scrollbar-corner{background:rgba(6,14,22,0.55)}
+.feed::-webkit-scrollbar,.delta-list::-webkit-scrollbar{width:8px}
+.feed::-webkit-scrollbar-thumb,.delta-list::-webkit-scrollbar-thumb{border-radius:10px}
 </style>
 </head>
 <body>
