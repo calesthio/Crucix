@@ -45,3 +45,5 @@ npm-debug.log*
 
 # Local maintainer notes
 MAINTAINER_DECISIONS.local.md
+
+package-lock.json
