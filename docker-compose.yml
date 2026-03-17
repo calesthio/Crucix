@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   crucix:
     build: .
@@ -8,4 +7,6 @@ services:
       - .env
     volumes:
       - ./runs:/app/runs
+      # Map host's .codex directory to container's root home
+      # - ~/.codex:/root/.codex
     restart: unless-stopped
