@@ -4,6 +4,11 @@
 
 **Your own intelligence terminal. 27 sources. One command. Zero cloud.**
 
+## [Visit The Live Site: crucix.live](https://www.crucix.live/)
+
+[![Live Website](https://img.shields.io/badge/live-crucix.live-00d4ff?style=for-the-badge)](https://www.crucix.live/)
+[![Open Demo](https://img.shields.io/badge/open-live%20dashboard-0b1220?style=for-the-badge&logo=googlechrome&logoColor=white)](https://www.crucix.live/)
+
 [![Node.js 22+](https://img.shields.io/badge/node-22%2B-brightgreen)](#quick-start)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
 [![Dependencies](https://img.shields.io/badge/dependencies-1%20(express)-orange)](#architecture)
@@ -27,9 +32,14 @@
 
 </div>
 
+> **Live website:** [https://www.crucix.live/](https://www.crucix.live/)
+> Explore the public demo first, then clone the repo to run Crucix locally.
+
 Crucix pulls satellite fire detection, flight tracking, radiation monitoring, satellite constellation tracking, economic indicators, live market prices, conflict data, sanctions lists, and social sentiment from 27 open-source intelligence feeds — in parallel, every 15 minutes — and renders everything on a single self-contained Jarvis-style dashboard.
 
 Hook it up to an LLM and it becomes a **two-way intelligence assistant** — pushing multi-tier alerts to Telegram and Discord when something meaningful changes, responding to commands like `/brief` and `/sweep` from your phone, and generating actionable trade ideas grounded in real cross-domain data. Your own analyst that watches the world while you sleep.
+
+Try the live demo first at [https://www.crucix.live/](https://www.crucix.live/), then clone the repo when you want the full local stack.
 
 No cloud. No telemetry. No subscriptions. Just `node server.mjs` and you're running.
 
@@ -50,7 +60,7 @@ It was built for anyone who wants to understand what's actually happening in the
 ```bash
 # 1. Clone the repo
 git clone https://github.com/calesthio/Crucix.git
-cd crucix
+cd Crucix
 
 # 2. Install dependencies (just Express)
 npm install
@@ -76,7 +86,7 @@ The dashboard opens automatically at `http://localhost:3117` and immediately beg
 
 ```bash
 git clone https://github.com/calesthio/Crucix.git
-cd crucix
+cd Crucix
 cp .env.example .env    # add your API keys
 docker compose up -d
 ```
@@ -148,10 +158,10 @@ Alerts are delivered as rich embeds with color-coded sidebars: red for FLASH, ye
 **Optional dependency:** The full bot requires `discord.js`. Install it with `npm install discord.js`. If it's not installed, Crucix automatically falls back to webhook-only mode.
 
 ### Optional LLM Layer
-Connect any of 4 LLM providers for enhanced analysis:
+Connect any of 6 LLM providers for enhanced analysis:
 - **AI trade ideas** — quantitative analyst producing 5-8 actionable ideas citing specific data
 - **Smarter alert evaluation** — LLM classifies signals into FLASH/PRIORITY/ROUTINE tiers with cross-domain correlation and confidence scoring
-- Providers: Anthropic Claude, OpenAI, Google Gemini, OpenAI Codex (ChatGPT subscription)
+- Providers: Anthropic Claude, OpenAI, Google Gemini, OpenRouter (Unified API), OpenAI Codex (ChatGPT subscription), MiniMax
 - Graceful fallback — when LLM is unavailable, a rule-based engine takes over alert evaluation. LLM failures never crash the sweep cycle.
 
 ---
@@ -184,14 +194,16 @@ These three unlock the most valuable economic and satellite data. Each takes abo
 
 ### LLM Provider (optional, for AI-enhanced ideas)
 
-Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`
+Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`
 
 | Provider | Key Required | Default Model |
 |----------|-------------|---------------|
 | `anthropic` | `LLM_API_KEY` | claude-sonnet-4-6 |
 | `openai` | `LLM_API_KEY` | gpt-5.4 |
 | `gemini` | `LLM_API_KEY` | gemini-3.1-pro |
+| `openrouter` | `LLM_API_KEY` | openrouter/auto |
 | `codex` | None (uses `~/.codex/auth.json`) | gpt-5.3-codex |
+| `minimax` | `LLM_API_KEY` | MiniMax-M2.5 |
 
 For Codex, run `npx @openai/codex login` to authenticate via your ChatGPT subscription.
 
@@ -261,12 +273,14 @@ crucix/
 │       └── jarvis.html        # Self-contained Jarvis HUD
 │
 ├── lib/
-│   ├── llm/                   # LLM abstraction (4 providers, raw fetch, no SDKs)
+│   ├── llm/                   # LLM abstraction (5 providers, raw fetch, no SDKs)
 │   │   ├── provider.mjs       # Base class
 │   │   ├── anthropic.mjs      # Claude
 │   │   ├── openai.mjs         # GPT
 │   │   ├── gemini.mjs         # Gemini
+│   │   ├── openrouter.mjs     # OpenRouter (Unified API)
 │   │   ├── codex.mjs          # Codex (ChatGPT subscription)
+│   │   ├── minimax.mjs        # MiniMax (M2.5, 204K context)
 │   │   ├── ideas.mjs          # LLM-powered trade idea generation
 │   │   └── index.mjs          # Factory: createLLMProvider()
 │   ├── delta/                 # Change tracking between sweeps
@@ -368,7 +382,7 @@ All settings are in `.env` with sensible defaults:
 |----------|---------|-------------|
 | `PORT` | `3117` | Dashboard server port |
 | `REFRESH_INTERVAL_MINUTES` | `15` | Auto-refresh interval |
-| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, or `codex` |
+| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, or `minimax` |
 | `LLM_API_KEY` | — | API key (not needed for codex) |
 | `LLM_MODEL` | per-provider default | Override model selection |
 | `TELEGRAM_BOT_TOKEN` | disabled | For Telegram alerts + bot commands |
