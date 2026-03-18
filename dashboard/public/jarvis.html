@@ -59,6 +59,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .meta-pill{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:0.06em;padding:5px 10px;border:1px solid var(--border)}
 .meta-pill .v{color:var(--text);font-weight:500}
 .alert-badge{padding:5px 12px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;border:1px solid rgba(255,95,99,0.4);color:#fff;background:linear-gradient(135deg,rgba(255,95,99,0.2),rgba(255,95,99,0.08))}
+.perf-pill{cursor:pointer;background:rgba(255,255,255,0.05);transition:all 0.2s}
+.perf-pill:hover{border-color:var(--accent2);color:var(--text);background:rgba(68,204,255,0.08)}
 
 /* GRID */
 .grid{display:grid;grid-template-columns:240px 1fr 340px;gap:10px;margin-top:10px;min-height:calc(100vh - 100px)}
@@ -122,6 +124,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .map-popup .pp-text{font-size:11px;line-height:1.4;color:#c8d8d2}
 .map-popup .pp-meta{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:6px}
 .map-popup .pp-close{position:absolute;top:6px;right:8px;background:none;border:none;color:var(--dim);font-size:14px;cursor:pointer}
+.map-loading{position:absolute;inset:0;z-index:12;display:none;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(2,6,10,0.78),rgba(2,6,10,0.9));backdrop-filter:blur(10px)}
+.map-loading.show{display:flex}
+.map-loading-card{display:flex;flex-direction:column;align-items:center;gap:10px;padding:16px 18px;border:1px solid rgba(68,204,255,0.18);background:rgba(6,14,22,0.88);box-shadow:0 12px 32px rgba(0,0,0,0.35)}
+.map-loading-ring{width:28px;height:28px;border:2px solid rgba(68,204,255,0.16);border-top-color:var(--accent2);border-radius:50%;animation:spin 1s linear infinite}
+.map-loading-text{font-family:var(--mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent2)}
 /* News label on map */
 .news-icon{fill:rgba(129,212,250,0.8);filter:drop-shadow(0 0 3px rgba(129,212,250,0.4));transition:fill .2s}
 .news-icon:hover{fill:rgba(129,212,250,1)}
@@ -224,6 +231,17 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .ideas-src.llm{color:#ce93d8;border-color:rgba(206,147,216,0.4);background:rgba(206,147,216,0.08)}
 .ideas-src.static{color:var(--dim);border-color:rgba(255,255,255,0.1);background:rgba(255,255,255,0.03)}
 
+/* LOW PERFORMANCE MODE */
+body.low-perf .bg-grid,body.low-perf .bg-radial,body.low-perf .scanline{display:none!important}
+body.low-perf .topbar,body.low-perf .g-panel,body.low-perf .map-popup,body.low-perf .map-loading{backdrop-filter:none!important}
+body.low-perf .logo-ring::before,body.low-perf .logo-ring::after,body.low-perf .regime-chip .blink,body.low-perf .conflict-ring,body.low-perf .corridor-flow{animation:none!important}
+body.low-perf .ticker-wrap{overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(100,240,200,0.2) transparent}
+body.low-perf .ticker-track{animation:none!important;display:block!important}
+body.low-perf .ticker-wrap::before,body.low-perf .ticker-wrap::after{display:none}
+body.low-perf .ticker-wrap::-webkit-scrollbar{width:4px}
+body.low-perf .ticker-wrap::-webkit-scrollbar-track{background:transparent}
+body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,0.2);border-radius:2px}
+
 /* RESPONSIVE */
 @media(max-width:1400px){.grid{grid-template-columns:240px 1fr 320px}.metrics-row{grid-template-columns:repeat(3,1fr)}.src-grid{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:1100px){
@@ -292,6 +310,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
       <div class="map-container" id="mapContainer">
         <div id="globeViz"></div>
         <svg id="flatMapSvg" style="display:none;width:100%;height:100%;position:absolute;top:0;left:0;cursor:grab"></svg>
+        <div class="map-loading" id="mapLoading"><div class="map-loading-card"><div class="map-loading-ring"></div><div class="map-loading-text" id="mapLoadingText">Initializing 3D Globe</div></div></div>
         <div class="map-legend" id="mapLegend"></div>
         <div class="map-hint" id="mapHint">SCROLL TO ZOOM · DRAG TO PAN</div>
         <div class="map-controls">
@@ -312,8 +331,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 let D = null;
 // === GLOBALS ===
 let globe = null;
+let globeInitialized = false;
 let flightsVisible = true;
-let isFlat = !isMobileLayout();
+let lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true';
+let isFlat = shouldStartFlat();
 let flatSvg, flatProjection, flatPath, flatG, flatZoom, flatW, flatH;
 const regionPOV = {
   world: { lat: 20, lng: 20, altitude: 1.8 },
@@ -323,6 +344,46 @@ const regionPOV = {
   asiaPacific: { lat: 25, lng: 110, altitude: 1.2 },
   africa: { lat: 5, lng: 20, altitude: 1.2 }
 };
+
+if(lowPerfMode) document.body.classList.add('low-perf');
+
+function isWeakMobileDevice(){
+  const reducedMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const memory = navigator.deviceMemory || 0;
+  const cores = navigator.hardwareConcurrency || 0;
+  return reducedMotion || (memory > 0 && memory <= 4) || (cores > 0 && cores <= 4);
+}
+
+function shouldStartFlat(){
+  if(!isMobileLayout()) return true;
+  return lowPerfMode || isWeakMobileDevice();
+}
+
+function setMapLoading(show, text='Initializing 3D Globe'){
+  const overlay = document.getElementById('mapLoading');
+  const label = document.getElementById('mapLoadingText');
+  if(!overlay || !label) return;
+  label.textContent = text;
+  overlay.classList.toggle('show', show);
+}
+
+function togglePerfMode(){
+  lowPerfMode = !lowPerfMode;
+  localStorage.setItem('crucix_low_perf', String(lowPerfMode));
+  document.body.classList.toggle('low-perf', lowPerfMode);
+  const perfStatus = document.getElementById('perfStatus');
+  if(perfStatus) perfStatus.textContent = lowPerfMode ? 'LOW' : 'HIGH';
+  if(globe){
+    globe.controls().autoRotate = !lowPerfMode;
+    globe.arcDashAnimateTime(lowPerfMode ? 0 : 2000);
+  }
+  if(lowPerfMode && isMobileLayout() && !isFlat){
+    toggleMapMode();
+  } else {
+    renderLower();
+    renderRight();
+  }
+}
 
 // === TOPBAR ===
 function renderTopbar(){
@@ -340,6 +401,7 @@ function renderTopbar(){
       ).join('')}
     </div>
     <div class="top-right">
+      <button class="meta-pill perf-pill" onclick="togglePerfMode()" title="Reduce visual effects and start mobile in flat mode">PERF <span class="v" id="perfStatus">${lowPerfMode?'LOW':'HIGH'}</span></button>
       <span class="meta-pill">SWEEP <span class="v">${(D.meta.totalDurationMs/1000).toFixed(1)}s</span></span>
       <span class="meta-pill">${d} <span class="v">${t}</span></span>
       <span class="meta-pill">SOURCES <span class="v">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</span></span>
@@ -412,7 +474,67 @@ function renderLeftRail(){
 }
 
 // === MAP ===
+let mapLifecycleBound = false;
+
+function bindMapLifecycleEvents(){
+  if(mapLifecycleBound) return;
+  mapLifecycleBound = true;
+  window.addEventListener('resize', () => syncResponsiveLayout());
+  window.addEventListener('orientationchange', () => setTimeout(() => syncResponsiveLayout(true), 150));
+  document.addEventListener('visibilitychange', () => {
+    if(!document.hidden) setTimeout(() => syncResponsiveLayout(true), 150);
+  });
+  window.addEventListener('pageshow', () => setTimeout(() => syncResponsiveLayout(true), 150));
+}
+
+function renderMapLegend(){
+  document.getElementById('mapLegend').innerHTML=
+    [{c:'#64f0c8',l:'Air Traffic'},{c:'#ff5f63',l:'Thermal/Fire'},{c:'rgba(255,120,80,0.8)',l:'Conflict'},{c:'#44ccff',l:'SDR Receiver'},
+     {c:'#ffe082',l:'Nuclear Site'},{c:'#b388ff',l:'Chokepoint'},{c:'#ffb84c',l:'OSINT Event'},{c:'#69f0ae',l:'Health Alert'},{c:'#81d4fa',l:'World News'},{c:'#ff9800',l:'Weather Alert'},{c:'#cddc39',l:'EPA RadNet'},{c:'#ffffff',l:'Space Station'},{c:'#6495ed',l:'GDELT Event'}]
+    .map(x=>`<div class="leg-item"><div class="leg-dot" style="background:${x.c}"></div>${x.l}</div>`).join('');
+}
+
 function initMap(){
+  bindMapLifecycleEvents();
+  renderMapLegend();
+  if(isFlat){
+    if(globe && typeof globe.pauseAnimation === 'function') globe.pauseAnimation();
+    document.getElementById('globeViz').style.display = 'none';
+    document.getElementById('flatMapSvg').style.display = 'block';
+    document.getElementById('projToggle').textContent = 'GLOBE MODE';
+    document.getElementById('mapHint').textContent = 'SCROLL TO ZOOM · DRAG TO PAN';
+    if(!flatSvg) initFlatMap();
+    else { flatG.selectAll('*').remove(); drawFlatMap(); }
+    setMapLoading(false);
+    return;
+  }
+  setMapLoading(true, 'Initializing 3D Globe');
+  requestAnimationFrame(() => {
+    try {
+      initGlobe();
+      setMapLoading(false);
+    } catch {
+      isFlat = true;
+      document.getElementById('globeViz').style.display = 'none';
+      document.getElementById('flatMapSvg').style.display = 'block';
+      document.getElementById('projToggle').textContent = 'GLOBE MODE';
+      document.getElementById('mapHint').textContent = '3D LOAD FAILED · FLAT MODE';
+      if(!flatSvg) initFlatMap();
+      else { flatG.selectAll('*').remove(); drawFlatMap(); }
+      setMapLoading(false);
+    }
+  });
+}
+
+function initGlobe(){
+  if(globeInitialized && globe){
+    if(typeof globe.resumeAnimation === 'function') globe.resumeAnimation();
+    document.getElementById('globeViz').style.display = 'block';
+    document.getElementById('flatMapSvg').style.display = 'none';
+    document.getElementById('projToggle').textContent = 'FLAT MODE';
+    document.getElementById('mapHint').textContent = 'DRAG TO ROTATE · SCROLL TO ZOOM';
+    return;
+  }
   const container = document.getElementById('mapContainer');
   const w = container.clientWidth;
   const h = container.clientHeight || 560;
@@ -487,7 +609,7 @@ function initMap(){
   globe.pointOfView(regionPOV.world, 0);
 
   // Auto-rotate slowly
-  globe.controls().autoRotate = true;
+  globe.controls().autoRotate = !lowPerfMode;
   globe.controls().autoRotateSpeed = 0.3;
   globe.controls().enableDamping = true;
   globe.controls().dampingFactor = 0.1;
@@ -500,16 +622,8 @@ function initMap(){
     clearTimeout(rotateTimeout);
   });
   el.addEventListener('mouseup', () => {
-    rotateTimeout = setTimeout(() => { globe.controls().autoRotate = true; }, 10000);
+    rotateTimeout = setTimeout(() => { if(globe && !lowPerfMode) globe.controls().autoRotate = true; }, 10000);
   });
-
-  // Resize handler
-  window.addEventListener('resize', () => syncResponsiveLayout());
-  window.addEventListener('orientationchange', () => setTimeout(() => syncResponsiveLayout(true), 150));
-  document.addEventListener('visibilitychange', () => {
-    if(!document.hidden) setTimeout(() => syncResponsiveLayout(true), 150);
-  });
-  window.addEventListener('pageshow', () => setTimeout(() => syncResponsiveLayout(true), 150));
 
   // Plot globe markers (preloaded but hidden)
   plotMarkers();
@@ -526,20 +640,17 @@ function initMap(){
     document.getElementById('mapHint').textContent = 'DRAG TO ROTATE · SCROLL TO ZOOM';
   }
 
-  // Legend
-  document.getElementById('mapLegend').innerHTML=
-    [{c:'#64f0c8',l:'Air Traffic'},{c:'#ff5f63',l:'Thermal/Fire'},{c:'rgba(255,120,80,0.8)',l:'Conflict'},{c:'#44ccff',l:'SDR Receiver'},
-     {c:'#ffe082',l:'Nuclear Site'},{c:'#b388ff',l:'Chokepoint'},{c:'#ffb84c',l:'OSINT Event'},{c:'#69f0ae',l:'Health Alert'},{c:'#81d4fa',l:'World News'},{c:'#ff9800',l:'Weather Alert'},{c:'#cddc39',l:'EPA RadNet'},{c:'#ffffff',l:'Space Station'},{c:'#6495ed',l:'GDELT Event'}]
-    .map(x=>`<div class="leg-item"><div class="leg-dot" style="background:${x.c}"></div>${x.l}</div>`).join('');
+  globeInitialized = true;
 }
 
 function plotMarkers(){
+  if(!globe) return;
   const points = [];
   const labels = [];
 
   // === Air hotspots (green) ===
   const airCoords=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
-  D.air.forEach((a,i)=>{
+  if(flightsVisible) D.air.forEach((a,i)=>{
     const c=airCoords[i]; if(!c) return;
     points.push({
       lat:c.lat, lng:c.lon, size:0.25+a.total/200, alt:0.015,
@@ -690,6 +801,8 @@ function plotMarkers(){
   globe.ringsData(conflictRings);
 
   // === FLIGHT CORRIDORS (3D arcs) ===
+  const arcs = [];
+  if(flightsVisible){
   const airCoordsFlight = [
     {region:'Middle East',lat:30,lon:44}, {region:'Taiwan Strait',lat:24,lon:120},
     {region:'Ukraine Region',lat:49,lon:32}, {region:'Baltic Region',lat:57,lon:24},
@@ -701,7 +814,6 @@ function plotMarkers(){
     {lat:40.6,lon:-73.8},{lat:51.5,lon:-0.5},{lat:25.3,lon:55.4},
     {lat:1.4,lon:103.8},{lat:-33.9,lon:151.2},{lat:-23.4,lon:-46.5}
   ];
-  const arcs = [];
   // Inter-hotspot corridors
   for(let i=0; i<D.air.length; i++){
     for(let j=i+1; j<D.air.length; j++){
@@ -736,6 +848,7 @@ function plotMarkers(){
       });
     });
   });
+  }
   globe.arcsData(arcs);
 
   // Zoom-aware marker sizing: scale markers and labels with camera altitude
@@ -748,6 +861,7 @@ function plotMarkers(){
     globe.labelSize(d => showLabels ? (d.size || 0.4) : 0);
     // Scale arc strokes with zoom
     globe.arcStroke(d => (d.stroke || 0.4) * Math.max(0.5, Math.min(1.5, 1.2 / alt)));
+    globe.arcDashAnimateTime(lowPerfMode ? 0 : 2000);
     // Priority-based point visibility: hide low-priority markers when zoomed out
     if(alt > 2.0){
       globe.pointsData(points.filter(p => (p.priority||3) <= 1));
@@ -794,6 +908,9 @@ function toggleFlights() {
   flightsVisible = !flightsVisible;
   const btn = document.getElementById('flightToggle');
   btn.classList.toggle('off', !flightsVisible);
+  if(!globe){
+    return;
+  }
   if(flightsVisible) {
     plotMarkers(); // re-render with arcs
   } else {
@@ -821,13 +938,32 @@ function toggleMapMode(){
   const globeEl = document.getElementById('globeViz');
   const flatEl = document.getElementById('flatMapSvg');
   if(isFlat){
+    if(globe && typeof globe.pauseAnimation === 'function') globe.pauseAnimation();
     globeEl.style.display = 'none';
     flatEl.style.display = 'block';
+    setMapLoading(false);
     if(!flatSvg) initFlatMap();
     else { flatG.selectAll('*').remove(); drawFlatMap(); }
   } else {
-    globeEl.style.display = 'block';
     flatEl.style.display = 'none';
+    setMapLoading(true, 'Initializing 3D Globe');
+    requestAnimationFrame(() => {
+      try {
+        initGlobe();
+        if(globe && typeof globe.resumeAnimation === 'function') globe.resumeAnimation();
+        globeEl.style.display = 'block';
+        setMapLoading(false);
+      } catch {
+        isFlat = true;
+        globeEl.style.display = 'none';
+        flatEl.style.display = 'block';
+        btn.textContent = 'GLOBE MODE';
+        hint.textContent = '3D LOAD FAILED · FLAT MODE';
+        if(!flatSvg) initFlatMap();
+        else { flatG.selectAll('*').remove(); drawFlatMap(); }
+        setMapLoading(false);
+      }
+    });
   }
 }
 
@@ -1123,7 +1259,7 @@ function renderLower(){
   const tickerPanel = `<div class="g-panel lp-ticker" style="display:flex;flex-direction:column">
       <div class="sec-head"><h3>Live News Ticker</h3><span class="badge">${feed.length} ITEMS</span></div>
       <div class="ticker-wrap" style="--ticker-duration:${tickerDuration}s">
-        <div class="ticker-track">${tickerCards}${tickerCards}</div>
+        <div class="ticker-track">${tickerCards}${lowPerfMode ? '' : tickerCards}</div>
       </div>
     </div>`;
   const osintPanel = mobile ? buildOsintPanel('lp-osint', 240) : '';
@@ -1263,7 +1399,7 @@ function buildOsintPanel(panelClass='', maxHeight=260){
   return `<div class="g-panel ${panelClass}" style="display:flex;flex-direction:column">
       <div class="sec-head"><h3>OSINT Stream</h3><span class="badge">${D.tg.urgent.length} URGENT</span></div>
       <div class="ticker-wrap" style="--ticker-duration:${osintDuration}s;max-height:${maxHeight}px">
-        <div class="ticker-track">${osintCards}${osintCards}</div>
+        <div class="ticker-track">${osintCards}${lowPerfMode ? '' : osintCards}</div>
       </div>
     </div>`;
 }
