@@ -517,12 +517,40 @@ export async function synthesize(data) {
   // Fetch RSS
   const news = await fetchAllNews();
 
+  // Crypto market data
+  const cryptoData = data.sources.Crypto || {};
+  const crypto = {
+    btc: cryptoData.btc || null,
+    eth: cryptoData.eth || null,
+    dominance: cryptoData.dominance,
+    marketCap: cryptoData.marketCap,
+    volume24h: cryptoData.volume24h,
+    timestamp: cryptoData.timestamp,
+  };
+
+  // Internet health & BGP hijacks
+  const cloudflareData = data.sources.Cloudflare || {};
+  const internet = {
+    bgp: {
+      hijacks: (cloudflareData.radar?.hijacks || []).map(h => ({
+        asn: h.asn, asnName: h.asnName, location: h.location, severity: h.severity
+      })),
+      status: cloudflareData.radar?.status || 'NORMAL',
+    },
+    health: {
+      global: cloudflareData.health?.global_ok_pct,
+      regional: cloudflareData.health?.regional_health || {},
+      status: cloudflareData.health?.status || 'UNKNOWN',
+    },
+    timestamp: cloudflareData.timestamp,
+  };
+
   const V2 = {
     meta: data.crucix, air, thermal, tSignals, chokepoints, nuke, nukeSignals,
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
     tg: { posts: tgData.totalPosts || 0, urgent: tgUrgent, topPosts: tgTop },
     who, fred, energy, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, news,
-    markets, // Live Yahoo Finance market data
+    markets, crypto, internet, // Live Yahoo Finance + Crypto + Internet health
     ideas: [], ideasSource: 'disabled',
     // newsFeed for ticker (merged RSS + GDELT + Telegram)
     newsFeed: buildNewsFeed(news, gdeltData, tgUrgent, tgTop),

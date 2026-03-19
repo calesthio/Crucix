@@ -3,47 +3,47 @@
 // Crucix Master Orchestrator — runs all intelligence sources in parallel
 // Outputs structured JSON for Claude to synthesize into actionable briefing
 
-import './utils/env.mjs'; // Load API keys from .env
 import { pathToFileURL } from 'node:url';
+import './utils/env.mjs'; // Load API keys from .env
 
 // === Tier 1: Core OSINT & Geopolitical ===
-import { briefing as gdelt } from './sources/gdelt.mjs';
-import { briefing as opensky } from './sources/opensky.mjs';
-import { briefing as firms } from './sources/firms.mjs';
-import { briefing as ships } from './sources/ships.mjs';
-import { briefing as safecast } from './sources/safecast.mjs';
 import { briefing as acled } from './sources/acled.mjs';
-import { briefing as reliefweb } from './sources/reliefweb.mjs';
-import { briefing as who } from './sources/who.mjs';
+import { briefing as adsb } from './sources/adsb.mjs';
+import { briefing as firms } from './sources/firms.mjs';
+import { briefing as gdelt } from './sources/gdelt.mjs';
 import { briefing as ofac } from './sources/ofac.mjs';
 import { briefing as opensanctions } from './sources/opensanctions.mjs';
-import { briefing as adsb } from './sources/adsb.mjs';
+import { briefing as opensky } from './sources/opensky.mjs';
+import { briefing as reliefweb } from './sources/reliefweb.mjs';
+import { briefing as safecast } from './sources/safecast.mjs';
+import { briefing as ships } from './sources/ships.mjs';
+import { briefing as who } from './sources/who.mjs';
 
 // === Tier 2: Economic & Financial ===
-import { briefing as fred } from './sources/fred.mjs';
-import { briefing as treasury } from './sources/treasury.mjs';
 import { briefing as bls } from './sources/bls.mjs';
-import { briefing as eia } from './sources/eia.mjs';
-import { briefing as gscpi } from './sources/gscpi.mjs';
-import { briefing as usaspending } from './sources/usaspending.mjs';
 import { briefing as comtrade } from './sources/comtrade.mjs';
+import { briefing as eia } from './sources/eia.mjs';
+import { briefing as fred } from './sources/fred.mjs';
+import { briefing as gscpi } from './sources/gscpi.mjs';
+import { briefing as treasury } from './sources/treasury.mjs';
+import { briefing as usaspending } from './sources/usaspending.mjs';
 
 // === Tier 3: Weather, Environment, Technology, Social ===
-import { briefing as noaa } from './sources/noaa.mjs';
-import { briefing as epa } from './sources/epa.mjs';
-import { briefing as patents } from './sources/patents.mjs';
 import { briefing as bluesky } from './sources/bluesky.mjs';
+import { briefing as epa } from './sources/epa.mjs';
+import { briefing as kiwisdr } from './sources/kiwisdr.mjs';
+import { briefing as noaa } from './sources/noaa.mjs';
+import { briefing as patents } from './sources/patents.mjs';
 import { briefing as reddit } from './sources/reddit.mjs';
 import { briefing as telegram } from './sources/telegram.mjs';
-import { briefing as kiwisdr } from './sources/kiwisdr.mjs';
 
 // === Tier 4: Space & Satellites ===
 import { briefing as space } from './sources/space.mjs';
 
 // === Tier 5: Live Market Data ===
-import { briefing as yfinance } from './sources/yfinance.mjs';
-import { briefing as crypto } from './sources/crypto.mjs';
 import { briefing as cloudflare } from './sources/cloudflare.mjs';
+import { briefing as crypto } from './sources/crypto.mjs';
+import { briefing as yfinance } from './sources/yfinance.mjs';
 
 export async function runSource(name, fn, ...args) {
   const start = Date.now();

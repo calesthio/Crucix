@@ -2094,6 +2094,10 @@
       const newsCount = (D.news || []).length;
       const conflictEvents = D.acled?.totalEvents || 0;
       const conflictFatal = D.acled?.totalFatalities || 0;
+      const btcPrice = D.crypto?.btc?.price;
+      const btcDom = D.crypto?.dominance || 'N/A';
+      const bgpHijacks = (D.internet?.bgp?.hijacks || []).length;
+      const internetStatus = D.internet?.health?.status || 'UNKNOWN';
       const layers = [
         { name: 'Air Activity', count: totalAir, dot: 'air', sub: `${D.air.length} theaters` },
         { name: 'Thermal Spikes', count: totalThermal.toLocaleString(), dot: 'thermal', sub: `${totalNight.toLocaleString()} night det.` },
@@ -2104,7 +2108,9 @@
         { name: 'Health Watch', count: D.who.length, dot: 'health', sub: 'WHO alerts' },
         { name: 'World News', count: newsCount, dot: 'news', sub: 'RSS geolocated' },
         { name: 'OSINT Feed', count: D.tg.posts, dot: 'incident', sub: `${D.tg.urgent.length} urgent` },
-        { name: 'Satellites', count: D.space?.militarySats || 0, dot: 'space', sub: `${D.space?.totalNewObjects || 0} new (30d)` }
+        { name: 'Satellites', count: D.space?.militarySats || 0, dot: 'space', sub: `${D.space?.totalNewObjects || 0} new (30d)` },
+        { name: 'Crypto Market', count: btcPrice ? '$' + btcPrice.toLocaleString('en', {maximumFractionDigits: 0}) : 'N/A', dot: 'incident', sub: `BTC dominance ${btcDom}%` },
+        { name: 'Internet Health', count: bgpHijacks, dot: internetStatus === 'NORMAL' ? 'air' : 'thermal', sub: `BGP hijacks | Status: ${internetStatus}` }
       ];
       const allNormal = D.nuke.every(s => !s.anom);
       const nukeHtml = D.nuke.map(s => `<div class="site-row"><span>${s.site}</span><span class="site-val">${s.n > 0 ? (s.cpm?.toFixed(1) || '--') + ' CPM' : 'No data'}</span></div>`).join('');
@@ -2146,6 +2152,31 @@
         ${Object.entries(D.space.militaryByCountry || {}).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([c, n]) => `<div class="econ-row"><span class="elabel" style="padding-left:8px">${c}</span><span class="eval" style="font-size:10px">${n} mil sats</span></div>`).join('')}
         ${(D.space.signals || []).length ? `<div style="margin-top:6px;padding:6px 8px;border:1px solid rgba(68,204,255,0.2);background:rgba(68,204,255,0.04);font-family:var(--mono);font-size:9px;color:var(--accent2);line-height:1.5">${D.space.signals.slice(0, 2).join('<br>')}</div>` : ''}
       ` : '<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO SPACE DATA</div>'}
+    </div>
+    <div class="g-panel">
+      <div class="sec-head"><h3>Crypto Market</h3><span class="badge">MARKET</span></div>
+      ${D.crypto?.btc ? `
+        <div class="econ-row"><span class="elabel">BTC Price</span><span class="eval" style="color:var(--accent)">$${D.crypto.btc.price.toLocaleString('en', {maximumFractionDigits: 0})}</span></div>
+        <div class="econ-row"><span class="elabel">BTC 24h Change</span><span class="eval" style="color:${D.crypto.btc.change24h > 0 ? 'var(--accent)' : 'var(--danger)'}">${D.crypto.btc.change24h?.toFixed(2) || '--'}%</span></div>
+        <div class="econ-row"><span class="elabel">ETH Price</span><span class="eval">$${D.crypto.eth?.price.toLocaleString('en', {maximumFractionDigits: 0}) || '--'}</span></div>
+        <div class="econ-row"><span class="elabel">BTC Dominance</span><span class="eval" style="color:var(--accent2)">${D.crypto.dominance || '--'}%</span></div>
+        <div class="econ-row"><span class="elabel">Market Cap</span><span class="eval">$${(D.crypto.marketCap / 1e12)?.toFixed(2) || '--'}T</span></div>
+        <div class="econ-row"><span class="elabel">24h Volume</span><span class="eval">$${(D.crypto.volume24h / 1e9)?.toFixed(1) || '--'}B</span></div>
+      ` : '<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO CRYPTO DATA</div>'}
+    </div>
+    <div class="g-panel">
+      <div class="sec-head"><h3>Internet Health</h3><span class="badge">CLOUDFLARE</span></div>
+      ${D.internet ? `
+        <div class="econ-row"><span class="elabel">Global Status</span><span class="eval" style="color:${D.internet.health?.status === 'NORMAL' ? 'var(--accent)' : D.internet.health?.status === 'DEGRADED' ? 'var(--warn)' : 'var(--danger)'}">${D.internet.health?.status || 'UNKNOWN'}</span></div>
+        <div class="econ-row"><span class="elabel">Global OK %</span><span class="eval">${D.internet.health?.global?.toFixed(1) || '--'}%</span></div>
+        <div class="econ-row"><span class="elabel">BGP Hijacks</span><span class="eval" style="color:${D.internet.bgp?.hijacks?.length > 0 ? 'var(--danger)' : 'var(--accent)'}">${D.internet.bgp?.hijacks?.length || 0}</span></div>
+        ${D.internet.bgp?.hijacks?.slice(0, 3).map(h => `<div class="econ-row"><span class="elabel" style="padding-left:8px">${h.asnName || h.asn}</span><span class="eval" style="font-size:9px;color:var(--danger)">${h.location || 'Unknown'}</span></div>`).join('')}
+        <div style="margin-top:6px;font-family:var(--mono);font-size:8px;color:var(--dim);line-height:1.4">
+          <div>Russia: ${D.internet.health?.regional?.russia?.status || 'N/A'}</div>
+          <div>China: ${D.internet.health?.regional?.china?.status || 'N/A'}</div>
+          <div>Iran: ${D.internet.health?.regional?.iran?.status || 'N/A'}</div>
+        </div>
+      ` : '<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO INTERNET DATA</div>'}
     </div>`;
     }
 
