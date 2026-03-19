@@ -844,17 +844,19 @@ function plotMarkers(){
 
   // === Air hotspots (green) ===
   const airCoords=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
-  if(flightsVisible) D.air.forEach((a,i)=>{
-    const c=airCoords[i]; if(!c) return;
-    points.push({
-      lat:c.lat, lng:c.lon, size:0.25+a.total/200, alt:0.015,
-      color:'rgba(100,240,200,0.8)', type:'air', priority:1,
-      label: a.region.replace(' Region','')+' '+a.total,
-      popHead: a.region, popMeta: 'Air Activity',
-      popText: `${a.total} aircraft tracked<br>No callsign: ${a.noCallsign}<br>High altitude: ${a.highAlt}<br>Top: ${a.top.slice(0,3).map(t=>t[0]+' ('+t[1]+')').join(', ')}`
+  if (flightsVisible) {
+    D.air.forEach((a,i)=>{
+      const c=airCoords[i]; if(!c) return;
+      points.push({
+        lat:c.lat, lng:c.lon, size:0.25+a.total/200, alt:0.015,
+        color:'rgba(100,240,200,0.8)', type:'air', priority:1,
+        label: a.region.replace(' Region','')+' '+a.total,
+        popHead: a.region, popMeta: 'Air Activity',
+        popText: `${a.total} aircraft tracked<br>No callsign: ${a.noCallsign}<br>High altitude: ${a.highAlt}<br>Top: ${a.top.slice(0,3).map(t=>t[0]+' ('+t[1]+')').join(', ')}`
+      });
+      labels.push({lat:c.lat, lng:c.lon+2, text:a.region.replace(' Region','')+' '+a.total, size:0.35, color:'rgba(106,138,130,0.8)'});
     });
-    labels.push({lat:c.lat, lng:c.lon+2, text:a.region.replace(' Region','')+' '+a.total, size:0.35, color:'rgba(106,138,130,0.8)'});
-  });
+  }
 
   // === Thermal/fire (red) ===
   D.thermal.forEach(t=>{
@@ -1042,8 +1044,7 @@ function plotMarkers(){
       });
     });
   });
-  }
-  globe.arcsData(arcs);
+  globe.arcsData(flightsVisible ? arcs : []);
 
   // Zoom-aware marker sizing: scale markers and labels with camera altitude
   const onGlobeZoom = () => {
@@ -1098,18 +1099,17 @@ function toggleFlights() {
   flightsVisible = !flightsVisible;
   const btn = document.getElementById('flightToggle');
   btn.classList.toggle('off', !flightsVisible);
-  if(!globe){
+
+  if (isFlat) {
+    if (flatG) {
+      flatG.selectAll('*').remove();
+      drawFlatMap();
+    }
     return;
   }
-  if(flightsVisible) {
-    plotMarkers(); // re-render with arcs
-  } else {
-    globe.arcsData([]); // hide arcs
-    // Remove air-type points
-    const pts = globe.pointsData().filter(p => p.type !== 'air');
-    globe.pointsData(pts);
-    const lbls = globe.labelsData().filter(l => l.text && !l.text.match(/\d+$/));
-    globe.labelsData(lbls);
+
+  if (globe) {
+    plotMarkers();
   }
 }
 
@@ -1209,12 +1209,14 @@ function plotFlatMarkers(){
   };
   // Air
   const airCoords=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
-  D.air.forEach((a,i)=>{
-    const c=airCoords[i];if(!c)return;
-    const g=addPt(c.lat,c.lon,4+a.total/40,'rgba(100,240,200,0.7)','rgba(100,240,200,0.3)',
-      ev=>showPopup(ev,a.region,`${a.total} aircraft<br>No callsign: ${a.noCallsign}<br>High alt: ${a.highAlt}`,'Air Activity'),1);
-    if(g) g.append('text').attr('class','marker-label').attr('x',10).attr('y',3).attr('fill','var(--dim)').attr('font-size','9px').attr('font-family','var(--mono)').text(a.region.replace(' Region','')+' '+a.total);
-  });
+  if (flightsVisible) {
+    D.air.forEach((a,i)=>{
+      const c=airCoords[i];if(!c)return;
+      const g=addPt(c.lat,c.lon,4+a.total/40,'rgba(100,240,200,0.7)','rgba(100,240,200,0.3)',
+        ev=>showPopup(ev,a.region,`${a.total} aircraft<br>No callsign: ${a.noCallsign}<br>High alt: ${a.highAlt}`,'Air Activity'),1);
+      if(g) g.append('text').attr('class','marker-label').attr('x',10).attr('y',3).attr('fill','var(--dim)').attr('font-size','9px').attr('font-family','var(--mono)').text(a.region.replace(' Region','')+' '+a.total);
+    });
+  }
   // Thermal
   D.thermal.forEach(t=>t.fires.forEach(f=>{
     addPt(f.lat,f.lon,2+Math.min(f.frp/50,5),'rgba(255,95,99,0.6)','rgba(255,95,99,0.2)',
@@ -1262,25 +1264,27 @@ function plotFlatMarkers(){
     g.append('circle').attr('r',r*0.4).attr('fill','rgba(255,120,80,0.3)');
   });
   // Flight corridors
-  const airCoordsFlight=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
-  const hubs=[{lat:40.6,lon:-73.8},{lat:51.5,lon:-0.5},{lat:25.3,lon:55.4},{lat:1.4,lon:103.8},{lat:-33.9,lon:151.2},{lat:-23.4,lon:-46.5}];
-  const cG=flatG.append('g').attr('class','corridors-layer');
-  for(let i=0;i<D.air.length;i++){for(let j=i+1;j<D.air.length;j++){
-    const a=D.air[i],b=D.air[j],from=airCoordsFlight[i],to=airCoordsFlight[j];
-    if(!from||!to)continue;const traffic=a.total+b.total;if(traffic<30)continue;
-    const ncR=(a.noCallsign+b.noCallsign)/Math.max(traffic,1);
-    const clr=ncR>0.15?'rgba(255,95,99,0.4)':ncR>0.05?'rgba(255,184,76,0.35)':'rgba(100,240,200,0.25)';
-    const interp=d3.geoInterpolate([from.lon,from.lat],[to.lon,to.lat]);
-    const coords=[];for(let k=0;k<=40;k++)coords.push(interp(k/40));
-    const feat={type:'Feature',geometry:{type:'LineString',coordinates:coords}};
-    cG.append('path').datum(feat).attr('d',flatPath).attr('fill','none').attr('stroke',clr).attr('stroke-width',Math.max(0.8,Math.min(3,traffic/80)));
-  }}
-  D.air.forEach((a,i)=>{if(!airCoordsFlight[i]||a.total<25)return;hubs.forEach(hub=>{
-    if(Math.abs(airCoordsFlight[i].lat-hub.lat)+Math.abs(airCoordsFlight[i].lon-hub.lon)<20)return;
-    const interp=d3.geoInterpolate([airCoordsFlight[i].lon,airCoordsFlight[i].lat],[hub.lon,hub.lat]);
-    const coords=[];for(let k=0;k<=40;k++)coords.push(interp(k/40));
-    cG.append('path').datum({type:'Feature',geometry:{type:'LineString',coordinates:coords}}).attr('d',flatPath).attr('fill','none').attr('stroke','rgba(100,240,200,0.15)').attr('stroke-width',0.6);
-  })});
+  if (flightsVisible) {
+    const airCoordsFlight=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
+    const hubs=[{lat:40.6,lon:-73.8},{lat:51.5,lon:-0.5},{lat:25.3,lon:55.4},{lat:1.4,lon:103.8},{lat:-33.9,lon:151.2},{lat:-23.4,lon:-46.5}];
+    const cG=flatG.append('g').attr('class','corridors-layer');
+    for(let i=0;i<D.air.length;i++){for(let j=i+1;j<D.air.length;j++){
+      const a=D.air[i],b=D.air[j],from=airCoordsFlight[i],to=airCoordsFlight[j];
+      if(!from||!to)continue;const traffic=a.total+b.total;if(traffic<30)continue;
+      const ncR=(a.noCallsign+b.noCallsign)/Math.max(traffic,1);
+      const clr=ncR>0.15?'rgba(255,95,99,0.4)':ncR>0.05?'rgba(255,184,76,0.35)':'rgba(100,240,200,0.25)';
+      const interp=d3.geoInterpolate([from.lon,from.lat],[to.lon,to.lat]);
+      const coords=[];for(let k=0;k<=40;k++)coords.push(interp(k/40));
+      const feat={type:'Feature',geometry:{type:'LineString',coordinates:coords}};
+      cG.append('path').datum(feat).attr('d',flatPath).attr('fill','none').attr('stroke',clr).attr('stroke-width',Math.max(0.8,Math.min(3,traffic/80)));
+    }}
+    D.air.forEach((a,i)=>{if(!airCoordsFlight[i]||a.total<25)return;hubs.forEach(hub=>{
+      if(Math.abs(airCoordsFlight[i].lat-hub.lat)+Math.abs(airCoordsFlight[i].lon-hub.lon)<20)return;
+      const interp=d3.geoInterpolate([airCoordsFlight[i].lon,airCoordsFlight[i].lat],[hub.lon,hub.lat]);
+      const coords=[];for(let k=0;k<=40;k++)coords.push(interp(k/40));
+      cG.append('path').datum({type:'Feature',geometry:{type:'LineString',coordinates:coords}}).attr('d',flatPath).attr('fill','none').attr('stroke','rgba(100,240,200,0.15)').attr('stroke-width',0.6);
+    })});
+  }
 }
 
 // Update setRegion for flat mode
