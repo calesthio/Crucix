@@ -732,11 +732,11 @@ async function initGlobe(){
       .width(w)
       .height(h)
       .globeImageUrl('//unpkg.com/three-globe@2.33.0/example/img/earth-night.jpg')
-      // Semplificato: niente bump map
+      // Simplified: no bump map
       .backgroundImageUrl('')
       .backgroundColor('rgba(0,0,0,0)')
       .atmosphereColor('#64f0c8')
-      .atmosphereAltitude(0.12) // Semplificato: atmosfera più sottile
+      .atmosphereAltitude(0.12) // Simplified: thinner atmosphere
       .showGraticules(true)
       // Points layer (main markers)
       .pointAltitude(d => d.alt || 0.01)
@@ -772,7 +772,7 @@ async function initGlobe(){
     const renderer = globe.renderer();
     renderer.setClearColor(0x000000, 0);
 
-    // Add subtle stars background - Ridotto a 500 punti invece di 2000
+    // Add subtle stars background - Reduced to 500 points instead of 2000
     const starGeom = new THREE.BufferGeometry();
     const starVerts = [];
     for(let i=0; i<500; i++){
