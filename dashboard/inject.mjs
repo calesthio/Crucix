@@ -126,13 +126,36 @@ async function fetchRSS(url, source) {
 
 export async function fetchAllNews() {
   const feeds = [
-    ['http://feeds.bbci.co.uk/news/world/rss.xml', 'BBC'],
-    ['https://rss.nytimes.com/services/xml/rss/nyt/World.xml', 'NYT'],
+    // Existing core
+    ['http://feeds.bbci.co.uk/news/world/rss.xml', 'BBC World'],
+    ['https://rss.nytimes.com/services/xml/rss/nyt/World.xml', 'NYT World'],
     ['https://www.aljazeera.com/xml/rss/all.xml', 'Al Jazeera'],
     ['https://rss.nytimes.com/services/xml/rss/nyt/Americas.xml', 'NYT Americas'],
     ['https://rss.nytimes.com/services/xml/rss/nyt/AsiaPacific.xml', 'NYT Asia'],
     ['https://feeds.bbci.co.uk/news/technology/rss.xml', 'BBC Tech'],
     ['http://feeds.bbci.co.uk/news/science_and_environment/rss.xml', 'BBC Science'],
+    // WSJ feeds
+    ['https://feeds.content.dowjones.io/public/rss/RSSWorldNews', 'WSJ World'],
+    ['https://feeds.content.dowjones.io/public/rss/WSJcomUSBusiness', 'WSJ Business'],
+    ['https://feeds.content.dowjones.io/public/rss/RSSMarketsMain', 'WSJ Markets'],
+    ['https://feeds.content.dowjones.io/public/rss/RSSUSnews', 'WSJ US News'],
+    ['https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines', 'MarketWatch'],
+    // Premium financial & wire
+    ['https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best', 'Reuters'],
+    ['https://www.ft.com/news-feed?format=rss.&page=1', 'FT'],
+    ['https://feeds.bloomberg.com/markets/news.rss', 'Bloomberg'],
+    // Business & markets
+    ['https://rss.nytimes.com/services/xml/rss/nyt/Business.xml', 'NYT Business'],
+    ['https://rss.nytimes.com/services/xml/rss/nyt/Dealbook.xml', 'NYT Dealbook'],
+    ['https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJdEVhZXw==&_gl=1*1ffo59h*_ga*MTM1NjEyMzA0My4xNzAyMzk0NTEz*_ga_ZQWF70T3FK*MTcwMzAxODA2NS4yLjEuMTcwMzAxODExMC4xNS4wLjA.', 'BusinessWire'],
+    ['https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114', 'CNBC'],
+    ['https://feeds.bbci.co.uk/news/business/rss.xml', 'BBC Business'],
+    // Breaking & news aggregators
+    ['https://api.axios.com/feed/', 'Axios'],
+    ['https://www.huffpost.com/section/world-news/feed', 'HuffPost World'],
+    ['http://rssfeeds.usatoday.com/UsatodaycomNation-TopStories', 'USA Today'],
+    // Tech & specialized
+    ['https://www.wired.com/feed/rss', 'Wired'],
   ];
 
   const results = await Promise.allSettled(
