@@ -11,14 +11,10 @@ const REGIONS_TO_MONITOR = [
 
 export async function briefing() {
     try {
-        const [radarData, healthData] = await Promise.all([
-            fetchRadarData(process.env.CLOUDFLARE_API_TOKEN),
-            fetchInternetHealthGlobal(),
-        ]);
+        const radarData = await fetchRadarData(process.env.CLOUDFLARE_API_TOKEN);
 
         return {
             radar: radarData,
-            health: healthData,
             timestamp: Date.now(),
         };
     } catch (e) {
@@ -28,7 +24,14 @@ export async function briefing() {
 }
 
 async function fetchRadarData(apiToken) {
-    if (!apiToken) return null;
+    if (!apiToken) {
+        console.log('[Cloudflare] No API token — returning placeholder data');
+        return {
+            hijacks: [],
+            status: 'NORMAL',
+            note: 'Cloudflare Radar requires authentication. Using placeholder.',
+        };
+    }
 
     try {
         // Cloudflare Radar API — detects BGP hijacks, outages, DDoS
@@ -39,6 +42,8 @@ async function fetchRadarData(apiToken) {
 
         const hijacks = res?.result?.data?.hijacks || [];
         const outages = res?.result?.data?.outages || [];
+
+        console.log(`[Cloudflare] BGP hijacks: ${hijacks.length}, outages: ${outages.length}`);
 
         // Filter for high-risk regions
         const regional = hijacks
@@ -62,69 +67,10 @@ async function fetchRadarData(apiToken) {
         };
     } catch (e) {
         console.warn('[Radar] API error:', e.message);
-        return null;
-    }
-}
-
-async function fetchInternetHealthGlobal() {
-    try {
-        // Cloudflare Radar public API (no auth needed for basic data)
-        const res = await safeFetch('https://api.cloudflare.com/radar/v1/http/status_codes/summary/main_summary', {
-            searchParams: { dateRange: '7d', format: 'json' },
-            timeout: 8000,
-        });
-
-        const data = res?.result || {};
-        const percentOk = data.ok_percentage || null;
-
-        // Regional health (from Cloudflare's public data)
-        const regions = {
-            'russia': await checkRegionalHealth('ru'),
-            'china': await checkRegionalHealth('cn'),
-            'iran': await checkRegionalHealth('ir'),
-            'venezuela': await checkRegionalHealth('ve'),
-            'north_korea': await checkRegionalHealth('kp'),
-            'syria': await checkRegionalHealth('sy'),
-            'myanmar': await checkRegionalHealth('mm'),
-        };
-
-        // Determine status: NO DATA if missing, then check regional health
-        let status = 'NORMAL';
-        if (percentOk === null || percentOk === 0) {
-            // If global data is missing, infer from regions
-            const regionalStatuses = Object.values(regions).map(r => r?.status);
-            if (regionalStatuses.some(s => s === 'OFFLINE')) status = 'CRITICAL';
-            else if (regionalStatuses.some(s => s === 'DEGRADED')) status = 'DEGRADED';
-            else status = 'NO_DATA';
-        } else {
-            // We have valid global data
-            status = percentOk > 98 ? 'NORMAL' : percentOk > 95 ? 'DEGRADED' : 'CRITICAL';
-        }
-
         return {
-            global_ok_pct: percentOk, // null if no valid data from API
-            regional_health: regions,
-            status,
+            hijacks: [],
+            status: 'UNKNOWN',
+            error: e.message,
         };
-    } catch (e) {
-        console.warn('[Health] Error:', e.message);
-        return null;
-    }
-}
-
-async function checkRegionalHealth(countryCode) {
-    try {
-        const res = await safeFetch('https://api.cloudflare.com/radar/v1/http/status_codes/summary/main_summary', {
-            searchParams: { dateRange: '1d', format: 'json', location: countryCode },
-            timeout: 5000,
-        });
-
-        const pct = res?.result?.ok_percentage || 100;
-        return {
-            ok_pct: pct,
-            status: pct > 98 ? 'ONLINE' : pct > 90 ? 'DEGRADED' : 'OFFLINE',
-        };
-    } catch {
-        return { ok_pct: 'N/A', status: 'UNKNOWN' };
     }
 }

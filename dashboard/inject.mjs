@@ -528,7 +528,7 @@ export async function synthesize(data) {
     timestamp: cryptoData.timestamp,
   };
 
-  // Internet health & BGP hijacks
+  // Internet BGP hijack monitoring (Cloudflare Radar)
   const cloudflareData = data.sources.Cloudflare || {};
   const internet = {
     bgp: {
@@ -536,11 +536,6 @@ export async function synthesize(data) {
         asn: h.asn, asnName: h.asnName, location: h.location, severity: h.severity
       })),
       status: cloudflareData.radar?.status || 'NORMAL',
-    },
-    health: {
-      global: cloudflareData.health?.global_ok_pct,
-      regional: cloudflareData.health?.regional_health || {},
-      status: cloudflareData.health?.status || 'UNKNOWN',
     },
     timestamp: cloudflareData.timestamp,
   };

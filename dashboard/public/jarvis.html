@@ -2097,7 +2097,7 @@
       const btcPrice = D.crypto?.btc?.price;
       const btcDom = D.crypto?.dominance || 'N/A';
       const bgpHijacks = (D.internet?.bgp?.hijacks || []).length;
-      const internetStatus = D.internet?.health?.status || 'UNKNOWN';
+      const bgpHijacks = (D.internet?.bgp?.hijacks || []).length;
       const layers = [
         { name: 'Air Activity', count: totalAir, dot: 'air', sub: `${D.air.length} theaters` },
         { name: 'Thermal Spikes', count: totalThermal.toLocaleString(), dot: 'thermal', sub: `${totalNight.toLocaleString()} night det.` },
@@ -2110,7 +2110,7 @@
         { name: 'OSINT Feed', count: D.tg.posts, dot: 'incident', sub: `${D.tg.urgent.length} urgent` },
         { name: 'Satellites', count: D.space?.militarySats || 0, dot: 'space', sub: `${D.space?.totalNewObjects || 0} new (30d)` },
         { name: 'Crypto Market', count: btcPrice ? '$' + btcPrice.toLocaleString('en', { maximumFractionDigits: 0 }) : 'N/A', dot: 'incident', sub: `BTC dominance ${btcDom}%` },
-        { name: 'Internet Health', count: bgpHijacks, dot: internetStatus === 'NORMAL' ? 'air' : 'thermal', sub: `BGP hijacks | Status: ${internetStatus}` }
+        { name: 'Internet Watch', count: bgpHijacks, dot: bgpHijacks > 0 ? 'thermal' : 'air', sub: `BGP hijacks detected` }
       ];
       const allNormal = D.nuke.every(s => !s.anom);
       const nukeHtml = D.nuke.map(s => `<div class="site-row"><span>${s.site}</span><span class="site-val">${s.n > 0 ? (s.cpm?.toFixed(1) || '--') + ' CPM' : 'No data'}</span></div>`).join('');
@@ -2165,18 +2165,12 @@
       ` : `<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO CRYPTO DATA</div>`}
     </div>
     <div class="g-panel">
-      <div class="sec-head"><h3>Internet Health</h3><span class="badge">CLOUDFLARE</span></div>
+      <div class="sec-head"><h3>BGP Monitoring</h3><span class="badge">CLOUDFLARE RADAR</span></div>
       ${D.internet ? `
-        <div class="econ-row"><span class="elabel">Global Status</span><span class="eval" style="color:${D.internet.health?.status === 'NORMAL' ? 'var(--accent)' : D.internet.health?.status === 'DEGRADED' ? 'var(--warn)' : D.internet.health?.status === 'NO_DATA' ? 'var(--dim)' : 'var(--danger)'}">${D.internet.health?.status === 'NO_DATA' ? 'Awaiting Data' : (D.internet.health?.status || 'UNKNOWN')}</span></div>
-        <div class="econ-row"><span class="elabel">Global OK %</span><span class="eval">${Number.isFinite(D.internet.health?.global) && D.internet.health.global > 0 ? D.internet.health.global.toFixed(1) + '%' : '(No API data)'}</span></div>
-        <div class="econ-row"><span class="elabel">BGP Hijacks</span><span class="eval" style="color:${D.internet.bgp?.hijacks?.length > 0 ? 'var(--danger)' : 'var(--accent)'}">${D.internet.bgp?.hijacks?.length || 0}</span></div>
-        ${D.internet.bgp?.hijacks?.slice(0, 3).map(h => `<div class="econ-row"><span class="elabel" style="padding-left:8px">${h.asnName || h.asn}</span><span class="eval" style="font-size:9px;color:var(--danger)">${h.location || 'Unknown'}</span></div>`).join('')}
-        <div style="margin-top:6px;font-family:var(--mono);font-size:8px;color:var(--dim);line-height:1.4">
-          <div>Russia: ${D.internet.health?.regional?.russia?.status || 'N/A'}</div>
-          <div>China: ${D.internet.health?.regional?.china?.status || 'N/A'}</div>
-          <div>Iran: ${D.internet.health?.regional?.iran?.status || 'N/A'}</div>
-        </div>
-      ` : `<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO INTERNET DATA</div>`}
+        <div class="econ-row"><span class="elabel">Status</span><span class="eval" style="color:${D.internet.bgp?.status === 'NORMAL' ? 'var(--accent)' : 'var(--danger)'}">${D.internet.bgp?.status || 'UNKNOWN'}</span></div>
+        <div class="econ-row"><span class="elabel">Hijacks Detected</span><span class="eval" style="color:${D.internet.bgp?.hijacks?.length > 0 ? 'var(--danger)' : 'var(--accent)'}">${D.internet.bgp?.hijacks?.length || 0}</span></div>
+        ${D.internet.bgp?.hijacks?.slice(0, 3).map(h => `<div class="econ-row"><span class="elabel" style="padding-left:8px">${h.asnName || h.asn}</span><span class="eval" style="font-size:9px;color:var(--danger)">${h.severity || 'MEDIUM'}</span></div>`).join('')}
+      ` : `<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO BGP DATA</div>`}
     </div>`;
     }
 
