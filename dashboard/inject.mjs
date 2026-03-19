@@ -528,24 +528,12 @@ export async function synthesize(data) {
     timestamp: cryptoData.timestamp,
   };
 
-  // Internet BGP hijack monitoring (Cloudflare Radar)
-  const cloudflareData = data.sources.Cloudflare || {};
-  const internet = {
-    bgp: {
-      hijacks: (cloudflareData.radar?.hijacks || []).map(h => ({
-        asn: h.asn, asnName: h.asnName, location: h.location, severity: h.severity
-      })),
-      status: cloudflareData.radar?.status || 'NORMAL',
-    },
-    timestamp: cloudflareData.timestamp,
-  };
-
   const V2 = {
     meta: data.crucix, air, thermal, tSignals, chokepoints, nuke, nukeSignals,
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
     tg: { posts: tgData.totalPosts || 0, urgent: tgUrgent, topPosts: tgTop },
     who, fred, energy, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, news,
-    markets, crypto, internet, // Live Yahoo Finance + Crypto + Internet health
+    markets, crypto, // Live Yahoo Finance + Crypto
     ideas: [], ideasSource: 'disabled',
     // newsFeed for ticker (merged RSS + GDELT + Telegram)
     newsFeed: buildNewsFeed(news, gdeltData, tgUrgent, tgTop),

@@ -2096,8 +2096,6 @@
       const conflictFatal = D.acled?.totalFatalities || 0;
       const btcPrice = D.crypto?.btc?.price;
       const btcDom = D.crypto?.dominance || 'N/A';
-      const bgpHijacks = (D.internet?.bgp?.hijacks || []).length;
-      const bgpHijacks = (D.internet?.bgp?.hijacks || []).length;
       const layers = [
         { name: 'Air Activity', count: totalAir, dot: 'air', sub: `${D.air.length} theaters` },
         { name: 'Thermal Spikes', count: totalThermal.toLocaleString(), dot: 'thermal', sub: `${totalNight.toLocaleString()} night det.` },
@@ -2109,8 +2107,7 @@
         { name: 'World News', count: newsCount, dot: 'news', sub: 'RSS geolocated' },
         { name: 'OSINT Feed', count: D.tg.posts, dot: 'incident', sub: `${D.tg.urgent.length} urgent` },
         { name: 'Satellites', count: D.space?.militarySats || 0, dot: 'space', sub: `${D.space?.totalNewObjects || 0} new (30d)` },
-        { name: 'Crypto Market', count: btcPrice ? '$' + btcPrice.toLocaleString('en', { maximumFractionDigits: 0 }) : 'N/A', dot: 'incident', sub: `BTC dominance ${btcDom}%` },
-        { name: 'Internet Watch', count: bgpHijacks, dot: bgpHijacks > 0 ? 'thermal' : 'air', sub: `BGP hijacks detected` }
+        { name: 'Crypto Market', count: btcPrice ? '$' + btcPrice.toLocaleString('en', { maximumFractionDigits: 0 }) : 'N/A', dot: 'incident', sub: `BTC dominance ${btcDom}%` }
       ];
       const allNormal = D.nuke.every(s => !s.anom);
       const nukeHtml = D.nuke.map(s => `<div class="site-row"><span>${s.site}</span><span class="site-val">${s.n > 0 ? (s.cpm?.toFixed(1) || '--') + ' CPM' : 'No data'}</span></div>`).join('');
@@ -2163,14 +2160,6 @@
         <div class="econ-row"><span class="elabel">Market Cap</span><span class="eval">$${(D.crypto.marketCap / 1e12)?.toFixed(2) || '--'}T</span></div>
         <div class="econ-row"><span class="elabel">24h Volume</span><span class="eval">$${(D.crypto.volume24h / 1e9)?.toFixed(1) || '--'}B</span></div>
       ` : `<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO CRYPTO DATA</div>`}
-    </div>
-    <div class="g-panel">
-      <div class="sec-head"><h3>BGP Monitoring</h3><span class="badge">CLOUDFLARE RADAR</span></div>
-      ${D.internet ? `
-        <div class="econ-row"><span class="elabel">Status</span><span class="eval" style="color:${D.internet.bgp?.status === 'NORMAL' ? 'var(--accent)' : 'var(--danger)'}">${D.internet.bgp?.status || 'UNKNOWN'}</span></div>
-        <div class="econ-row"><span class="elabel">Hijacks Detected</span><span class="eval" style="color:${D.internet.bgp?.hijacks?.length > 0 ? 'var(--danger)' : 'var(--accent)'}">${D.internet.bgp?.hijacks?.length || 0}</span></div>
-        ${D.internet.bgp?.hijacks?.slice(0, 3).map(h => `<div class="econ-row"><span class="elabel" style="padding-left:8px">${h.asnName || h.asn}</span><span class="eval" style="font-size:9px;color:var(--danger)">${h.severity || 'MEDIUM'}</span></div>`).join('')}
-      ` : `<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO BGP DATA</div>`}
     </div>`;
     }
 
