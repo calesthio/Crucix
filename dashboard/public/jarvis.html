@@ -381,6 +381,7 @@ let D = null;
 // === GLOBALS ===
 let globe = null;
 let globeLoaded = false;
+let globeInitPromise = null;
 let flightsVisible = true;
 let lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true';
 let isFlat = shouldStartFlat();
@@ -559,14 +560,34 @@ function togglePerfMode(){
   }
 }
 
+const scriptLoadPromises = new Map();
+
 function loadScript(url) {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = url;
-    script.onload = resolve;
-    script.onerror = reject;
-    document.head.appendChild(script);
+  if (scriptLoadPromises.has(url)) return scriptLoadPromises.get(url);
+  const promise = new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${url}"]`);
+    const script = existing || document.createElement('script');
+    const onLoad = () => {
+      script.dataset.loaded = 'true';
+      resolve();
+    };
+    const onError = (err) => {
+      scriptLoadPromises.delete(url);
+      reject(err);
+    };
+    if (script.dataset.loaded === 'true') {
+      resolve();
+      return;
+    }
+    script.addEventListener('load', onLoad, { once: true });
+    script.addEventListener('error', onError, { once: true });
+    if (!existing) {
+      script.src = url;
+      document.head.appendChild(script);
+    }
   });
+  scriptLoadPromises.set(url, promise);
+  return promise;
 }
 
 // === TOPBAR ===
@@ -727,125 +748,117 @@ function initMap(){
 
 async function initGlobe(){
   if (globeLoaded) return !!globe;
-  const hint = document.getElementById('mapHint');
-  const oldHint = hint.textContent;
-  hint.textContent = 'LOADING 3D ENGINE...';
-  
-  try {
-    if (!window.THREE) await loadScript('https://unpkg.com/three@0.160.0/build/three.min.js');
-    if (!window.Globe) await loadScript('https://unpkg.com/globe.gl@2.33.0');
-    
-    const container = document.getElementById('mapContainer');
-    const w = container.clientWidth;
-    const h = container.clientHeight || 560;
+  if (globeInitPromise) return globeInitPromise;
+  globeInitPromise = (async () => {
+    const hint = document.getElementById('mapHint');
+    const oldHint = hint.textContent;
+    hint.textContent = 'LOADING 3D ENGINE...';
 
-    globe = Globe()
-      .width(w)
-      .height(h)
-      .globeImageUrl('//unpkg.com/three-globe@2.33.0/example/img/earth-night.jpg')
-      // Simplified: no bump map
-      .backgroundImageUrl('')
-      .backgroundColor('rgba(0,0,0,0)')
-      .atmosphereColor('#64f0c8')
-      .atmosphereAltitude(0.12) // Simplified: thinner atmosphere
-      .showGraticules(true)
-      // Points layer (main markers)
-      .pointAltitude(d => d.alt || 0.01)
-      .pointRadius(d => d.size || 0.3)
-      .pointColor(d => d.color)
-      .pointLabel(d => `<b>${d.popHead||''}</b><br><span style="opacity:0.7">${d.popMeta||''}</span>`)
-      .onPointClick((pt, ev) => { showPopup(ev, pt.popHead, pt.popText, pt.popMeta, pt.lat, pt.lng, pt.alt); })
-      .onPointHover(pt => { document.getElementById('globeViz').style.cursor = pt ? 'pointer' : 'grab'; })
-      // Arcs layer (flight corridors)
-      .arcColor(d => d.color)
-      .arcStroke(d => d.stroke || 0.4)
-      .arcDashLength(0.4)
-      .arcDashGap(0.2)
-      .arcDashAnimateTime(globeArcDashAnimateTimeFor(regionPOV.world.altitude))
-      .arcAltitudeAutoScale(0.3)
-      .arcLabel(d => d.label || '')
-      // Rings layer (pulsing conflict events)
-      .ringColor(d => t => `rgba(255,120,80,${1-t})`)
-      .ringMaxRadius(d => d.maxR || 3)
-      .ringPropagationSpeed(d => d.speed || 2)
-      .ringRepeatPeriod(d => d.period || 800)
-      // Labels layer
-      .labelText(d => d.text)
-      .labelSize(d => d.size || 0.4)
-      .labelColor(d => d.color || 'rgba(106,138,130,0.9)')
-      .labelDotRadius(0)
-      .labelAltitude(0.012)
-      .labelResolution(2)
-      (document.getElementById('globeViz'));
+    try {
+      if (!window.Globe) await loadScript('https://unpkg.com/globe.gl@2.33.0');
+      if (!window.Globe) throw new Error('Globe.gl did not load');
 
-    // Style the WebGL scene
-    const scene = globe.scene();
-    const renderer = globe.renderer();
-    renderer.setClearColor(0x000000, 0);
+      const container = document.getElementById('mapContainer');
+      const w = container.clientWidth;
+      const h = container.clientHeight || 560;
 
-    // Add subtle stars background - Reduced to 500 points instead of 2000
-    const starGeom = new THREE.BufferGeometry();
-    const starVerts = [];
-    for(let i=0; i<500; i++){
-      const r = 800 + Math.random()*200;
-      const theta = Math.random()*Math.PI*2;
-      const phi = Math.acos(2*Math.random()-1);
-      starVerts.push(r*Math.sin(phi)*Math.cos(theta), r*Math.sin(phi)*Math.sin(theta), r*Math.cos(phi));
+      globe = window.Globe()
+        .width(w)
+        .height(h)
+        .globeImageUrl('//unpkg.com/three-globe@2.33.0/example/img/earth-night.jpg')
+        // Simplified: no bump map
+        .backgroundImageUrl('')
+        .backgroundColor('rgba(0,0,0,0)')
+        .atmosphereColor('#64f0c8')
+        .atmosphereAltitude(0.12) // Simplified: thinner atmosphere
+        .showGraticules(true)
+        // Points layer (main markers)
+        .pointAltitude(d => d.alt || 0.01)
+        .pointRadius(d => d.size || 0.3)
+        .pointColor(d => d.color)
+        .pointLabel(d => `<b>${d.popHead||''}</b><br><span style="opacity:0.7">${d.popMeta||''}</span>`)
+        .onPointClick((pt, ev) => { showPopup(ev, pt.popHead, pt.popText, pt.popMeta, pt.lat, pt.lng, pt.alt); })
+        .onPointHover(pt => { document.getElementById('globeViz').style.cursor = pt ? 'pointer' : 'grab'; })
+        // Arcs layer (flight corridors)
+        .arcColor(d => d.color)
+        .arcStroke(d => d.stroke || 0.4)
+        .arcDashLength(0.4)
+        .arcDashGap(0.2)
+        .arcDashAnimateTime(globeArcDashAnimateTimeFor(regionPOV.world.altitude))
+        .arcAltitudeAutoScale(0.3)
+        .arcLabel(d => d.label || '')
+        // Rings layer (pulsing conflict events)
+        .ringColor(d => t => `rgba(255,120,80,${1-t})`)
+        .ringMaxRadius(d => d.maxR || 3)
+        .ringPropagationSpeed(d => d.speed || 2)
+        .ringRepeatPeriod(d => d.period || 800)
+        // Labels layer
+        .labelText(d => d.text)
+        .labelSize(d => d.size || 0.4)
+        .labelColor(d => d.color || 'rgba(106,138,130,0.9)')
+        .labelDotRadius(0)
+        .labelAltitude(0.012)
+        .labelResolution(2)
+        (document.getElementById('globeViz'));
+
+      // Style the WebGL scene
+      const scene = globe.scene();
+      const renderer = globe.renderer();
+      renderer.setClearColor(0x000000, 0);
+
+      // Customize graticule color
+      scene.traverse(obj => {
+        if(obj.material && obj.type === 'Line'){
+          obj.material.color.set(0x1a3a2a);
+          obj.material.opacity = 0.3;
+          obj.material.transparent = true;
+        }
+      });
+
+      // Set initial POV
+      globe.pointOfView(regionPOV.world, 0);
+
+      // Auto-rotate slowly
+      globe.controls().autoRotate = !lowPerfMode;
+      globe.controls().autoRotateSpeed = 0.3;
+      globe.controls().enableDamping = true;
+      globe.controls().dampingFactor = 0.1;
+
+      // Stop auto-rotate on interaction, resume after 10s
+      let rotateTimeout;
+      const el = document.getElementById('globeViz');
+      el.addEventListener('mousedown', () => {
+        globe.controls().autoRotate = false;
+        clearTimeout(rotateTimeout);
+      });
+      el.addEventListener('mouseup', () => {
+        rotateTimeout = setTimeout(() => {
+          if (globe) syncGlobePerfSettings();
+        }, 10000);
+      });
+
+      // Resize handler
+      window.addEventListener('resize', () => {
+        const c = document.getElementById('mapContainer');
+        if (globe) globe.width(c.clientWidth).height(c.clientHeight || 560);
+      });
+
+      // Plot globe markers
+      plotMarkers();
+      globeLoaded = true;
+      hint.textContent = oldHint;
+      return true;
+    } catch (err) {
+      console.error('Globe initialization failed:', err);
+      globe = null;
+      hint.textContent = '3D ERROR: LOAD FAILED';
+      isFlat = true;
+      return false;
+    } finally {
+      globeInitPromise = null;
     }
-    starGeom.setAttribute('position', new THREE.Float32BufferAttribute(starVerts, 3));
-    const starMat = new THREE.PointsMaterial({color:0x88bbaa, size:0.8, transparent:true, opacity:0.6});
-    scene.add(new THREE.Points(starGeom, starMat));
-
-    // Customize graticule color
-    scene.traverse(obj => {
-      if(obj.material && obj.type === 'Line'){
-        obj.material.color.set(0x1a3a2a);
-        obj.material.opacity = 0.3;
-        obj.material.transparent = true;
-      }
-    });
-
-    // Set initial POV
-    globe.pointOfView(regionPOV.world, 0);
-
-    // Auto-rotate slowly
-    globe.controls().autoRotate = !lowPerfMode;
-    globe.controls().autoRotateSpeed = 0.3;
-    globe.controls().enableDamping = true;
-    globe.controls().dampingFactor = 0.1;
-
-    // Stop auto-rotate on interaction, resume after 10s
-    let rotateTimeout;
-    const el = document.getElementById('globeViz');
-    el.addEventListener('mousedown', () => {
-      globe.controls().autoRotate = false;
-      clearTimeout(rotateTimeout);
-    });
-    el.addEventListener('mouseup', () => {
-      rotateTimeout = setTimeout(() => {
-        if (globe) syncGlobePerfSettings();
-      }, 10000);
-    });
-
-    // Resize handler
-    window.addEventListener('resize', () => {
-      const c = document.getElementById('mapContainer');
-      if (globe) globe.width(c.clientWidth).height(c.clientHeight || 560);
-    });
-
-    // Plot globe markers
-    plotMarkers();
-    globeLoaded = true;
-    hint.textContent = oldHint;
-    return true;
-
-  } catch (err) {
-    console.error('Globe initialization failed:', err);
-    globe = null;
-    hint.textContent = '3D ERROR: LOAD FAILED';
-    isFlat = true;
-    return false;
-  }
+  })();
+  return globeInitPromise;
 }
 
 function plotMarkers(){
