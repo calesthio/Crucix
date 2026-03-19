@@ -307,6 +307,15 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
 /* GLOBE.GL overrides */
 #globeViz .scene-tooltip{font-family:var(--mono)!important;font-size:10px!important;background:rgba(6,10,14,0.9)!important;border:1px solid rgba(100,240,200,0.3)!important;color:var(--text)!important;padding:4px 8px!important;letter-spacing:0.05em}
 
+/* LOW PERFORMANCE MODE OVERRIDES */
+body.low-perf .bg-grid, body.low-perf .scanline, body.low-perf .bg-radial { display: none !important; animation: none !important; }
+body.low-perf * { backdrop-filter: none !important; animation-duration: 0s !important; transition-duration: 0s !important; }
+body.low-perf .logo-ring::before, body.low-perf .logo-ring::after { animation: none !important; }
+body.low-perf .ticker-wrap { overflow-y: auto !important; }
+body.low-perf .ticker-track { animation: none !important; display: block !important; }
+body.low-perf .conflict-ring, body.low-perf .corridor-flow { animation: none !important; opacity: 0.5 !important; }
+body.low-perf .g-panel, body.low-perf .topbar { background: rgba(10, 20, 32, 0.95) !important; }
+
 /* IDEA HORIZON BADGE */
 .idea-horizon{font-family:var(--mono);font-size:8px;letter-spacing:0.08em;text-transform:uppercase;padding:1px 5px;border:1px solid rgba(100,240,200,0.15);color:var(--dim);margin-left:6px}
 </style>
@@ -1040,14 +1049,8 @@ function plotMarkers(){
     globe.arcStroke(d => (d.stroke || 0.4) * Math.max(0.5, Math.min(1.5, 1.2 / alt)));
     // Enable arc animation only when zoomed in
     globe.arcDashAnimateTime(lowPerfMode ? 0 : (alt < 1.0 ? 2000 : 0));
-    // Priority-based point visibility: hide low-priority markers when zoomed out
-    if(alt > 2.0){
-      globe.pointsData(points.filter(p => (p.priority||3) <= 1));
-    } else if(alt > 1.2){
-      globe.pointsData(points.filter(p => (p.priority||3) <= 2));
-    } else {
-      globe.pointsData(points);
-    }
+    // Show all points at all zoom levels
+    globe.pointsData(points);
   };
   if(typeof globe.onZoom==='function') globe.onZoom(onGlobeZoom);
   onGlobeZoom();
@@ -1168,13 +1171,8 @@ function initFlatMap(){
     flatG.selectAll('.marker-circle').attr('r',function(){return +this.dataset.baseR/Math.sqrt(k)});
     flatG.selectAll('.marker-label').style('font-size',Math.max(7,9/Math.sqrt(k))+'px')
       .style('display',k>=2.5?'block':'none');
-    // Priority-based visibility: hide low-priority markers at low zoom
-    flatG.selectAll('[data-priority]').style('display',function(){
-      const p=+this.dataset.priority;
-      if(p<=1) return 'block';
-      if(p<=2) return k>=2?'block':'none';
-      return k>=3.5?'block':'none';
-    });
+    // Show all markers
+    flatG.selectAll('[data-priority]').style('display', 'block');
   });
   flatSvg.call(flatZoom);
   drawFlatMap();
