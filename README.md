@@ -163,10 +163,11 @@ Alerts are delivered as rich embeds with color-coded sidebars: red for FLASH, ye
 **Optional dependency:** The full bot requires `discord.js`. Install it with `npm install discord.js`. If it's not installed, Crucix automatically falls back to webhook-only mode.
 
 ### Optional LLM Layer
-Connect any of 6 LLM providers for enhanced analysis:
+Connect any of 7 LLM providers — including local models — for enhanced analysis:
 - **AI trade ideas** — quantitative analyst producing 5-8 actionable ideas citing specific data
 - **Smarter alert evaluation** — LLM classifies signals into FLASH/PRIORITY/ROUTINE tiers with cross-domain correlation and confidence scoring
 - Providers: Anthropic Claude, OpenAI, Google Gemini, OpenRouter (Unified API), OpenAI Codex (ChatGPT subscription), MiniMax, Mistral
+- **Local LLMs** — use `openai-compatible` with `LLM_BASE_URL` to point at LM Studio, Ollama, or any OpenAI-compatible endpoint. No API key required.
 - Graceful fallback — when LLM is unavailable, a rule-based engine takes over alert evaluation. LLM failures never crash the sweep cycle.
 
 ---
@@ -387,6 +388,7 @@ crucix/
 | `npm run inject` | `node dashboard/inject.mjs` | Inject latest data into static HTML |
 | `npm run brief:save` | `node apis/save-briefing.mjs` | Run sweep + save timestamped JSON |
 | `npm run diag` | `node diag.mjs` | Run diagnostics (Node version, imports, port check) |
+| `npm test` | `node --test test/*.test.mjs` | Run full test suite (412 tests, 100% coverage) |
 
 ---
 
@@ -398,7 +400,7 @@ All settings are in `.env` with sensible defaults:
 |----------|---------|-------------|
 | `PORT` | `3117` | Dashboard server port |
 | `REFRESH_INTERVAL_MINUTES` | `15` | Auto-refresh interval |
-| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, or `mistral` |
+| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `openai-compatible`, `gemini`, `codex`, `openrouter`, `minimax`, or `mistral` |
 | `LLM_API_KEY` | — | API key (not needed for codex) |
 | `LLM_MODEL` | per-provider default | Override model selection |
 | `LLM_BASE_URL` | — | Custom endpoint for local/OpenAI-compatible LLMs (LM Studio, Ollama, etc.) |
