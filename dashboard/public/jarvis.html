@@ -823,7 +823,7 @@ async function initGlobe(){
     });
     el.addEventListener('mouseup', () => {
       rotateTimeout = setTimeout(() => {
-        if(globe && !lowPerfMode) globe.controls().autoRotate = true;
+        if (globe) syncGlobePerfSettings();
       }, 10000);
     });
 
@@ -1055,6 +1055,7 @@ function plotMarkers(){
       });
     });
   });
+  }
   globe.arcsData(flightsVisible ? arcs : []);
 
   // Zoom-aware marker sizing: scale markers and labels with camera altitude
