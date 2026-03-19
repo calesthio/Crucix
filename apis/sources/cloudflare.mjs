@@ -75,7 +75,7 @@ async function fetchInternetHealthGlobal() {
         });
 
         const data = res?.result || {};
-        const percentOk = data.ok_percentage || 0;
+        const percentOk = data.ok_percentage || null;
 
         // Regional health (from Cloudflare's public data)
         const regions = {
@@ -88,10 +88,23 @@ async function fetchInternetHealthGlobal() {
             'myanmar': await checkRegionalHealth('mm'),
         };
 
+        // Determine status: NO DATA if missing, then check regional health
+        let status = 'NORMAL';
+        if (percentOk === null || percentOk === 0) {
+            // If global data is missing, infer from regions
+            const regionalStatuses = Object.values(regions).map(r => r?.status);
+            if (regionalStatuses.some(s => s === 'OFFLINE')) status = 'CRITICAL';
+            else if (regionalStatuses.some(s => s === 'DEGRADED')) status = 'DEGRADED';
+            else status = 'NO_DATA';
+        } else {
+            // We have valid global data
+            status = percentOk > 98 ? 'NORMAL' : percentOk > 95 ? 'DEGRADED' : 'CRITICAL';
+        }
+
         return {
-            global_ok_pct: percentOk,
+            global_ok_pct: percentOk, // null if no valid data from API
             regional_health: regions,
-            status: percentOk > 98 ? 'NORMAL' : percentOk > 95 ? 'DEGRADED' : 'CRITICAL',
+            status,
         };
     } catch (e) {
         console.warn('[Health] Error:', e.message);

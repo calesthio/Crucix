@@ -2167,8 +2167,8 @@
     <div class="g-panel">
       <div class="sec-head"><h3>Internet Health</h3><span class="badge">CLOUDFLARE</span></div>
       ${D.internet ? `
-        <div class="econ-row"><span class="elabel">Global Status</span><span class="eval" style="color:${D.internet.health?.status === 'NORMAL' ? 'var(--accent)' : D.internet.health?.status === 'DEGRADED' ? 'var(--warn)' : 'var(--danger)'}">${D.internet.health?.status || 'UNKNOWN'}</span></div>
-        <div class="econ-row"><span class="elabel">Global OK %</span><span class="eval">${Number.isFinite(D.internet.health?.global) ? D.internet.health.global.toFixed(1) : '--'}%</span></div>
+        <div class="econ-row"><span class="elabel">Global Status</span><span class="eval" style="color:${D.internet.health?.status === 'NORMAL' ? 'var(--accent)' : D.internet.health?.status === 'DEGRADED' ? 'var(--warn)' : D.internet.health?.status === 'NO_DATA' ? 'var(--dim)' : 'var(--danger)'}">${D.internet.health?.status === 'NO_DATA' ? 'Awaiting Data' : (D.internet.health?.status || 'UNKNOWN')}</span></div>
+        <div class="econ-row"><span class="elabel">Global OK %</span><span class="eval">${Number.isFinite(D.internet.health?.global) && D.internet.health.global > 0 ? D.internet.health.global.toFixed(1) + '%' : '(No API data)'}</span></div>
         <div class="econ-row"><span class="elabel">BGP Hijacks</span><span class="eval" style="color:${D.internet.bgp?.hijacks?.length > 0 ? 'var(--danger)' : 'var(--accent)'}">${D.internet.bgp?.hijacks?.length || 0}</span></div>
         ${D.internet.bgp?.hijacks?.slice(0, 3).map(h => `<div class="econ-row"><span class="elabel" style="padding-left:8px">${h.asnName || h.asn}</span><span class="eval" style="font-size:9px;color:var(--danger)">${h.location || 'Unknown'}</span></div>`).join('')}
         <div style="margin-top:6px;font-family:var(--mono);font-size:8px;color:var(--dim);line-height:1.4">
