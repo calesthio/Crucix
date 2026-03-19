@@ -1,6 +1,6 @@
 // Adanos — Social Sentiment Intelligence for Stocks
-// Multi-platform sentiment analysis: Reddit, X/Twitter, Polymarket
-// Provides trending stocks, buzz scores, sentiment breakdowns, and sector analysis
+// Structured stock sentiment from Reddit and X/Twitter, plus Reddit sector analysis
+// Provides trending stocks, buzz scores, sentiment breakdowns, and sector signals
 // Free API key required: https://api.adanos.org/docs
 // Updates every ~15 minutes (Reddit), ~2 hours (X/Twitter)
 
@@ -16,6 +16,16 @@ async function apiFetch(path, apiKey) {
   });
 }
 
+function toFiniteNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function toNullableNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 // Fetch trending stocks from a platform
 async function fetchTrending(platform, apiKey, limit = 20) {
   const data = await apiFetch(`/${platform}/stocks/v1/trending?days=7&limit=${limit}`, apiKey);
@@ -23,13 +33,13 @@ async function fetchTrending(platform, apiKey, limit = 20) {
   return (Array.isArray(data) ? data : []).map(s => ({
     ticker: s.ticker,
     name: s.company_name || null,
-    buzz: s.buzz_score,
+    buzz: toFiniteNumber(s.buzz_score),
     trend: s.trend,
-    mentions: s.mentions,
-    sentiment: s.sentiment_score,
-    bullishPct: s.bullish_pct,
-    bearishPct: s.bearish_pct,
-    upvotes: s.total_upvotes || 0,
+    mentions: toFiniteNumber(s.mentions),
+    sentiment: toNullableNumber(s.sentiment_score),
+    bullishPct: toNullableNumber(s.bullish_pct),
+    bearishPct: toNullableNumber(s.bearish_pct),
+    upvotes: toFiniteNumber(s.total_upvotes),
   }));
 }
 
@@ -39,12 +49,12 @@ async function fetchSectors(apiKey) {
   if (data?.error) return [];
   return (Array.isArray(data) ? data : []).map(s => ({
     sector: s.sector,
-    buzz: s.buzz_score,
+    buzz: toFiniteNumber(s.buzz_score),
     trend: s.trend,
-    mentions: s.mentions,
-    sentiment: s.sentiment_score,
-    bullishPct: s.bullish_pct,
-    bearishPct: s.bearish_pct,
+    mentions: toFiniteNumber(s.mentions),
+    sentiment: toNullableNumber(s.sentiment_score),
+    bullishPct: toNullableNumber(s.bullish_pct),
+    bearishPct: toNullableNumber(s.bearish_pct),
     topTickers: s.top_tickers || [],
   }));
 }
@@ -68,20 +78,22 @@ export async function briefing() {
 
   // Compute aggregate market sentiment from Reddit (larger sample)
   const allStocks = reddit.length ? reddit : x;
-  const totalMentions = allStocks.reduce((s, t) => s + t.mentions, 0);
+  const weightedStocks = allStocks.filter(t => t.mentions > 0);
+  const totalMentions = weightedStocks.reduce((sum, ticker) => sum + ticker.mentions, 0);
   let avgSentiment = 0;
   let avgBullish = 0;
   let avgBearish = 0;
   if (totalMentions > 0) {
-    for (const t of allStocks) {
+    for (const t of weightedStocks) {
       const w = t.mentions / totalMentions;
-      avgSentiment += t.sentiment * w;
-      avgBullish += t.bullishPct * w;
-      avgBearish += t.bearishPct * w;
+      avgSentiment += toFiniteNumber(t.sentiment) * w;
+      avgBullish += toFiniteNumber(t.bullishPct) * w;
+      avgBearish += toFiniteNumber(t.bearishPct) * w;
     }
   }
 
-  const sorted = [...allStocks].sort((a, b) => b.sentiment - a.sentiment);
+  const scoredStocks = allStocks.filter(t => t.sentiment != null);
+  const sorted = [...scoredStocks].sort((a, b) => b.sentiment - a.sentiment);
   const topBullish = sorted.slice(0, 5).filter(t => t.sentiment > 0);
   const topBearish = sorted.slice(-5).reverse().filter(t => t.sentiment < 0);
 
