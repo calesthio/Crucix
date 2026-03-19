@@ -44,5 +44,16 @@ npm-debug.log*
 # Local maintainer notes
 MAINTAINER_DECISIONS.local.md
 
+# Local docs (personal reference, not for distribution)
+docs/
+
+# Local working folders
+data/
+input/
+logs/
+src/
+temp/
+tests/
+
 # Local deploy config
 dashboard/public/vercel.json
