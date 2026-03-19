@@ -42,7 +42,7 @@ export function depthToTier(depth) {
 
 export async function guardInput(rawText, context = {}) {
   try {
-    const verdict = await aegis.score(rawText, { guardPoint: 'input', ...context });
+    const verdict = await aegis.adjudicate(rawText, { guardPoint: 'input', ...context });
     return {
       sanctified: verdict.sanctified,
       payload: verdict.sanitized || rawText, // Fallback to raw if not sanitized
@@ -57,7 +57,7 @@ export async function guardInput(rawText, context = {}) {
 
 export async function guardOutput(llmResponse, context = {}) {
   try {
-    const verdict = await aegis.score(llmResponse, { guardPoint: 'output', ...context });
+    const verdict = await aegis.adjudicate(llmResponse, { guardPoint: 'output', ...context });
     return {
       sanctified: verdict.sanctified,
       payload: verdict.sanitized || llmResponse,
@@ -71,7 +71,7 @@ export async function guardOutput(llmResponse, context = {}) {
 
 export async function guardBotCommand(commandText, userId) {
   try {
-    const verdict = await aegis.score(commandText, { guardPoint: 'bot_command', userId });
+    const verdict = await aegis.adjudicate(commandText, { guardPoint: 'bot_command', userId });
     return {
       sanctified: verdict.sanctified,
       payload: verdict.sanitized || commandText,
@@ -84,6 +84,15 @@ export async function guardBotCommand(commandText, userId) {
 }
 
 export async function evaluateSignal(signal) {
+  if (!signal?.content) {
+    return {
+      signal,
+      tier: null,
+      blocked: false,
+      verdict: _syntheticPass(),
+    };
+  }
+
   const { sanctified, payload, verdict } = await guardInput(signal.content, {
     source: signal.source,
     feedId: signal.id
