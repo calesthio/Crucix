@@ -2162,7 +2162,7 @@
         <div class="econ-row"><span class="elabel">BTC Dominance</span><span class="eval" style="color:var(--accent2)">${D.crypto.dominance || '--'}%</span></div>
         <div class="econ-row"><span class="elabel">Market Cap</span><span class="eval">$${(D.crypto.marketCap / 1e12)?.toFixed(2) || '--'}T</span></div>
         <div class="econ-row"><span class="elabel">24h Volume</span><span class="eval">$${(D.crypto.volume24h / 1e9)?.toFixed(1) || '--'}B</span></div>
-      ` : '<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO CRYPTO DATA</div>'}
+      ` : `<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO CRYPTO DATA</div>`}
     </div>
     <div class="g-panel">
       <div class="sec-head"><h3>Internet Health</h3><span class="badge">CLOUDFLARE</span></div>
@@ -2176,7 +2176,7 @@
           <div>China: ${D.internet.health?.regional?.china?.status || 'N/A'}</div>
           <div>Iran: ${D.internet.health?.regional?.iran?.status || 'N/A'}</div>
         </div>
-      ` : '<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO INTERNET DATA</div>'}
+      ` : `<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO INTERNET DATA</div>`}
     </div>`;
     }
 
