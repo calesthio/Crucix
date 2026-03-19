@@ -510,6 +510,18 @@ const regionPOV = {
 
 if(lowPerfMode) document.body.classList.add('low-perf');
 
+function globeArcDashAnimateTimeFor(altitude) {
+  if (lowPerfMode) return 0;
+  return altitude < 1.0 ? 2000 : 0;
+}
+
+function syncGlobePerfSettings() {
+  if (!globe) return;
+  const altitude = globe.pointOfView().altitude;
+  globe.controls().autoRotate = !lowPerfMode;
+  globe.arcDashAnimateTime(globeArcDashAnimateTimeFor(altitude));
+}
+
 function isWeakMobileDevice(){
   const reducedMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const memory = navigator.deviceMemory || 0;
@@ -536,9 +548,8 @@ function togglePerfMode(){
   document.body.classList.toggle('low-perf', lowPerfMode);
   const perfStatus = document.getElementById('perfStatus');
   if(perfStatus) perfStatus.textContent = lowPerfMode ? 'LOW' : 'HIGH';
-  if(globe){
-    globe.controls().autoRotate = !lowPerfMode;
-    globe.arcDashAnimateTime(lowPerfMode ? 0 : 2000);
+  if (globe) {
+    syncGlobePerfSettings();
   }
   if(lowPerfMode && isMobileLayout() && !isFlat){
     toggleMapMode();
@@ -750,7 +761,7 @@ async function initGlobe(){
       .arcStroke(d => d.stroke || 0.4)
       .arcDashLength(0.4)
       .arcDashGap(0.2)
-      .arcDashAnimateTime(lowPerfMode ? 0 : 0) // animation is enabled only when zoomed in
+      .arcDashAnimateTime(globeArcDashAnimateTimeFor(regionPOV.world.altitude))
       .arcAltitudeAutoScale(0.3)
       .arcLabel(d => d.label || '')
       // Rings layer (pulsing conflict events)
@@ -1056,8 +1067,8 @@ function plotMarkers(){
     globe.labelSize(d => showLabels ? (d.size || 0.4) : 0);
     // Scale arc strokes with zoom
     globe.arcStroke(d => (d.stroke || 0.4) * Math.max(0.5, Math.min(1.5, 1.2 / alt)));
-    // Enable arc animation only when zoomed in
-    globe.arcDashAnimateTime(lowPerfMode ? 0 : (alt < 1.0 ? 2000 : 0));
+    // Low-perf mode must stay sticky even after zoom changes.
+    globe.arcDashAnimateTime(globeArcDashAnimateTimeFor(alt));
     // Show all points at all zoom levels
     globe.pointsData(points);
   };
