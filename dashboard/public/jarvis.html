@@ -9,8 +9,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://d3js.org/topojson.v3.min.js"></script>
-<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-<script src="https://unpkg.com/globe.gl@2.33.0"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -309,6 +307,23 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
 /* GLOBE.GL overrides */
 #globeViz .scene-tooltip{font-family:var(--mono)!important;font-size:10px!important;background:rgba(6,10,14,0.9)!important;border:1px solid rgba(100,240,200,0.3)!important;color:var(--text)!important;padding:4px 8px!important;letter-spacing:0.05em}
 
+/* LOW PERFORMANCE MODE OVERRIDES */
+body.low-perf .bg-grid, body.low-perf .scanline, body.low-perf .bg-radial { display: none !important; animation: none !important; }
+body.low-perf * { backdrop-filter: none !important; animation-duration: 0s !important; transition-duration: 0s !important; }
+body.low-perf .logo-ring::before, body.low-perf .logo-ring::after { animation: none !important; }
+body.low-perf .ticker-wrap { 
+  overflow-y: auto !important; 
+  scrollbar-width: thin; 
+  scrollbar-color: rgba(100, 240, 200, 0.2) transparent; 
+}
+body.low-perf .ticker-wrap::-webkit-scrollbar { width: 4px; }
+body.low-perf .ticker-wrap::-webkit-scrollbar-track { background: transparent; }
+body.low-perf .ticker-wrap::-webkit-scrollbar-thumb { background: rgba(100, 240, 200, 0.2); border-radius: 2px; }
+body.low-perf .ticker-wrap::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+body.low-perf .ticker-track { animation: none !important; display: block !important; }
+body.low-perf .conflict-ring, body.low-perf .corridor-flow { animation: none !important; opacity: 0.5 !important; }
+body.low-perf .g-panel, body.low-perf .topbar { background: rgba(10, 20, 32, 0.95) !important; }
+
 /* IDEA HORIZON BADGE */
 .idea-horizon{font-family:var(--mono);font-size:8px;letter-spacing:0.08em;text-transform:uppercase;padding:1px 5px;border:1px solid rgba(100,240,200,0.15);color:var(--dim);margin-left:6px}
 </style>
@@ -365,7 +380,8 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
 let D = null;
 // === GLOBALS ===
 let globe = null;
-let globeInitialized = false;
+let globeLoaded = false;
+let globeInitPromise = null;
 let flightsVisible = true;
 let lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true';
 let isFlat = shouldStartFlat();
@@ -495,6 +511,18 @@ const regionPOV = {
 
 if(lowPerfMode) document.body.classList.add('low-perf');
 
+function globeArcDashAnimateTimeFor(altitude) {
+  if (lowPerfMode) return 0;
+  return altitude < 1.0 ? 2000 : 0;
+}
+
+function syncGlobePerfSettings() {
+  if (!globe) return;
+  const altitude = globe.pointOfView().altitude;
+  globe.controls().autoRotate = !lowPerfMode;
+  globe.arcDashAnimateTime(globeArcDashAnimateTimeFor(altitude));
+}
+
 function isWeakMobileDevice(){
   const reducedMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const memory = navigator.deviceMemory || 0;
@@ -521,9 +549,8 @@ function togglePerfMode(){
   document.body.classList.toggle('low-perf', lowPerfMode);
   const perfStatus = document.getElementById('perfStatus');
   if(perfStatus) perfStatus.textContent = lowPerfMode ? 'LOW' : 'HIGH';
-  if(globe){
-    globe.controls().autoRotate = !lowPerfMode;
-    globe.arcDashAnimateTime(lowPerfMode ? 0 : 2000);
+  if (globe) {
+    syncGlobePerfSettings();
   }
   if(lowPerfMode && isMobileLayout() && !isFlat){
     toggleMapMode();
@@ -531,6 +558,36 @@ function togglePerfMode(){
     renderLower();
     renderRight();
   }
+}
+
+const scriptLoadPromises = new Map();
+
+function loadScript(url) {
+  if (scriptLoadPromises.has(url)) return scriptLoadPromises.get(url);
+  const promise = new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${url}"]`);
+    const script = existing || document.createElement('script');
+    const onLoad = () => {
+      script.dataset.loaded = 'true';
+      resolve();
+    };
+    const onError = (err) => {
+      scriptLoadPromises.delete(url);
+      reject(err);
+    };
+    if (script.dataset.loaded === 'true') {
+      resolve();
+      return;
+    }
+    script.addEventListener('load', onLoad, { once: true });
+    script.addEventListener('error', onError, { once: true });
+    if (!existing) {
+      script.src = url;
+      document.head.appendChild(script);
+    }
+  });
+  scriptLoadPromises.set(url, promise);
+  return promise;
 }
 
 // === TOPBAR ===
@@ -659,157 +716,171 @@ function initMap(){
   }
   setMapLoading(true, 'Initializing 3D Globe');
   requestAnimationFrame(() => {
-    try {
-      initGlobe();
+    initGlobe().then((globeReady) => {
       setMapLoading(false);
-    } catch {
+      if(!globeReady || !globe){
+        isFlat = true;
+        document.getElementById('globeViz').style.display = 'none';
+        document.getElementById('flatMapSvg').style.display = 'block';
+        document.getElementById('projToggle').textContent = 'GLOBE MODE';
+        document.getElementById('mapHint').textContent = '3D ERROR: LOAD FAILED';
+        if(!flatSvg) initFlatMap();
+        else { flatG.selectAll('*').remove(); drawFlatMap(); }
+        return;
+      }
+      if(typeof globe.resumeAnimation === 'function') globe.resumeAnimation();
+      document.getElementById('globeViz').style.display = 'block';
+      document.getElementById('flatMapSvg').style.display = 'none';
+      document.getElementById('projToggle').textContent = 'FLAT MODE';
+      document.getElementById('mapHint').textContent = 'DRAG TO ROTATE · SCROLL TO ZOOM';
+    }).catch(() => {
+      setMapLoading(false);
       isFlat = true;
       document.getElementById('globeViz').style.display = 'none';
       document.getElementById('flatMapSvg').style.display = 'block';
       document.getElementById('projToggle').textContent = 'GLOBE MODE';
-      document.getElementById('mapHint').textContent = '3D LOAD FAILED · FLAT MODE';
+      document.getElementById('mapHint').textContent = '3D ERROR: LOAD FAILED';
       if(!flatSvg) initFlatMap();
       else { flatG.selectAll('*').remove(); drawFlatMap(); }
-      setMapLoading(false);
-    }
+    });
   });
 }
 
-function initGlobe(){
-  if(globeInitialized && globe){
-    if(typeof globe.resumeAnimation === 'function') globe.resumeAnimation();
-    document.getElementById('globeViz').style.display = 'block';
-    document.getElementById('flatMapSvg').style.display = 'none';
-    document.getElementById('projToggle').textContent = 'FLAT MODE';
-    document.getElementById('mapHint').textContent = 'DRAG TO ROTATE · SCROLL TO ZOOM';
-    return;
-  }
-  const container = document.getElementById('mapContainer');
-  const w = container.clientWidth;
-  const h = container.clientHeight || 560;
+async function initGlobe(){
+  if (globeLoaded) return !!globe;
+  if (globeInitPromise) return globeInitPromise;
+  globeInitPromise = (async () => {
+    const hint = document.getElementById('mapHint');
+    const oldHint = hint.textContent;
+    hint.textContent = 'LOADING 3D ENGINE...';
 
-  globe = Globe()
-    .width(w)
-    .height(h)
-    .globeImageUrl('//unpkg.com/three-globe@2.33.0/example/img/earth-night.jpg')
-    .bumpImageUrl('//unpkg.com/three-globe@2.33.0/example/img/earth-topology.png')
-    .backgroundImageUrl('')
-    .backgroundColor('rgba(0,0,0,0)')
-    .atmosphereColor('#64f0c8')
-    .atmosphereAltitude(0.18)
-    .showGraticules(true)
-    // Points layer (main markers)
-    .pointAltitude(d => d.alt || 0.01)
-    .pointRadius(d => d.size || 0.3)
-    .pointColor(d => d.color)
-    .pointLabel(d => `<b>${d.popHead||''}</b><br><span style="opacity:0.7">${d.popMeta||''}</span>`)
-    .onPointClick((pt, ev) => { showPopup(ev, pt.popHead, pt.popText, pt.popMeta, pt.lat, pt.lng, pt.alt); })
-    .onPointHover(pt => { document.getElementById('globeViz').style.cursor = pt ? 'pointer' : 'grab'; })
-    // Arcs layer (flight corridors)
-    .arcColor(d => d.color)
-    .arcStroke(d => d.stroke || 0.4)
-    .arcDashLength(0.4)
-    .arcDashGap(0.2)
-    .arcDashAnimateTime(2000)
-    .arcAltitudeAutoScale(0.3)
-    .arcLabel(d => d.label || '')
-    // Rings layer (pulsing conflict events)
-    .ringColor(d => t => `rgba(255,120,80,${1-t})`)
-    .ringMaxRadius(d => d.maxR || 3)
-    .ringPropagationSpeed(d => d.speed || 2)
-    .ringRepeatPeriod(d => d.period || 800)
-    // Labels layer
-    .labelText(d => d.text)
-    .labelSize(d => d.size || 0.4)
-    .labelColor(d => d.color || 'rgba(106,138,130,0.9)')
-    .labelDotRadius(0)
-    .labelAltitude(0.012)
-    .labelResolution(2)
-    (document.getElementById('globeViz'));
+    try {
+      if (!window.Globe) await loadScript('https://unpkg.com/globe.gl@2.33.0');
+      if (!window.Globe) throw new Error('Globe.gl did not load');
 
-  // Style the WebGL scene
-  const scene = globe.scene();
-  const renderer = globe.renderer();
-  renderer.setClearColor(0x000000, 0);
+      const container = document.getElementById('mapContainer');
+      const w = container.clientWidth;
+      const h = container.clientHeight || 560;
 
-  // Add subtle stars background
-  const starGeom = new THREE.BufferGeometry();
-  const starVerts = [];
-  for(let i=0; i<2000; i++){
-    const r = 800 + Math.random()*200;
-    const theta = Math.random()*Math.PI*2;
-    const phi = Math.acos(2*Math.random()-1);
-    starVerts.push(r*Math.sin(phi)*Math.cos(theta), r*Math.sin(phi)*Math.sin(theta), r*Math.cos(phi));
-  }
-  starGeom.setAttribute('position', new THREE.Float32BufferAttribute(starVerts, 3));
-  const starMat = new THREE.PointsMaterial({color:0x88bbaa, size:0.8, transparent:true, opacity:0.6});
-  scene.add(new THREE.Points(starGeom, starMat));
+      globe = window.Globe()
+        .width(w)
+        .height(h)
+        .globeImageUrl('//unpkg.com/three-globe@2.33.0/example/img/earth-night.jpg')
+        // Simplified: no bump map
+        .backgroundImageUrl('')
+        .backgroundColor('rgba(0,0,0,0)')
+        .atmosphereColor('#64f0c8')
+        .atmosphereAltitude(0.12) // Simplified: thinner atmosphere
+        .showGraticules(true)
+        // Points layer (main markers)
+        .pointAltitude(d => d.alt || 0.01)
+        .pointRadius(d => d.size || 0.3)
+        .pointColor(d => d.color)
+        .pointLabel(d => `<b>${d.popHead||''}</b><br><span style="opacity:0.7">${d.popMeta||''}</span>`)
+        .onPointClick((pt, ev) => { showPopup(ev, pt.popHead, pt.popText, pt.popMeta, pt.lat, pt.lng, pt.alt); })
+        .onPointHover(pt => { document.getElementById('globeViz').style.cursor = pt ? 'pointer' : 'grab'; })
+        // Arcs layer (flight corridors)
+        .arcColor(d => d.color)
+        .arcStroke(d => d.stroke || 0.4)
+        .arcDashLength(0.4)
+        .arcDashGap(0.2)
+        .arcDashAnimateTime(globeArcDashAnimateTimeFor(regionPOV.world.altitude))
+        .arcAltitudeAutoScale(0.3)
+        .arcLabel(d => d.label || '')
+        // Rings layer (pulsing conflict events)
+        .ringColor(d => t => `rgba(255,120,80,${1-t})`)
+        .ringMaxRadius(d => d.maxR || 3)
+        .ringPropagationSpeed(d => d.speed || 2)
+        .ringRepeatPeriod(d => d.period || 800)
+        // Labels layer
+        .labelText(d => d.text)
+        .labelSize(d => d.size || 0.4)
+        .labelColor(d => d.color || 'rgba(106,138,130,0.9)')
+        .labelDotRadius(0)
+        .labelAltitude(0.012)
+        .labelResolution(2)
+        (document.getElementById('globeViz'));
 
-  // Customize graticule color
-  scene.traverse(obj => {
-    if(obj.material && obj.type === 'Line'){
-      obj.material.color.set(0x1a3a2a);
-      obj.material.opacity = 0.3;
-      obj.material.transparent = true;
+      // Style the WebGL scene
+      const scene = globe.scene();
+      const renderer = globe.renderer();
+      renderer.setClearColor(0x000000, 0);
+
+      // Customize graticule color
+      scene.traverse(obj => {
+        if(obj.material && obj.type === 'Line'){
+          obj.material.color.set(0x1a3a2a);
+          obj.material.opacity = 0.3;
+          obj.material.transparent = true;
+        }
+      });
+
+      // Set initial POV
+      globe.pointOfView(regionPOV.world, 0);
+
+      // Auto-rotate slowly
+      globe.controls().autoRotate = !lowPerfMode;
+      globe.controls().autoRotateSpeed = 0.3;
+      globe.controls().enableDamping = true;
+      globe.controls().dampingFactor = 0.1;
+
+      // Stop auto-rotate on interaction, resume after 10s
+      let rotateTimeout;
+      const el = document.getElementById('globeViz');
+      el.addEventListener('mousedown', () => {
+        globe.controls().autoRotate = false;
+        clearTimeout(rotateTimeout);
+      });
+      el.addEventListener('mouseup', () => {
+        rotateTimeout = setTimeout(() => {
+          if (globe) syncGlobePerfSettings();
+        }, 10000);
+      });
+
+      // Resize handler
+      window.addEventListener('resize', () => {
+        const c = document.getElementById('mapContainer');
+        if (globe) globe.width(c.clientWidth).height(c.clientHeight || 560);
+      });
+
+      // Plot globe markers
+      plotMarkers();
+      globeLoaded = true;
+      hint.textContent = oldHint;
+      return true;
+    } catch (err) {
+      console.error('Globe initialization failed:', err);
+      globe = null;
+      hint.textContent = '3D ERROR: LOAD FAILED';
+      isFlat = true;
+      return false;
+    } finally {
+      globeInitPromise = null;
     }
-  });
-
-  // Set initial POV
-  globe.pointOfView(regionPOV.world, 0);
-
-  // Auto-rotate slowly
-  globe.controls().autoRotate = !lowPerfMode;
-  globe.controls().autoRotateSpeed = 0.3;
-  globe.controls().enableDamping = true;
-  globe.controls().dampingFactor = 0.1;
-
-  // Stop auto-rotate on interaction, resume after 10s
-  let rotateTimeout;
-  const el = document.getElementById('globeViz');
-  el.addEventListener('mousedown', () => {
-    globe.controls().autoRotate = false;
-    clearTimeout(rotateTimeout);
-  });
-  el.addEventListener('mouseup', () => {
-    rotateTimeout = setTimeout(() => { if(globe && !lowPerfMode) globe.controls().autoRotate = true; }, 10000);
-  });
-
-  // Plot globe markers (preloaded but hidden)
-  plotMarkers();
-
-  // Start in flat mode — hide globe, show flat map
-  if(isFlat){
-    document.getElementById('globeViz').style.display = 'none';
-    document.getElementById('flatMapSvg').style.display = 'block';
-    initFlatMap();
-  } else {
-    document.getElementById('globeViz').style.display = 'block';
-    document.getElementById('flatMapSvg').style.display = 'none';
-    document.getElementById('projToggle').textContent = 'FLAT MODE';
-    document.getElementById('mapHint').textContent = 'DRAG TO ROTATE · SCROLL TO ZOOM';
-  }
-
-  globeInitialized = true;
+  })();
+  return globeInitPromise;
 }
 
 function plotMarkers(){
-  if(!globe) return;
+  if (!globe) return;
   const points = [];
   const labels = [];
 
   // === Air hotspots (green) ===
   const airCoords=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
-  if(flightsVisible) D.air.forEach((a,i)=>{
-    const c=airCoords[i]; if(!c) return;
-    points.push({
-      lat:c.lat, lng:c.lon, size:0.25+a.total/200, alt:0.015,
-      color:'rgba(100,240,200,0.8)', type:'air', priority:1,
-      label: a.region.replace(' Region','')+' '+a.total,
-      popHead: a.region, popMeta: 'Air Activity',
-      popText: `${a.total} aircraft tracked<br>No callsign: ${a.noCallsign}<br>High altitude: ${a.highAlt}<br>Top: ${a.top.slice(0,3).map(t=>t[0]+' ('+t[1]+')').join(', ')}`
+  if (flightsVisible) {
+    D.air.forEach((a,i)=>{
+      const c=airCoords[i]; if(!c) return;
+      points.push({
+        lat:c.lat, lng:c.lon, size:0.25+a.total/200, alt:0.015,
+        color:'rgba(100,240,200,0.8)', type:'air', priority:1,
+        label: a.region.replace(' Region','')+' '+a.total,
+        popHead: a.region, popMeta: 'Air Activity',
+        popText: `${a.total} aircraft tracked<br>No callsign: ${a.noCallsign}<br>High altitude: ${a.highAlt}<br>Top: ${a.top.slice(0,3).map(t=>t[0]+' ('+t[1]+')').join(', ')}`
+      });
+      labels.push({lat:c.lat, lng:c.lon+2, text:a.region.replace(' Region','')+' '+a.total, size:0.35, color:'rgba(106,138,130,0.8)'});
     });
-    labels.push({lat:c.lat, lng:c.lon+2, text:a.region.replace(' Region','')+' '+a.total, size:0.35, color:'rgba(106,138,130,0.8)'});
-  });
+  }
 
   // === Thermal/fire (red) ===
   D.thermal.forEach(t=>{
@@ -998,7 +1069,7 @@ function plotMarkers(){
     });
   });
   }
-  globe.arcsData(arcs);
+  globe.arcsData(flightsVisible ? arcs : []);
 
   // Zoom-aware marker sizing: scale markers and labels with camera altitude
   const onGlobeZoom = () => {
@@ -1010,17 +1081,13 @@ function plotMarkers(){
     globe.labelSize(d => showLabels ? (d.size || 0.4) : 0);
     // Scale arc strokes with zoom
     globe.arcStroke(d => (d.stroke || 0.4) * Math.max(0.5, Math.min(1.5, 1.2 / alt)));
-    globe.arcDashAnimateTime(lowPerfMode ? 0 : 2000);
-    // Priority-based point visibility: hide low-priority markers when zoomed out
-    if(alt > 2.0){
-      globe.pointsData(points.filter(p => (p.priority||3) <= 1));
-    } else if(alt > 1.2){
-      globe.pointsData(points.filter(p => (p.priority||3) <= 2));
-    } else {
-      globe.pointsData(points);
-    }
+    // Low-perf mode must stay sticky even after zoom changes.
+    globe.arcDashAnimateTime(globeArcDashAnimateTimeFor(alt));
+    // Show all points at all zoom levels
+    globe.pointsData(points);
   };
   if(typeof globe.onZoom==='function') globe.onZoom(onGlobeZoom);
+  onGlobeZoom();
 }
 
 function showPopup(event,head,text,meta,lat,lng,alt){
@@ -1057,18 +1124,17 @@ function toggleFlights() {
   flightsVisible = !flightsVisible;
   const btn = document.getElementById('flightToggle');
   btn.classList.toggle('off', !flightsVisible);
-  if(!globe){
+
+  if (isFlat) {
+    if (flatG) {
+      flatG.selectAll('*').remove();
+      drawFlatMap();
+    }
     return;
   }
-  if(flightsVisible) {
-    plotMarkers(); // re-render with arcs
-  } else {
-    globe.arcsData([]); // hide arcs
-    // Remove air-type points
-    const pts = globe.pointsData().filter(p => p.type !== 'air');
-    globe.pointsData(pts);
-    const lbls = globe.labelsData().filter(l => l.text && !l.text.match(/\d+$/));
-    globe.labelsData(lbls);
+
+  if (globe) {
+    plotMarkers();
   }
 }
 
@@ -1097,21 +1163,30 @@ function toggleMapMode(){
     flatEl.style.display = 'none';
     setMapLoading(true, 'Initializing 3D Globe');
     requestAnimationFrame(() => {
-      try {
-        initGlobe();
+      initGlobe().then((globeReady) => {
+        setMapLoading(false);
+        if(!globeReady || !globe){
+          isFlat = true;
+          globeEl.style.display = 'none';
+          flatEl.style.display = 'block';
+          btn.textContent = 'GLOBE MODE';
+          hint.textContent = '3D ERROR: LOAD FAILED';
+          if(!flatSvg) initFlatMap();
+          else { flatG.selectAll('*').remove(); drawFlatMap(); }
+          return;
+        }
         if(globe && typeof globe.resumeAnimation === 'function') globe.resumeAnimation();
         globeEl.style.display = 'block';
+      }).catch(() => {
         setMapLoading(false);
-      } catch {
         isFlat = true;
         globeEl.style.display = 'none';
         flatEl.style.display = 'block';
         btn.textContent = 'GLOBE MODE';
-        hint.textContent = '3D LOAD FAILED · FLAT MODE';
+        hint.textContent = '3D ERROR: LOAD FAILED';
         if(!flatSvg) initFlatMap();
         else { flatG.selectAll('*').remove(); drawFlatMap(); }
-        setMapLoading(false);
-      }
+      });
     });
   }
 }
@@ -1129,13 +1204,8 @@ function initFlatMap(){
     flatG.selectAll('.marker-circle').attr('r',function(){return +this.dataset.baseR/Math.sqrt(k)});
     flatG.selectAll('.marker-label').style('font-size',Math.max(7,9/Math.sqrt(k))+'px')
       .style('display',k>=2.5?'block':'none');
-    // Priority-based visibility: hide low-priority markers at low zoom
-    flatG.selectAll('[data-priority]').style('display',function(){
-      const p=+this.dataset.priority;
-      if(p<=1) return 'block';
-      if(p<=2) return k>=2?'block':'none';
-      return k>=3.5?'block':'none';
-    });
+    // Show all markers
+    flatG.selectAll('[data-priority]').style('display', 'block');
   });
   flatSvg.call(flatZoom);
   drawFlatMap();
@@ -1164,12 +1234,14 @@ function plotFlatMarkers(){
   };
   // Air
   const airCoords=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
-  D.air.forEach((a,i)=>{
-    const c=airCoords[i];if(!c)return;
-    const g=addPt(c.lat,c.lon,4+a.total/40,'rgba(100,240,200,0.7)','rgba(100,240,200,0.3)',
-      ev=>showPopup(ev,a.region,`${a.total} aircraft<br>No callsign: ${a.noCallsign}<br>High alt: ${a.highAlt}`,'Air Activity'),1);
-    if(g) g.append('text').attr('class','marker-label').attr('x',10).attr('y',3).attr('fill','var(--dim)').attr('font-size','9px').attr('font-family','var(--mono)').text(a.region.replace(' Region','')+' '+a.total);
-  });
+  if (flightsVisible) {
+    D.air.forEach((a,i)=>{
+      const c=airCoords[i];if(!c)return;
+      const g=addPt(c.lat,c.lon,4+a.total/40,'rgba(100,240,200,0.7)','rgba(100,240,200,0.3)',
+        ev=>showPopup(ev,a.region,`${a.total} aircraft<br>No callsign: ${a.noCallsign}<br>High alt: ${a.highAlt}`,'Air Activity'),1);
+      if(g) g.append('text').attr('class','marker-label').attr('x',10).attr('y',3).attr('fill','var(--dim)').attr('font-size','9px').attr('font-family','var(--mono)').text(a.region.replace(' Region','')+' '+a.total);
+    });
+  }
   // Thermal
   D.thermal.forEach(t=>t.fires.forEach(f=>{
     addPt(f.lat,f.lon,2+Math.min(f.frp/50,5),'rgba(255,95,99,0.6)','rgba(255,95,99,0.2)',
@@ -1217,25 +1289,27 @@ function plotFlatMarkers(){
     g.append('circle').attr('r',r*0.4).attr('fill','rgba(255,120,80,0.3)');
   });
   // Flight corridors
-  const airCoordsFlight=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
-  const hubs=[{lat:40.6,lon:-73.8},{lat:51.5,lon:-0.5},{lat:25.3,lon:55.4},{lat:1.4,lon:103.8},{lat:-33.9,lon:151.2},{lat:-23.4,lon:-46.5}];
-  const cG=flatG.append('g').attr('class','corridors-layer');
-  for(let i=0;i<D.air.length;i++){for(let j=i+1;j<D.air.length;j++){
-    const a=D.air[i],b=D.air[j],from=airCoordsFlight[i],to=airCoordsFlight[j];
-    if(!from||!to)continue;const traffic=a.total+b.total;if(traffic<30)continue;
-    const ncR=(a.noCallsign+b.noCallsign)/Math.max(traffic,1);
-    const clr=ncR>0.15?'rgba(255,95,99,0.4)':ncR>0.05?'rgba(255,184,76,0.35)':'rgba(100,240,200,0.25)';
-    const interp=d3.geoInterpolate([from.lon,from.lat],[to.lon,to.lat]);
-    const coords=[];for(let k=0;k<=40;k++)coords.push(interp(k/40));
-    const feat={type:'Feature',geometry:{type:'LineString',coordinates:coords}};
-    cG.append('path').datum(feat).attr('d',flatPath).attr('fill','none').attr('stroke',clr).attr('stroke-width',Math.max(0.8,Math.min(3,traffic/80)));
-  }}
-  D.air.forEach((a,i)=>{if(!airCoordsFlight[i]||a.total<25)return;hubs.forEach(hub=>{
-    if(Math.abs(airCoordsFlight[i].lat-hub.lat)+Math.abs(airCoordsFlight[i].lon-hub.lon)<20)return;
-    const interp=d3.geoInterpolate([airCoordsFlight[i].lon,airCoordsFlight[i].lat],[hub.lon,hub.lat]);
-    const coords=[];for(let k=0;k<=40;k++)coords.push(interp(k/40));
-    cG.append('path').datum({type:'Feature',geometry:{type:'LineString',coordinates:coords}}).attr('d',flatPath).attr('fill','none').attr('stroke','rgba(100,240,200,0.15)').attr('stroke-width',0.6);
-  })});
+  if (flightsVisible) {
+    const airCoordsFlight=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
+    const hubs=[{lat:40.6,lon:-73.8},{lat:51.5,lon:-0.5},{lat:25.3,lon:55.4},{lat:1.4,lon:103.8},{lat:-33.9,lon:151.2},{lat:-23.4,lon:-46.5}];
+    const cG=flatG.append('g').attr('class','corridors-layer');
+    for(let i=0;i<D.air.length;i++){for(let j=i+1;j<D.air.length;j++){
+      const a=D.air[i],b=D.air[j],from=airCoordsFlight[i],to=airCoordsFlight[j];
+      if(!from||!to)continue;const traffic=a.total+b.total;if(traffic<30)continue;
+      const ncR=(a.noCallsign+b.noCallsign)/Math.max(traffic,1);
+      const clr=ncR>0.15?'rgba(255,95,99,0.4)':ncR>0.05?'rgba(255,184,76,0.35)':'rgba(100,240,200,0.25)';
+      const interp=d3.geoInterpolate([from.lon,from.lat],[to.lon,to.lat]);
+      const coords=[];for(let k=0;k<=40;k++)coords.push(interp(k/40));
+      const feat={type:'Feature',geometry:{type:'LineString',coordinates:coords}};
+      cG.append('path').datum(feat).attr('d',flatPath).attr('fill','none').attr('stroke',clr).attr('stroke-width',Math.max(0.8,Math.min(3,traffic/80)));
+    }}
+    D.air.forEach((a,i)=>{if(!airCoordsFlight[i]||a.total<25)return;hubs.forEach(hub=>{
+      if(Math.abs(airCoordsFlight[i].lat-hub.lat)+Math.abs(airCoordsFlight[i].lon-hub.lon)<20)return;
+      const interp=d3.geoInterpolate([airCoordsFlight[i].lon,airCoordsFlight[i].lat],[hub.lon,hub.lat]);
+      const coords=[];for(let k=0;k<=40;k++)coords.push(interp(k/40));
+      cG.append('path').datum({type:'Feature',geometry:{type:'LineString',coordinates:coords}}).attr('d',flatPath).attr('fill','none').attr('stroke','rgba(100,240,200,0.15)').attr('stroke-width',0.6);
+    })});
+  }
 }
 
 // Update setRegion for flat mode
