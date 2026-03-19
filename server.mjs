@@ -2,19 +2,19 @@
 // Crucix Intelligence Engine — Dev Server
 // Serves the Jarvis dashboard, runs sweep cycle, pushes live updates via SSE
 
+import { exec } from 'child_process';
 import express from 'express';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { exec } from 'child_process';
-import config from './crucix.config.mjs';
 import { fullBriefing } from './apis/briefing.mjs';
-import { synthesize, generateIdeas } from './dashboard/inject.mjs';
-import { MemoryManager } from './lib/delta/index.mjs';
-import { createLLMProvider } from './lib/llm/index.mjs';
-import { generateLLMIdeas } from './lib/llm/ideas.mjs';
-import { TelegramAlerter } from './lib/alerts/telegram.mjs';
+import config from './crucix.config.mjs';
+import { synthesize } from './dashboard/inject.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
+import { TelegramAlerter } from './lib/alerts/telegram.mjs';
+import { MemoryManager } from './lib/delta/index.mjs';
+import { generateLLMIdeas } from './lib/llm/ideas.mjs';
+import { createLLMProvider } from './lib/llm/index.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -416,7 +416,7 @@ async function start() {
     // NOTE: On Windows, `start` in PowerShell is an alias for Start-Service, not cmd's start.
     // We must use `cmd /c start ""` to ensure it works in both cmd.exe and PowerShell.
     const openCmd = process.platform === 'win32' ? 'cmd /c start ""' :
-                    process.platform === 'darwin' ? 'open' : 'xdg-open';
+      process.platform === 'darwin' ? 'open' : 'xdg-open';
     exec(`${openCmd} "http://localhost:${port}"`, (err) => {
       if (err) console.log('[Crucix] Could not auto-open browser:', err.message);
     });
@@ -428,7 +428,7 @@ async function start() {
         currentData = data;
         console.log('[Crucix] Loaded existing data from runs/latest.json');
         broadcast({ type: 'update', data: currentData });
-      }).catch(() => {});
+      }).catch(() => { });
     } catch { /* no existing data */ }
 
     // Run first sweep

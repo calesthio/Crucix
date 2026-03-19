@@ -89,7 +89,7 @@ async function fetchInternetHealthGlobal() {
         };
 
         return {
-            global_ok_pct: percentOk.toFixed(1),
+            global_ok_pct: percentOk,
             regional_health: regions,
             status: percentOk > 98 ? 'NORMAL' : percentOk > 95 ? 'DEGRADED' : 'CRITICAL',
         };
@@ -108,7 +108,7 @@ async function checkRegionalHealth(countryCode) {
 
         const pct = res?.result?.ok_percentage || 100;
         return {
-            ok_pct: pct.toFixed(1),
+            ok_pct: pct,
             status: pct > 98 ? 'ONLINE' : pct > 90 ? 'DEGRADED' : 'OFFLINE',
         };
     } catch {

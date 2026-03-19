@@ -2109,7 +2109,7 @@
         { name: 'World News', count: newsCount, dot: 'news', sub: 'RSS geolocated' },
         { name: 'OSINT Feed', count: D.tg.posts, dot: 'incident', sub: `${D.tg.urgent.length} urgent` },
         { name: 'Satellites', count: D.space?.militarySats || 0, dot: 'space', sub: `${D.space?.totalNewObjects || 0} new (30d)` },
-        { name: 'Crypto Market', count: btcPrice ? '$' + btcPrice.toLocaleString('en', {maximumFractionDigits: 0}) : 'N/A', dot: 'incident', sub: `BTC dominance ${btcDom}%` },
+        { name: 'Crypto Market', count: btcPrice ? '$' + btcPrice.toLocaleString('en', { maximumFractionDigits: 0 }) : 'N/A', dot: 'incident', sub: `BTC dominance ${btcDom}%` },
         { name: 'Internet Health', count: bgpHijacks, dot: internetStatus === 'NORMAL' ? 'air' : 'thermal', sub: `BGP hijacks | Status: ${internetStatus}` }
       ];
       const allNormal = D.nuke.every(s => !s.anom);
@@ -2156,9 +2156,9 @@
     <div class="g-panel">
       <div class="sec-head"><h3>Crypto Market</h3><span class="badge">MARKET</span></div>
       ${D.crypto?.btc ? `
-        <div class="econ-row"><span class="elabel">BTC Price</span><span class="eval" style="color:var(--accent)">$${D.crypto.btc.price.toLocaleString('en', {maximumFractionDigits: 0})}</span></div>
+        <div class="econ-row"><span class="elabel">BTC Price</span><span class="eval" style="color:var(--accent)">$${D.crypto.btc.price.toLocaleString('en', { maximumFractionDigits: 0 })}</span></div>
         <div class="econ-row"><span class="elabel">BTC 24h Change</span><span class="eval" style="color:${D.crypto.btc.change24h > 0 ? 'var(--accent)' : 'var(--danger)'}">${D.crypto.btc.change24h?.toFixed(2) || '--'}%</span></div>
-        <div class="econ-row"><span class="elabel">ETH Price</span><span class="eval">$${D.crypto.eth?.price.toLocaleString('en', {maximumFractionDigits: 0}) || '--'}</span></div>
+        <div class="econ-row"><span class="elabel">ETH Price</span><span class="eval">$${D.crypto.eth?.price.toLocaleString('en', { maximumFractionDigits: 0 }) || '--'}</span></div>
         <div class="econ-row"><span class="elabel">BTC Dominance</span><span class="eval" style="color:var(--accent2)">${D.crypto.dominance || '--'}%</span></div>
         <div class="econ-row"><span class="elabel">Market Cap</span><span class="eval">$${(D.crypto.marketCap / 1e12)?.toFixed(2) || '--'}T</span></div>
         <div class="econ-row"><span class="elabel">24h Volume</span><span class="eval">$${(D.crypto.volume24h / 1e9)?.toFixed(1) || '--'}B</span></div>
@@ -2168,7 +2168,7 @@
       <div class="sec-head"><h3>Internet Health</h3><span class="badge">CLOUDFLARE</span></div>
       ${D.internet ? `
         <div class="econ-row"><span class="elabel">Global Status</span><span class="eval" style="color:${D.internet.health?.status === 'NORMAL' ? 'var(--accent)' : D.internet.health?.status === 'DEGRADED' ? 'var(--warn)' : 'var(--danger)'}">${D.internet.health?.status || 'UNKNOWN'}</span></div>
-        <div class="econ-row"><span class="elabel">Global OK %</span><span class="eval">${D.internet.health?.global?.toFixed(1) || '--'}%</span></div>
+        <div class="econ-row"><span class="elabel">Global OK %</span><span class="eval">${Number.isFinite(D.internet.health?.global) ? D.internet.health.global.toFixed(1) : '--'}%</span></div>
         <div class="econ-row"><span class="elabel">BGP Hijacks</span><span class="eval" style="color:${D.internet.bgp?.hijacks?.length > 0 ? 'var(--danger)' : 'var(--accent)'}">${D.internet.bgp?.hijacks?.length || 0}</span></div>
         ${D.internet.bgp?.hijacks?.slice(0, 3).map(h => `<div class="econ-row"><span class="elabel" style="padding-left:8px">${h.asnName || h.asn}</span><span class="eval" style="font-size:9px;color:var(--danger)">${h.location || 'Unknown'}</span></div>`).join('')}
         <div style="margin-top:6px;font-family:var(--mono);font-size:8px;color:var(--dim);line-height:1.4">
