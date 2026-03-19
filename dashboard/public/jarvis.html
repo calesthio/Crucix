@@ -311,7 +311,15 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
 body.low-perf .bg-grid, body.low-perf .scanline, body.low-perf .bg-radial { display: none !important; animation: none !important; }
 body.low-perf * { backdrop-filter: none !important; animation-duration: 0s !important; transition-duration: 0s !important; }
 body.low-perf .logo-ring::before, body.low-perf .logo-ring::after { animation: none !important; }
-body.low-perf .ticker-wrap { overflow-y: auto !important; }
+body.low-perf .ticker-wrap { 
+  overflow-y: auto !important; 
+  scrollbar-width: thin; 
+  scrollbar-color: rgba(100, 240, 200, 0.2) transparent; 
+}
+body.low-perf .ticker-wrap::-webkit-scrollbar { width: 4px; }
+body.low-perf .ticker-wrap::-webkit-scrollbar-track { background: transparent; }
+body.low-perf .ticker-wrap::-webkit-scrollbar-thumb { background: rgba(100, 240, 200, 0.2); border-radius: 2px; }
+body.low-perf .ticker-wrap::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 body.low-perf .ticker-track { animation: none !important; display: block !important; }
 body.low-perf .conflict-ring, body.low-perf .corridor-flow { animation: none !important; opacity: 0.5 !important; }
 body.low-perf .g-panel, body.low-perf .topbar { background: rgba(10, 20, 32, 0.95) !important; }
