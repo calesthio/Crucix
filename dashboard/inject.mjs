@@ -517,23 +517,12 @@ export async function synthesize(data) {
   // Fetch RSS
   const news = await fetchAllNews();
 
-  // Crypto market data
-  const cryptoData = data.sources.Crypto || {};
-  const crypto = {
-    btc: cryptoData.btc || null,
-    eth: cryptoData.eth || null,
-    dominance: cryptoData.dominance,
-    marketCap: cryptoData.marketCap,
-    volume24h: cryptoData.volume24h,
-    timestamp: cryptoData.timestamp,
-  };
-
   const V2 = {
     meta: data.crucix, air, thermal, tSignals, chokepoints, nuke, nukeSignals,
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
     tg: { posts: tgData.totalPosts || 0, urgent: tgUrgent, topPosts: tgTop },
     who, fred, energy, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, news,
-    markets, crypto, // Live Yahoo Finance + Crypto
+    markets, // Live Yahoo Finance
     ideas: [], ideasSource: 'disabled',
     // newsFeed for ticker (merged RSS + GDELT + Telegram)
     newsFeed: buildNewsFeed(news, gdeltData, tgUrgent, tgTop),
