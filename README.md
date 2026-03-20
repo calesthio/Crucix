@@ -1,4 +1,4 @@
-<div align="center">
+****<div align="center">
 
 # Crucix
 
@@ -186,10 +186,10 @@ Alerts are delivered as rich embeds with color-coded sidebars: red for FLASH, ye
 **Optional dependency:** The full bot requires `discord.js`. Install it with `npm install discord.js`. If it's not installed, Crucix automatically falls back to webhook-only mode.
 
 ### Optional LLM Layer
-Connect any of 6 LLM providers for enhanced analysis:
+Connect any of 7 LLM providers for enhanced analysis:
 - **AI trade ideas** — quantitative analyst producing 5-8 actionable ideas citing specific data
 - **Smarter alert evaluation** — LLM classifies signals into FLASH/PRIORITY/ROUTINE tiers with cross-domain correlation and confidence scoring
-- Providers: Anthropic Claude, OpenAI, Google Gemini, OpenRouter (Unified API), OpenAI Codex (ChatGPT subscription), MiniMax, Mistral
+- Providers: Anthropic Claude, OpenAI, Google Gemini, OpenRouter (Unified API), OpenAI Codex (ChatGPT subscription), MiniMax, Mistral, [Cursor (via cursor-api-proxy)](https://www.npmjs.com/package/cursor-api-proxy)
 - Graceful fallback — when LLM is unavailable, a rule-based engine takes over alert evaluation. LLM failures never crash the sweep cycle.
 
 ---
@@ -222,17 +222,20 @@ These three unlock the most valuable economic and satellite data. Each takes abo
 
 ### LLM Provider (optional, for AI-enhanced ideas)
 
-Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`
+Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, `cursor`
 
 | Provider | Key Required | Default Model |
 |----------|-------------|---------------|
 | `anthropic` | `LLM_API_KEY` | claude-sonnet-4-6 |
 | `openai` | `LLM_API_KEY` | gpt-5.4 |
 | `gemini` | `LLM_API_KEY` | gemini-3.1-pro |
+| `cursor` | Optional (if proxy uses `CURSOR_BRIDGE_API_KEY`) | auto (proxy auto-starts on first use) |
 | `openrouter` | `LLM_API_KEY` | openrouter/auto |
 | `codex` | None (uses `~/.codex/auth.json`) | gpt-5.3-codex |
 | `minimax` | `LLM_API_KEY` | MiniMax-M2.5 |
 | `mistral` | `LLM_API_KEY` | mistral-large-latest |
+
+**Cursor setup:** Uses the [cursor-api-proxy](https://www.npmjs.com/package/cursor-api-proxy) dependency. (1) Install and log in to the Cursor agent CLI (`curl https://cursor.com/install -fsS | bash`, then `agent login`). (2) Set `LLM_PROVIDER=cursor`. (3) No need to run the proxy separately — it starts automatically on first use. (4) Optional: `LLM_CURSOR_BASE_URL` if you run the proxy elsewhere; `LLM_API_KEY` if the proxy requires auth; `LLM_MODEL` (e.g. `gpt-5.2`) to override the default model.
 
 For Codex, run `npx @openai/codex login` to authenticate via your ChatGPT subscription.
 
@@ -311,6 +314,7 @@ crucix/
 │   │   ├── codex.mjs          # Codex (ChatGPT subscription)
 │   │   ├── minimax.mjs        # MiniMax (M2.5, 204K context)
 │   │   ├── mistral.mjs        # Mistral AI
+│   │   ├── cursor.mjs        # Cursor (cursor-api-proxy, auto-starts proxy)
 │   │   ├── ideas.mjs          # LLM-powered trade idea generation
 │   │   └── index.mjs          # Factory: createLLMProvider()
 │   ├── delta/                 # Change tracking between sweeps
@@ -328,7 +332,7 @@ crucix/
 
 ### Design Principles
 - **Pure ESM** — every file is `.mjs` with explicit imports
-- **Minimal dependencies** — Express is the only runtime dependency. `discord.js` is optional (for Discord bot). LLM providers use raw `fetch()`, no SDKs.
+- **Minimal dependencies** — Express and optional `cursor-api-proxy` (for Cursor provider). `discord.js` is optional (for Discord bot). LLM providers use raw `fetch()` or the cursor-api-proxy SDK.
 - **Parallel execution** — `Promise.allSettled()` fires all 27 sources simultaneously
 - **Graceful degradation** — missing keys produce errors, not crashes. LLM failures don't kill sweeps.
 - **Each source is standalone** — run `node apis/sources/gdelt.mjs` to test any source independently
@@ -412,9 +416,10 @@ All settings are in `.env` with sensible defaults:
 |----------|---------|-------------|
 | `PORT` | `3117` | Dashboard server port |
 | `REFRESH_INTERVAL_MINUTES` | `15` | Auto-refresh interval |
-| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, or `mistral` |
+| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral` or `cursor` |
 | `LLM_API_KEY` | — | API key (not needed for codex) |
 | `LLM_MODEL` | per-provider default | Override model selection |
+| `LLM_CURSOR_BASE_URL` | — | For cursor: proxy URL (optional; default auto-starts on 127.0.0.1:8765) |
 | `TELEGRAM_BOT_TOKEN` | disabled | For Telegram alerts + bot commands |
 | `TELEGRAM_CHAT_ID` | — | Your Telegram chat ID |
 | `TELEGRAM_CHANNELS` | — | Extra channel IDs to monitor (comma-separated) |
