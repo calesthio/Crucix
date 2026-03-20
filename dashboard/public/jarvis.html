@@ -67,7 +67,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 /* GRID */
 .grid{display:grid;grid-template-columns:240px 1fr 340px;gap:10px;margin-top:10px;min-height:calc(100vh - 100px)}
 .col{display:flex;flex-direction:column;gap:10px}
-.g-panel{border:1px solid var(--border);background:var(--glass);backdrop-filter:blur(16px);padding:12px;position:relative;overflow:hidden}
+#leftRail{overflow-y:auto}
+.g-panel{border:1px solid var(--border);background:var(--glass);backdrop-filter:blur(16px);padding:12px;position:relative;flex-shrink:0}
 .g-panel::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(100,240,200,0.15),transparent);pointer-events:none}
 .sec-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 .sec-head h3{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:var(--dim)}
@@ -86,6 +87,18 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .ldot.health{background:#69f0ae;box-shadow:0 0 6px rgba(105,240,174,0.4)}
 .ldot.news{background:#81d4fa;box-shadow:0 0 6px rgba(129,212,250,0.4)}
 .ldot.space{background:#e0b0ff;box-shadow:0 0 6px rgba(224,176,255,0.4)}
+.ldot.osint{background:var(--warn);box-shadow:0 0 6px rgba(255,184,76,0.4)}
+.ldot.noaa{background:#ff9800;box-shadow:0 0 6px rgba(255,152,0,0.4)}
+.ldot.epa{background:#cddc39;box-shadow:0 0 6px rgba(205,220,57,0.4)}
+.ldot.gdelt{background:#6495ed;box-shadow:0 0 6px rgba(100,149,237,0.4)}
+.layer-item{cursor:pointer;transition:opacity 0.2s,border-color 0.2s}
+.layer-item-off{opacity:0.35}
+.layer-item-off .ldot{box-shadow:none}
+.layer-item-off .layer-name{color:#8899aa}
+.layer-item-off .layer-sub{color:#445566}
+.layer-item-off .layer-count{color:#556677}
+.layer-eye{font-size:11px;margin-left:6px;flex-shrink:0;opacity:0.5}
+.layer-item-off .layer-eye{opacity:0.2}
 .layer-name{font-size:12px;font-weight:500}
 .layer-sub{font-size:10px;color:var(--dim)}
 .layer-count{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent)}
@@ -346,7 +359,6 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
         <div class="map-controls">
           <button class="map-ctrl-btn" onclick="mapZoom(1.5)" title="Zoom in">+</button>
           <button class="map-ctrl-btn" onclick="mapZoom(0.67)" title="Zoom out">&minus;</button>
-          <button class="map-ctrl-btn map-toggle" id="flightToggle" onclick="toggleFlights()" title="Toggle flight routes">&#9992;</button>
         </div>
         <button class="proj-toggle" id="projToggle" onclick="toggleMapMode()">GLOBE MODE</button>
         <div class="map-popup" id="mapPopup"><button class="pp-close" onclick="closePopup()">&times;</button><div class="pp-head"></div><div class="pp-text"></div><div class="pp-meta"></div></div>
@@ -392,9 +404,44 @@ function t(keyPath, fallback) {
 // === GLOBALS ===
 let globe = null;
 let globeInitialized = false;
-let flightsVisible = true;
 let lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true';
 let isFlat = shouldStartFlat();
+
+// === LAYER TOGGLE STATE ===
+const LAYERS = [
+  {id:'air',     label:'Air Activity',   color:'#64f0c8',             dot:'air'},
+  {id:'thermal', label:'Thermal Spikes', color:'#ff5f63',             dot:'thermal'},
+  {id:'sdr',     label:'SDR Coverage',   color:'#44ccff',             dot:'sdr'},
+  {id:'maritime',label:'Maritime Watch',  color:'#b388ff',             dot:'maritime'},
+  {id:'nuke',    label:'Nuclear Sites',  color:'#ffe082',             dot:'nuke'},
+  {id:'acled',   label:'Conflict Events',color:'rgba(255,120,80,0.8)',dot:'incident'},
+  {id:'who',     label:'Health Watch',   color:'#69f0ae',             dot:'health'},
+  {id:'news',    label:'World News',     color:'#81d4fa',             dot:'news'},
+  {id:'osint',   label:'OSINT Feed',     color:'#ffb84c',             dot:'osint'},
+  {id:'space',   label:'Satellites',     color:'#e0b0ff',             dot:'space'},
+  {id:'noaa',    label:'Weather Alerts', color:'#ff9800',             dot:'noaa'},
+  {id:'epa',     label:'EPA RadNet',     color:'#cddc39',             dot:'epa'},
+  {id:'gdelt',   label:'GDELT Events',  color:'#6495ed',             dot:'gdelt'},
+];
+let layerVisibility = (()=>{
+  try {
+    const saved = JSON.parse(localStorage.getItem('crucix-layers'));
+    if (saved && typeof saved === 'object') {
+      const vis = {};
+      for (const l of LAYERS) vis[l.id] = saved[l.id] !== undefined ? saved[l.id] : true;
+      return vis;
+    }
+  } catch {}
+  return Object.fromEntries(LAYERS.map(l => [l.id, true]));
+})();
+function toggleLayer(id) {
+  layerVisibility[id] = !layerVisibility[id];
+  localStorage.setItem('crucix-layers', JSON.stringify(layerVisibility));
+  renderLeftRail();
+  renderMapLegend();
+  plotMarkers();
+  if (isFlat && flatG) { flatG.selectAll('*').remove(); drawFlatMap(); }
+}
 let currentRegion = 'world';
 let flatSvg, flatProjection, flatPath, flatG, flatZoom, flatW, flatH;
 const signalGuideItems = [
@@ -610,18 +657,21 @@ function renderLeftRail(){
   const newsCount=(D.news||[]).length;
   const conflictEvents = D.acled?.totalEvents || 0;
   const conflictFatal = D.acled?.totalFatalities || 0;
-  const layers=[
-    {name:t('layers.airActivity','Air Activity'),count:totalAir,dot:'air',sub:`${D.air.length} ${t('layers.theaters','theaters')}`},
-    {name:t('layers.thermalSpikes','Thermal Spikes'),count:totalThermal.toLocaleString(),dot:'thermal',sub:`${totalNight.toLocaleString()} ${t('layers.nightDet','night det.')}`},
-    {name:t('layers.sdrCoverage','SDR Coverage'),count:D.sdr.total,dot:'sdr',sub:`${D.sdr.online} ${t('layers.online','online')}`},
-    {name:t('layers.maritimeWatch','Maritime Watch'),count:D.chokepoints.length,dot:'maritime',sub:t('layers.chokepoints','chokepoints')},
-    {name:t('layers.nuclearSites','Nuclear Sites'),count:D.nuke.length,dot:'nuke',sub:t('layers.monitors','monitors')},
-    {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'thermal',sub:`${conflictFatal.toLocaleString()} ${t('layers.fatalities','fatalities')}`},
-    {name:t('layers.healthWatch','Health Watch'),count:D.who.length,dot:'health',sub:t('layers.whoAlerts','WHO alerts')},
-    {name:t('layers.worldNews','World News'),count:newsCount,dot:'news',sub:t('layers.rssGeolocated','RSS geolocated')},
-    {name:t('layers.osintFeed','OSINT Feed'),count:D.tg.posts,dot:'incident',sub:`${D.tg.urgent.length} ${t('badges.urgent','urgent').toLowerCase()}`},
-    {name:t('layers.spaceActivity','Satellites'),count:D.space?.militarySats||0,dot:'space',sub:`${D.space?.totalNewObjects||0} ${t('space.newLast30d','new (30d)')}`}
-  ];
+  const layerData = {
+    air:      {count:totalAir, sub:`${D.air.length} ${t('layers.theaters','theaters')}`},
+    thermal:  {count:totalThermal.toLocaleString(), sub:`${totalNight.toLocaleString()} ${t('layers.nightDet','night det.')}`},
+    sdr:      {count:D.sdr.total, sub:`${D.sdr.online} ${t('layers.online','online')}`},
+    maritime: {count:D.chokepoints.length, sub:t('layers.chokepoints','chokepoints')},
+    nuke:     {count:D.nuke.length, sub:t('layers.monitors','monitors')},
+    acled:    {count:conflictEvents, sub:`${conflictFatal.toLocaleString()} ${t('layers.fatalities','fatalities')}`},
+    who:      {count:D.who.length, sub:t('layers.whoAlerts','WHO alerts')},
+    news:     {count:newsCount, sub:t('layers.rssGeolocated','RSS geolocated')},
+    osint:    {count:D.tg.posts, sub:`${D.tg.urgent.length} ${t('badges.urgent','urgent').toLowerCase()}`},
+    space:    {count:D.space?.militarySats||0, sub:`${D.space?.totalNewObjects||0} ${t('space.newLast30d','new (30d)')}`},
+    noaa:     {count:D.noaa?.totalAlerts||0, sub:t('layers.severeWeather','severe weather')},
+    epa:      {count:D.epa?.totalReadings||0, sub:t('layers.radiationNet','radiation net')},
+    gdelt:    {count:(D.gdelt?.geoPoints||[]).length, sub:t('layers.globalNewsGeo','global news geo')},
+  };
   const allNormal=D.nuke.every(s=>!s.anom);
   const nukeHtml=D.nuke.map(s=>`<div class="site-row"><span>${s.site}</span><span class="site-val">${s.n>0?(s.cpm?.toFixed(1)||'--')+' CPM':'No data'}</span></div>`).join('');
   const vix=D.fred.find(f=>f.id==='VIXCLS');
@@ -634,7 +684,11 @@ function renderLeftRail(){
   document.getElementById('leftRail').innerHTML=`
     <div class="g-panel">
       <div class="sec-head"><h3>${t('panels.sensorGrid','Sensor Grid')}</h3><span class="badge">${t('badges.live','LIVE')}</span></div>
-      ${layers.map(l=>`<div class="layer-item"><div class="layer-left"><div class="ldot ${l.dot}"></div><div><div class="layer-name">${l.name}</div><div class="layer-sub">${l.sub}</div></div></div><div class="layer-count">${l.count}</div></div>`).join('')}
+      ${LAYERS.map(l=>{
+        const vis = layerVisibility[l.id];
+        const d = layerData[l.id] || {count:0, sub:''};
+        return `<div class="layer-item${vis?'':' layer-item-off'}" onclick="toggleLayer('${l.id}')" title="${vis?'Hide':'Show'} ${l.label}"><div class="layer-left"><div class="ldot ${l.dot}"></div><div><div class="layer-name">${l.label}</div><div class="layer-sub">${vis ? d.sub : 'hidden'}</div></div></div><div class="layer-count">${vis ? d.count : '\u2014'}</div><span class="layer-eye">&#128065;&#65039;</span></div>`;
+      }).join('')}
     </div>
     <div class="g-panel">
       <div class="sec-head"><h3>${t('panels.nuclearWatch','Nuclear Watch')}</h3><span class="badge">${t('badges.radiation','RADIATION')}</span></div>
@@ -680,10 +734,13 @@ function bindMapLifecycleEvents(){
 }
 
 function renderMapLegend(){
+  const legendMap = {air:'Air Traffic',thermal:'Thermal/Fire',acled:'Conflict',sdr:'SDR Receiver',nuke:'Nuclear Site',maritime:'Chokepoint',osint:'OSINT Event',who:'Health Alert',news:'World News',noaa:'Weather Alert',epa:'EPA RadNet',space:'Space Station',gdelt:'GDELT Event'};
   document.getElementById('mapLegend').innerHTML=
-    [{c:'#64f0c8',l:t('map.airTraffic','Air Traffic')},{c:'#ff5f63',l:t('map.thermalFire','Thermal/Fire')},{c:'rgba(255,120,80,0.8)',l:t('map.conflict','Conflict')},{c:'#44ccff',l:t('map.sdrReceiver','SDR Receiver')},
-     {c:'#ffe082',l:t('map.nuclearSite','Nuclear Site')},{c:'#b388ff',l:t('map.chokepoint','Chokepoint')},{c:'#ffb84c',l:t('map.osintEvent','OSINT Event')},{c:'#69f0ae',l:t('map.healthAlert','Health Alert')},{c:'#81d4fa',l:t('map.worldNews','World News')},{c:'#ff9800',l:t('map.weatherAlert','Weather Alert')},{c:'#cddc39',l:t('map.epaRadNet','EPA RadNet')},{c:'#ffffff',l:t('map.spaceStation','Space Station')},{c:'#6495ed',l:t('map.gdeltEvent','GDELT Event')}]
-    .map(x=>`<div class="leg-item"><div class="leg-dot" style="background:${x.c}"></div>${x.l}</div>`).join('');
+    LAYERS.map(l=>{
+      const vis = layerVisibility[l.id];
+      const label = legendMap[l.id] || l.label;
+      return `<div class="leg-item" style="${vis?'':'opacity:0.3'}"><div class="leg-dot" style="background:${l.color}"></div>${label}</div>`;
+    }).join('');
 }
 
 function initMap(){
@@ -842,7 +899,7 @@ function plotMarkers(){
 
   // === Air hotspots (green) ===
   const airCoords=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
-  if(flightsVisible) D.air.forEach((a,i)=>{
+  if(layerVisibility.air) D.air.forEach((a,i)=>{
     const c=airCoords[i]; if(!c) return;
     points.push({
       lat:c.lat, lng:c.lon, size:0.25+a.total/200, alt:0.015,
@@ -855,7 +912,7 @@ function plotMarkers(){
   });
 
   // === Thermal/fire (red) ===
-  D.thermal.forEach(t=>{
+  if(layerVisibility.thermal) D.thermal.forEach(t=>{
     t.fires.forEach(f=>{
       points.push({
         lat:f.lat, lng:f.lon, size:0.12+Math.min(f.frp/200,0.3), alt:0.008,
@@ -867,7 +924,7 @@ function plotMarkers(){
   });
 
   // === Maritime chokepoints (purple) ===
-  D.chokepoints.forEach(cp=>{
+  if(layerVisibility.maritime) D.chokepoints.forEach(cp=>{
     points.push({
       lat:cp.lat, lng:cp.lon, size:0.35, alt:0.02,
       color:'rgba(179,136,255,0.8)', type:'maritime', priority:1,
@@ -878,7 +935,7 @@ function plotMarkers(){
 
   // === Nuclear sites (yellow) ===
   const nukeCoords=[{lat:47.5,lon:34.6},{lat:51.4,lon:30.1},{lat:28.8,lon:50.9},{lat:39.8,lon:125.8},{lat:37.4,lon:141},{lat:31.0,lon:35.1}];
-  D.nuke.forEach((n,i)=>{
+  if(layerVisibility.nuke) D.nuke.forEach((n,i)=>{
     const c=nukeCoords[i]; if(!c) return;
     points.push({
       lat:c.lat, lng:c.lon, size:0.3, alt:0.012,
@@ -889,7 +946,7 @@ function plotMarkers(){
   });
 
   // === SDR receivers (cyan) ===
-  D.sdr.zones.forEach(z=>{
+  if(layerVisibility.sdr) D.sdr.zones.forEach(z=>{
     z.receivers.forEach(r=>{
       points.push({
         lat:r.lat, lng:r.lon, size:0.15, alt:0.005,
@@ -902,7 +959,7 @@ function plotMarkers(){
 
   // === OSINT events from Telegram (orange) ===
   const osintGeo=[{lat:45,lon:41,idx:0},{lat:48,lon:37,idx:1},{lat:48.5,lon:37.5,idx:2},{lat:45,lon:40.2,idx:3},{lat:50.6,lon:36.6,idx:5},{lat:48.5,lon:35,idx:6}];
-  osintGeo.forEach(o=>{
+  if(layerVisibility.osint) osintGeo.forEach(o=>{
     const post=D.tg.urgent[o.idx]; if(!post) return;
     points.push({
       lat:o.lat, lng:o.lon, size:0.3, alt:0.018,
@@ -914,7 +971,7 @@ function plotMarkers(){
 
   // === WHO health alerts (green) ===
   const whoGeo=[{lat:0.3,lon:32.6},{lat:-6.2,lon:106.8},{lat:-4.3,lon:15.3},{lat:35,lon:105},{lat:12.5,lon:105},{lat:35,lon:105},{lat:28,lon:84},{lat:24,lon:45},{lat:30,lon:70},{lat:-0.8,lon:11.6}];
-  D.who.slice(0,10).forEach((w,i)=>{
+  if(layerVisibility.who) D.who.slice(0,10).forEach((w,i)=>{
     const c=whoGeo[i]; if(!c) return;
     points.push({
       lat:c.lat, lng:c.lon, size:0.25, alt:0.01,
@@ -924,7 +981,7 @@ function plotMarkers(){
   });
 
   // === News markers (light blue) ===
-  (D.news||[]).forEach(n=>{
+  if(layerVisibility.news) (D.news||[]).forEach(n=>{
     points.push({
       lat:n.lat, lng:n.lon, size:0.2, alt:0.008,
       color:'rgba(129,212,250,0.7)', type:'news', priority:3,
@@ -934,7 +991,7 @@ function plotMarkers(){
   });
 
   // === NOAA severe weather alerts (orange) ===
-  (D.noaa?.alerts||[]).forEach(a=>{
+  if(layerVisibility.noaa) (D.noaa?.alerts||[]).forEach(a=>{
     points.push({
       lat:a.lat, lng:a.lon, size:0.22, alt:0.01,
       color:'rgba(255,152,0,0.8)', type:'weather', priority:2,
@@ -944,7 +1001,7 @@ function plotMarkers(){
   });
 
   // === EPA RadNet stations (lime green) ===
-  (D.epa?.stations||[]).forEach(s=>{
+  if(layerVisibility.epa) (D.epa?.stations||[]).forEach(s=>{
     points.push({
       lat:s.lat, lng:s.lon, size:0.18, alt:0.006,
       color:'rgba(205,220,57,0.7)', type:'radiation', priority:3,
@@ -954,7 +1011,7 @@ function plotMarkers(){
   });
 
   // === ISS + Space Stations (bright white, pulsing) ===
-  (D.space?.stationPositions||[]).forEach(s=>{
+  if(layerVisibility.space) (D.space?.stationPositions||[]).forEach(s=>{
     points.push({
       lat:s.lat, lng:s.lon, size:0.4, alt:0.04,
       color:'rgba(255,255,255,0.95)', type:'space', priority:1,
@@ -965,7 +1022,7 @@ function plotMarkers(){
   });
 
   // === GDELT geo events (steel blue) ===
-  (D.gdelt?.geoPoints||[]).forEach(g=>{
+  if(layerVisibility.gdelt) (D.gdelt?.geoPoints||[]).forEach(g=>{
     points.push({
       lat:g.lat, lng:g.lon, size:0.15+Math.min(g.count/50,0.2), alt:0.007,
       color:'rgba(100,149,237,0.6)', type:'gdelt', priority:3,
@@ -979,7 +1036,7 @@ function plotMarkers(){
   globe.labelsData(labels);
 
   // === ACLED CONFLICT EVENTS (pulsing rings) ===
-  const conflictRings = (D.acled?.deadliestEvents || []).filter(e => e.lat && e.lon).map(e => {
+  const conflictRings = !layerVisibility.acled ? [] : (D.acled?.deadliestEvents || []).filter(e => e.lat && e.lon).map(e => {
     const logFatal = Math.log2(Math.max(e.fatalities, 1));
     return {
       lat: e.lat, lng: e.lon,
@@ -994,7 +1051,7 @@ function plotMarkers(){
 
   // === FLIGHT CORRIDORS (3D arcs) ===
   const arcs = [];
-  if(flightsVisible){
+  if(layerVisibility.air){
   const airCoordsFlight = [
     {region:'Middle East',lat:30,lon:44}, {region:'Taiwan Strait',lat:24,lon:120},
     {region:'Ukraine Region',lat:49,lon:32}, {region:'Baltic Region',lat:57,lon:24},
@@ -1095,33 +1152,6 @@ function showPopup(event,head,text,meta,lat,lng,alt){
 }
 function closePopup(){document.getElementById('mapPopup').classList.remove('show')}
 
-// === MAP CONTROLS ===
-function toggleFlights() {
-  flightsVisible = !flightsVisible;
-  const btn = document.getElementById('flightToggle');
-  btn.classList.toggle('off', !flightsVisible);
-  if(isFlat){
-    if(flatG){
-      flatG.selectAll('*').remove();
-      drawFlatMap();
-    }
-    return;
-  }
-  if(!globe){
-    return;
-  }
-  if(flightsVisible) {
-    plotMarkers(); // re-render with arcs
-  } else {
-    globe.arcsData([]); // hide arcs
-    // Remove air-type points
-    const pts = globe.pointsData().filter(p => p.type !== 'air');
-    globe.pointsData(pts);
-    const lbls = globe.labelsData().filter(l => l.text && !l.text.match(/\d+$/));
-    globe.labelsData(lbls);
-  }
-}
-
 // === FLAT/GLOBE TOGGLE ===
 const flatRegionBounds = {
   world:[[-180,-60],[180,80]], americas:[[-130,10],[-60,55]], europe:[[-12,34],[45,72]],
@@ -1207,7 +1237,7 @@ function plotFlatMarkers(){
   };
   // Air
   const airCoords=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
-  if(flightsVisible){
+  if(layerVisibility.air){
     D.air.forEach((a,i)=>{
       const c=airCoords[i];if(!c)return;
       const g=addPt(c.lat,c.lon,4+a.total/40,'rgba(100,240,200,0.7)','rgba(100,240,200,0.3)',
@@ -1216,12 +1246,12 @@ function plotFlatMarkers(){
     });
   }
   // Thermal
-  D.thermal.forEach(t=>t.fires.forEach(f=>{
+  if(layerVisibility.thermal) D.thermal.forEach(t=>t.fires.forEach(f=>{
     addPt(f.lat,f.lon,2+Math.min(f.frp/50,5),'rgba(255,95,99,0.6)','rgba(255,95,99,0.2)',
       ev=>showPopup(ev,'Thermal',`${t.region}<br>FRP: ${f.frp.toFixed(1)} MW`,'FIRMS'),3);
   }));
   // Chokepoints
-  D.chokepoints.forEach(cp=>{
+  if(layerVisibility.maritime) D.chokepoints.forEach(cp=>{
     const[x,y]=proj([cp.lon,cp.lat]);if(!x||!y)return;
     const g=mg.append('g').attr('transform',`translate(${x},${y})`).style('cursor','pointer').attr('data-priority',1)
       .on('click',ev=>{ev.stopPropagation();showPopup(ev,cp.label,cp.note,'Maritime')});
@@ -1230,30 +1260,30 @@ function plotFlatMarkers(){
   });
   // Nuclear
   const nukeCoords=[{lat:47.5,lon:34.6},{lat:51.4,lon:30.1},{lat:28.8,lon:50.9},{lat:39.8,lon:125.8},{lat:37.4,lon:141},{lat:31.0,lon:35.1}];
-  D.nuke.forEach((n,i)=>{const c=nukeCoords[i];if(!c)return;addPt(c.lat,c.lon,4,'rgba(255,224,130,0.7)','rgba(255,224,130,0.3)',ev=>showPopup(ev,n.site,`CPM: ${n.cpm?.toFixed(1)||'--'}`,'Radiation'),2)});
+  if(layerVisibility.nuke) D.nuke.forEach((n,i)=>{const c=nukeCoords[i];if(!c)return;addPt(c.lat,c.lon,4,'rgba(255,224,130,0.7)','rgba(255,224,130,0.3)',ev=>showPopup(ev,n.site,`CPM: ${n.cpm?.toFixed(1)||'--'}`,'Radiation'),2)});
   // SDR
-  D.sdr.zones.forEach(z=>z.receivers.forEach(r=>{addPt(r.lat,r.lon,2.5,'rgba(68,204,255,0.5)','rgba(68,204,255,0.2)',ev=>showPopup(ev,'SDR',`${r.name}<br>${z.region}`,'KiwiSDR'),3)}));
+  if(layerVisibility.sdr) D.sdr.zones.forEach(z=>z.receivers.forEach(r=>{addPt(r.lat,r.lon,2.5,'rgba(68,204,255,0.5)','rgba(68,204,255,0.2)',ev=>showPopup(ev,'SDR',`${r.name}<br>${z.region}`,'KiwiSDR'),3)}));
   // OSINT
   const osintGeo=[{lat:45,lon:41,idx:0},{lat:48,lon:37,idx:1},{lat:48.5,lon:37.5,idx:2},{lat:45,lon:40.2,idx:3},{lat:50.6,lon:36.6,idx:5},{lat:48.5,lon:35,idx:6}];
-  osintGeo.forEach(o=>{const p=D.tg.urgent[o.idx];if(!p)return;addPt(o.lat,o.lon,4,'rgba(255,184,76,0.7)','rgba(255,184,76,0.3)',ev=>showPopup(ev,(p.channel||'').toUpperCase(),cleanText(p.text?.substring(0,200)||''),`${p.views||'?'} views`),2)});
+  if(layerVisibility.osint) osintGeo.forEach(o=>{const p=D.tg.urgent[o.idx];if(!p)return;addPt(o.lat,o.lon,4,'rgba(255,184,76,0.7)','rgba(255,184,76,0.3)',ev=>showPopup(ev,(p.channel||'').toUpperCase(),cleanText(p.text?.substring(0,200)||''),`${p.views||'?'} views`),2)});
   // WHO
   const whoGeo=[{lat:0.3,lon:32.6},{lat:-6.2,lon:106.8},{lat:-4.3,lon:15.3},{lat:35,lon:105},{lat:12.5,lon:105},{lat:35,lon:105},{lat:28,lon:84},{lat:24,lon:45},{lat:30,lon:70},{lat:-0.8,lon:11.6}];
-  D.who.slice(0,10).forEach((w,i)=>{const c=whoGeo[i];if(!c)return;addPt(c.lat,c.lon,3.5,'rgba(105,240,174,0.6)','rgba(105,240,174,0.2)',ev=>showPopup(ev,w.title,w.summary||'','WHO'),2)});
+  if(layerVisibility.who) D.who.slice(0,10).forEach((w,i)=>{const c=whoGeo[i];if(!c)return;addPt(c.lat,c.lon,3.5,'rgba(105,240,174,0.6)','rgba(105,240,174,0.2)',ev=>showPopup(ev,w.title,w.summary||'','WHO'),2)});
   // News
-  (D.news||[]).forEach(n=>{addPt(n.lat,n.lon,3,'rgba(129,212,250,0.6)','rgba(129,212,250,0.2)',ev=>showPopup(ev,n.source+' NEWS',cleanText(n.title),n.region),3)});
+  if(layerVisibility.news) (D.news||[]).forEach(n=>{addPt(n.lat,n.lon,3,'rgba(129,212,250,0.6)','rgba(129,212,250,0.2)',ev=>showPopup(ev,n.source+' NEWS',cleanText(n.title),n.region),3)});
   // NOAA weather
-  (D.noaa?.alerts||[]).forEach(a=>{addPt(a.lat,a.lon,4,'rgba(255,152,0,0.7)','rgba(255,152,0,0.3)',ev=>showPopup(ev,a.event,a.headline||'','NOAA/NWS'),2)});
+  if(layerVisibility.noaa) (D.noaa?.alerts||[]).forEach(a=>{addPt(a.lat,a.lon,4,'rgba(255,152,0,0.7)','rgba(255,152,0,0.3)',ev=>showPopup(ev,a.event,a.headline||'','NOAA/NWS'),2)});
   // EPA RadNet
-  (D.epa?.stations||[]).forEach(s=>{addPt(s.lat,s.lon,3,'rgba(205,220,57,0.6)','rgba(205,220,57,0.2)',ev=>showPopup(ev,'RadNet: '+s.location,`${s.analyte||'--'}: ${s.result||'--'} ${s.unit||''}`,'EPA'),3)});
+  if(layerVisibility.epa) (D.epa?.stations||[]).forEach(s=>{addPt(s.lat,s.lon,3,'rgba(205,220,57,0.6)','rgba(205,220,57,0.2)',ev=>showPopup(ev,'RadNet: '+s.location,`${s.analyte||'--'}: ${s.result||'--'} ${s.unit||''}`,'EPA'),3)});
   // Space stations
-  (D.space?.stationPositions||[]).forEach(s=>{
+  if(layerVisibility.space) (D.space?.stationPositions||[]).forEach(s=>{
     const g=addPt(s.lat,s.lon,5,'rgba(255,255,255,0.9)','rgba(255,255,255,0.4)',ev=>showPopup(ev,s.name,'Orbital position estimate','Space Station'),1);
     if(g) g.append('text').attr('class','marker-label').attr('x',8).attr('y',3).attr('fill','rgba(255,255,255,0.7)').attr('font-size','8px').attr('font-family','var(--mono)').text(s.name.split('(')[0].trim());
   });
   // GDELT geo events
-  (D.gdelt?.geoPoints||[]).forEach(g=>{addPt(g.lat,g.lon,2.5,'rgba(100,149,237,0.5)','rgba(100,149,237,0.2)',ev=>showPopup(ev,'GDELT Event',g.name||'','GDELT · '+g.count+' reports'),3)});
+  if(layerVisibility.gdelt) (D.gdelt?.geoPoints||[]).forEach(g=>{addPt(g.lat,g.lon,2.5,'rgba(100,149,237,0.5)','rgba(100,149,237,0.2)',ev=>showPopup(ev,'GDELT Event',g.name||'','GDELT · '+g.count+' reports'),3)});
   // ACLED
-  (D.acled?.deadliestEvents||[]).filter(e=>e.lat&&e.lon).forEach(e=>{
+  if(layerVisibility.acled) (D.acled?.deadliestEvents||[]).filter(e=>e.lat&&e.lon).forEach(e=>{
     const[x,y]=proj([e.lon,e.lat]);if(!x||!y)return;
     const r=Math.max(4,Math.min(14,2+Math.log2(Math.max(e.fatalities,1))*1.5));
     const g=mg.append('g').attr('transform',`translate(${x},${y})`).style('cursor','pointer').attr('data-priority',1)
@@ -1262,7 +1292,7 @@ function plotFlatMarkers(){
     g.append('circle').attr('r',r*0.4).attr('fill','rgba(255,120,80,0.3)');
   });
   // Flight corridors
-  if(flightsVisible){
+  if(layerVisibility.air){
     const airCoordsFlight=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
     const hubs=[{lat:40.6,lon:-73.8},{lat:51.5,lon:-0.5},{lat:25.3,lon:55.4},{lat:1.4,lon:103.8},{lat:-33.9,lon:151.2},{lat:-23.4,lon:-46.5}];
     const cG=flatG.append('g').attr('class','corridors-layer');
@@ -1576,7 +1606,7 @@ function runBoot(){
   tl.to('#main',{opacity:1,duration:0.6},3.9);
   tl.call(()=>{
     gsap.from('.g-panel,.topbar,.map-container',{opacity:0,y:20,scale:0.97,duration:0.5,stagger:0.06,ease:'power2.out'});
-    setTimeout(()=>gsap.from('.layer-item,.site-row,.econ-row',{opacity:0,x:-12,duration:0.25,stagger:0.03,ease:'power1.out'}),500);
+    setTimeout(()=>gsap.from('.site-row,.econ-row',{opacity:0,x:-12,duration:0.25,stagger:0.03,ease:'power1.out'}),500);
     setTimeout(()=>gsap.from('.ic',{opacity:0,y:12,duration:0.25,stagger:0.03,ease:'power1.out'}),600);
     setTimeout(()=>gsap.from('.mc',{opacity:0,y:8,duration:0.25,stagger:0.04,ease:'power1.out'}),800);
     setTimeout(()=>gsap.from('.idea-card',{opacity:0,x:12,duration:0.3,stagger:0.06,ease:'power1.out'}),900);
