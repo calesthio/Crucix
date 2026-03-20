@@ -167,6 +167,14 @@ async function fetchRSS(url, source) {
   }
 }
 
+const RSS_SOURCE_FALLBACKS = {
+  'SBS Australia': { lat: -35.2809, lon: 149.13, region: 'Australia' },
+  'Indian Express': { lat: 28.6139, lon: 77.209, region: 'India' },
+  'The Hindu': { lat: 13.0827, lon: 80.2707, region: 'India' },
+  'MercoPress': { lat: -34.9011, lon: -56.1645, region: 'South America' }
+};
+const REGIONAL_NEWS_SOURCES = ['MercoPress', 'Indian Express', 'The Hindu', 'SBS Australia'];
+
 export async function fetchAllNews() {
   const feeds = [
     // Global
@@ -189,6 +197,12 @@ export async function fetchAllNews() {
     ['https://rss.nytimes.com/services/xml/rss/nyt/Africa.xml', 'NYT Africa'],
     // Asia-Pacific
     ['https://rss.nytimes.com/services/xml/rss/nyt/AsiaPacific.xml', 'NYT Asia'],
+    ['https://www.sbs.com.au/news/topic/australia/feed', 'SBS Australia'],
+    // India
+    ['https://indianexpress.com/section/india/feed/', 'Indian Express'],
+    ['https://www.thehindu.com/news/national/feeder/default.rss', 'The Hindu'],
+    // South America
+    ['https://en.mercopress.com/rss/latin-america', 'MercoPress'],
   ];
 
   const results = await Promise.allSettled(
@@ -206,7 +220,7 @@ export async function fetchAllNews() {
     const key = item.title.substring(0, 40).toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    const geo = geoTagText(item.title);
+    const geo = geoTagText(item.title) || RSS_SOURCE_FALLBACKS[item.source];
     if (geo) {
       geoNews.push({
         title: item.title.substring(0, 100),
@@ -223,7 +237,23 @@ export async function fetchAllNews() {
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const filtered = geoNews.filter(n => !n.date || new Date(n.date) >= cutoff);
   filtered.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-  return filtered.slice(0, 50);
+
+  const selected = [];
+  const selectedKeys = new Set();
+  const keyFor = item => `${item.source}|${item.title}|${item.date}`;
+  const pushUnique = item => {
+    const key = keyFor(item);
+    if (selectedKeys.has(key)) return;
+    selected.push(item);
+    selectedKeys.add(key);
+  };
+
+  // Reserve a little space so newly-added regional feeds are not crowded out by larger globals.
+  for (const source of REGIONAL_NEWS_SOURCES) {
+    filtered.filter(item => item.source === source).slice(0, 2).forEach(pushUnique);
+  }
+  filtered.forEach(pushUnique);
+  return selected.slice(0, 50);
 }
 
 // === Leverageable Ideas from Signals ===
@@ -620,7 +650,22 @@ function buildNewsFeed(rssNews, gdeltData, tgUrgent, tgTop) {
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const recent = feed.filter(item => !item.timestamp || new Date(item.timestamp) >= cutoff);
   recent.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
-  return recent.slice(0, 50);
+
+  const selected = [];
+  const selectedKeys = new Set();
+  const keyFor = item => `${item.type}|${item.source}|${item.headline}|${item.timestamp}`;
+  const pushUnique = item => {
+    const key = keyFor(item);
+    if (selectedKeys.has(key)) return;
+    selected.push(item);
+    selectedKeys.add(key);
+  };
+
+  for (const source of REGIONAL_NEWS_SOURCES) {
+    recent.filter(item => item.source === source).slice(0, 2).forEach(pushUnique);
+  }
+  recent.forEach(pushUnique);
+  return selected.slice(0, 50);
 }
 
 // === CLI Mode: inject into HTML file ===
