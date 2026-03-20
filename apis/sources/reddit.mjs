@@ -9,12 +9,14 @@ import '../utils/env.mjs';
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// UK-centric subreddit selection — UK politics, economics, and global context
 const SUBREDDITS = [
-  'worldnews',
-  'geopolitics',
-  'economics',
-  'wallstreetbets',
-  'commodities',
+  'unitedkingdom',    // UK news and discussion
+  'ukpolitics',       // UK domestic politics
+  'Economics',        // UK-relevant economics (global but with UK angle)
+  'geopolitics',      // Global geopolitics (UK-relevant)
+  'worldnews',        // Breaking international news
+  'UKInvesting',      // UK-specific investing (FTSE, ISA, pensions)
 ];
 
 // Get OAuth token using client credentials flow (application-only)

@@ -1,33 +1,40 @@
 // Yahoo Finance — Live market quotes (no API key required)
+// UK-centric view: FTSE indices, sterling, UK gilts, Brent crude, NBP gas
 // Provides real-time prices for stocks, ETFs, crypto, commodities
-// Replaces the need for Alpaca or any paid market data provider
 
 import { safeFetch } from '../utils/fetch.mjs';
 
 const BASE = 'https://query1.finance.yahoo.com/v8/finance/chart';
 
-// Symbols to track — covers broad market, rates, commodities, crypto, volatility
+// Symbols to track — UK/European focus with global commodities and crypto
 const SYMBOLS = {
-  // Indexes / ETFs
-  SPY: 'S&P 500',
-  QQQ: 'Nasdaq 100',
-  DIA: 'Dow Jones',
-  IWM: 'Russell 2000',
-  // Rates / Credit
-  TLT: '20Y+ Treasury',
-  HYG: 'High Yield Corp',
-  LQD: 'IG Corporate',
-  // Commodities
-  'GC=F': 'Gold',
-  'SI=F': 'Silver',
-  'CL=F': 'WTI Crude',
-  'BZ=F': 'Brent Crude',
-  'NG=F': 'Natural Gas',
+  // UK Indexes / ETFs
+  '^FTSE':     'FTSE 100',
+  '^MCX':      'FTSE 250',
+  'ISF.L':     'iShares FTSE 100 ETF',
+  // Sterling FX
+  'GBPUSD=X':  'GBP/USD',
+  'EURGBP=X':  'EUR/GBP',
+  'GBPJPY=X':  'GBP/JPY',
+  // UK Gilts / Fixed Income
+  'IGLT.L':    'iShares Core UK Gilts ETF',
+  'SLXX.L':    'iShares Core £ Corp Bond ETF',
+  // European / Global Context
+  '^STOXX50E': 'Euro Stoxx 50',
+  '^GDAXI':    'DAX (Germany)',
+  'SPY':       'S&P 500 (US reference)',
+  // Commodities (global — Brent is UK/EU benchmark)
+  'GC=F':      'Gold',
+  'SI=F':      'Silver',
+  'BZ=F':      'Brent Crude',       // UK/European oil benchmark
+  'CL=F':      'WTI Crude',         // US benchmark (for spread)
+  'NG=F':      'Natural Gas (Henry Hub)',
   // Crypto
-  'BTC-USD': 'Bitcoin',
-  'ETH-USD': 'Ethereum',
+  'BTC-USD':   'Bitcoin',
+  'ETH-USD':   'Ethereum',
   // Volatility
-  '^VIX': 'VIX',
+  '^VIX':      'VIX (US Fear Index)',
+  '^VFTSE':    'VFTSE (UK Volatility)',
 };
 
 async function fetchQuote(symbol) {
@@ -108,7 +115,7 @@ export async function collect() {
     }
   }
 
-  // Categorize for easy dashboard consumption
+  // Categorize for easy dashboard consumption — UK-centric groupings
   return {
     quotes,
     summary: {
@@ -117,11 +124,22 @@ export async function collect() {
       failed,
       timestamp: new Date().toISOString(),
     },
-    indexes: pickGroup(quotes, ['SPY', 'QQQ', 'DIA', 'IWM']),
-    rates: pickGroup(quotes, ['TLT', 'HYG', 'LQD']),
-    commodities: pickGroup(quotes, ['GC=F', 'SI=F', 'CL=F', 'BZ=F', 'NG=F']),
+    ukIndexes: pickGroup(quotes, ['^FTSE', '^MCX', 'ISF.L']),
+    sterling: pickGroup(quotes, ['GBPUSD=X', 'EURGBP=X', 'GBPJPY=X']),
+    ukFixedIncome: pickGroup(quotes, ['IGLT.L', 'SLXX.L']),
+    european: pickGroup(quotes, ['^STOXX50E', '^GDAXI']),
+    usReference: pickGroup(quotes, ['SPY']),
+    commodities: pickGroup(quotes, ['GC=F', 'SI=F', 'BZ=F', 'CL=F', 'NG=F']),
     crypto: pickGroup(quotes, ['BTC-USD', 'ETH-USD']),
-    volatility: pickGroup(quotes, ['^VIX']),
+    volatility: pickGroup(quotes, ['^VIX', '^VFTSE']),
+    brentWtiSpread: (() => {
+      const brent = quotes['BZ=F'];
+      const wti = quotes['CL=F'];
+      if (brent?.price && wti?.price) {
+        return { spread: Math.round((brent.price - wti.price) * 100) / 100, note: 'Brent premium over WTI ($/bbl)' };
+      }
+      return null;
+    })(),
   };
 }
 

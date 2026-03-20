@@ -1,8 +1,18 @@
-// OFAC — US Treasury Office of Foreign Assets Control Sanctions
-// No auth required. Monitors the Specially Designated Nationals (SDN) list
-// and consolidated sanctions list for changes.
+// OFAC + UK OFSI — US & UK Financial Sanctions Lists
+// No auth required. Monitors:
+//   - OFAC SDN list (US Treasury Specially Designated Nationals)
+//   - UK OFSI Consolidated List (HM Treasury Office of Financial Sanctions Implementation)
+//
+// Both lists are critical for UK-based compliance and OSINT:
+//   - OFAC applies to USD transactions and US persons globally
+//   - OFSI applies to all UK persons/entities and GBP transactions
 
 import { safeFetch } from '../utils/fetch.mjs';
+
+// UK OFSI Consolidated Sanctions List (CSV format)
+const OFSI_LIST_URL = 'https://ofsistorage.blob.core.windows.net/publishlive/2022format/ConList.csv';
+// OFSI also publishes a summary page:
+const OFSI_PAGE_URL = 'https://www.gov.uk/government/publications/financial-sanctions-consolidated-list-of-targets';
 
 const EXPORTS_BASE = 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports';
 
@@ -99,39 +109,100 @@ function parseRecentEntries(xml) {
   return entries;
 }
 
-// Briefing — report on sanctions list status and metadata
+// Fetch and parse UK OFSI Consolidated List metadata
+async function getOFSIMetadata() {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+    const res = await fetch(OFSI_LIST_URL, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'Crucix-UK/1.0' },
+    });
+    clearTimeout(timer);
+    if (!res.ok) return { error: `HTTP ${res.status}`, available: false };
+    const text = await res.text();
+
+    // Parse CSV header and first few rows
+    const lines = text.split('\n').filter(l => l.trim());
+    const header = lines[0]?.split(',') || [];
+    const entryCount = lines.length - 1; // subtract header
+
+    // Extract unique names from first column (if available)
+    const sampleNames = lines.slice(1, 11).map(l => {
+      const cols = l.split(',');
+      return cols[0]?.replace(/"/g, '').trim() || null;
+    }).filter(Boolean);
+
+    // Try to find a date in the CSV
+    const dateMatch = text.match(/(\d{2}\/\d{2}\/\d{4})/);
+
+    return {
+      available: true,
+      entryCount,
+      estimatedEntries: entryCount,
+      columns: header.slice(0, 8).map(h => h.replace(/"/g, '').trim()),
+      sampleNames,
+      lastUpdatedGuess: dateMatch ? dateMatch[1] : 'unknown',
+    };
+  } catch (e) {
+    return { error: e.message, available: false };
+  }
+}
+
+// Briefing — report on US OFAC + UK OFSI sanctions list status
 export async function briefing() {
-  const [sdnMeta, advancedMeta] = await Promise.all([
+  const [sdnMeta, advancedMeta, ofsiMeta] = await Promise.all([
     getSDNMetadata(),
     getSDNAdvanced(),
+    getOFSIMetadata(),
   ]);
 
-  // Try to extract any entries visible in the advanced data
+  // Try to extract any entries visible in the OFAC advanced data
   const sampleEntries = parseRecentEntries(
     await safeFetch(SDN_ADVANCED_URL, { timeout: 25000 })
   );
 
   return {
-    source: 'OFAC Sanctions',
+    source: 'OFAC Sanctions (US) + OFSI Consolidated List (UK)',
     timestamp: new Date().toISOString(),
-    lastUpdated: sdnMeta.publishDate || advancedMeta.publishDate || 'unknown',
-    sdnList: {
-      publishDate: sdnMeta.publishDate,
-      entryCount: sdnMeta.entryCount,
-      recordCount: sdnMeta.recordCount,
-      dataAvailable: sdnMeta.hasData,
+    // UK OFSI
+    ukOFSI: {
+      description: 'HM Treasury Office of Financial Sanctions Implementation',
+      available: ofsiMeta.available,
+      entryCount: ofsiMeta.entryCount || null,
+      sampleNames: ofsiMeta.sampleNames || [],
+      lastUpdated: ofsiMeta.lastUpdatedGuess || 'unknown',
+      url: OFSI_PAGE_URL,
+      error: ofsiMeta.error || null,
     },
-    advancedList: {
-      publishDate: advancedMeta.publishDate,
-      entryCount: advancedMeta.entryCount,
-      recordCount: advancedMeta.recordCount,
-      dataAvailable: advancedMeta.hasData,
+    // US OFAC
+    usOFAC: {
+      description: 'US Treasury Office of Foreign Assets Control SDN List',
+      lastUpdated: sdnMeta.publishDate || advancedMeta.publishDate || 'unknown',
+      sdnList: {
+        publishDate: sdnMeta.publishDate,
+        entryCount: sdnMeta.entryCount,
+        recordCount: sdnMeta.recordCount,
+        dataAvailable: sdnMeta.hasData,
+      },
+      advancedList: {
+        publishDate: advancedMeta.publishDate,
+        entryCount: advancedMeta.entryCount,
+        dataAvailable: advancedMeta.hasData,
+      },
     },
     sampleEntries: sampleEntries.slice(0, 10),
+    note: [
+      'OFSI list applies to all UK persons/entities under UK sanctions regimes.',
+      'OFAC list applies to US persons and USD transactions globally.',
+      'Post-Brexit, UK sanctions can diverge from US/EU — monitor both.',
+      'UK Russia sanctions: most extensive programme, updated frequently.',
+    ],
     endpoints: {
-      sdnXml: SDN_XML_URL,
-      sdnAdvanced: SDN_ADVANCED_URL,
-      consolidatedAdvanced: CONS_ADVANCED_URL,
+      ukOFSI_CSV: OFSI_LIST_URL,
+      ukOFSI_page: OFSI_PAGE_URL,
+      usOFAC_sdnXml: SDN_XML_URL,
+      usOFAC_sdnAdvanced: SDN_ADVANCED_URL,
     },
   };
 }

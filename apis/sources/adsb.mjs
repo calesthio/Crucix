@@ -49,35 +49,73 @@ const MILITARY_TYPES = {
   'C40':   'C-40 Clipper',
 };
 
-// Known military ICAO hex ranges (partial — US military allocations)
+// Known military ICAO hex ranges — UK-first ordering
 const MIL_HEX_RANGES = [
-  { start: 0xADF7C8, end: 0xAFFFFF, country: 'US Military' },
-  { start: 0xAE0000, end: 0xAFFFFF, country: 'US Military (alt)' },
+  // UK Military allocations (primary focus)
   { start: 0x43C000, end: 0x43CFFF, country: 'UK Military' },
+  { start: 0x400000, end: 0x4003FF, country: 'UK Military (Royal Navy)' },
+  { start: 0x3E0000, end: 0x3EFFFF, country: 'UK Military (RAF)' },
+  // NATO/Allied partners
   { start: 0x3F0000, end: 0x3FFFFF, country: 'France Military' },
   { start: 0x3CC000, end: 0x3CFFFF, country: 'Germany Military' },
+  { start: 0x480000, end: 0x480FFF, country: 'Netherlands Military' },
+  { start: 0x502000, end: 0x502FFF, country: 'Poland Military' },
+  { start: 0x340000, end: 0x37FFFF, country: 'Spain Military' },
+  { start: 0x3B0000, end: 0x3BFFFF, country: 'Italy Military' },
+  { start: 0x458000, end: 0x45FFFF, country: 'Norway Military' },
+  // Russia (important to track near NATO borders)
+  { start: 0x015600, end: 0x01567F, country: 'Russia Military' },
+  // US Military allocations (retained for NATO context)
+  { start: 0xADF7C8, end: 0xAFFFFF, country: 'US Military' },
+  { start: 0xAE0000, end: 0xAFFFFF, country: 'US Military (alt)' },
 ];
 
 // Interesting callsign patterns that suggest military/government flights
+// UK RAF/RN patterns listed first for priority
 const MIL_CALLSIGN_PATTERNS = [
+  // === UK Royal Air Force ===
+  /^ASCOT/,    // RAF Air Transport Force (strategic airlift, C-17, A400M, Voyager)
+  /^TARTAN/,   // RAF Scottish / Lossiemouth-based
+  /^GFORCE/,   // RAF fast jets
+  /^COBRA/,    // RAF special ops / ISR
+  /^ATLAS/,    // RAF A400M Atlas transport
+  /^VELOS/,    // RAF Typhoon aggressor/training
+  /^TARNISH/,  // RAF special ops
+  /^DINGO/,    // RAF AWACS / surveillance
+  /^LANCER/,   // RAF fast jet / Typhoon
+  /^MERLIN/,   // RAF/RNAS Merlin helicopter
+  /^CHINOOK/,  // RAF Chinook helicopter
+  /^PUMA/,     // RAF Puma helicopter
+  /^VOYAGER/,  // RAF Voyager KC2/3 tanker/transport (RAF Brize Norton)
+  /^HERMES/,   // RAF Sentinel / ISR
+  /^SHADOW/,   // RAF Shadow R1 (ISR)
+  /^RIVET/,    // RAF RC-135W Rivet Joint (SIGINT)
+  /^MARSHAL/,  // RAF range control / SAR
+  // === UK Royal Navy / Fleet Air Arm ===
+  /^NAVY/,     // Royal Navy
+  /^WILDCAT/,  // RN AW159 Wildcat
+  /^CROWSNEST/, // RN Merlin AEW
+  /^GANNET/,   // RN SAR / historic callsign
+  // === UK Government / VIP ===
+  /^NOCTURN/,  // UK VIP transport
+  /^GAUNTLET/, // UK Government protected transport
+  /^ENVOY/,    // UK diplomatic flights
+  // === US Military (retained for NATO context) ===
   /^RCH/,      // US AMC (Air Mobility Command) — strategic airlift
   /^REACH/,    // US AMC alternate
   /^DUKE/,     // Often military special ops
-  /^IRON/,     // US military
-  /^JAKE/,     // Military
-  /^NAVY/,     // US Navy
+  /^NAVY/,     // US/UK Navy
   /^TOPCAT/,   // E-6B Mercury
-  /^DARKST/,   // Dark Star / classified
-  /^GORDO/,    // USAF
-  /^BISON/,    // B-52
-  /^DEATH/,    // B-1B
-  /^DOOM/,     // E-4B
   /^SAM/,      // Special Air Mission (VIP)
   /^EXEC/,     // Executive transport
-  /^PCSF/,     // Chinese military
-  /^CHN/,      // Chinese military
+  /^DOOM/,     // E-4B Doomsday plane
+  /^BISON/,    // B-52
+  // === Russian ===
   /^RF/,       // Russian Air Force
   /^RFF/,      // Russian Air Force
+  // === Chinese ===
+  /^PCSF/,     // Chinese military
+  /^CHN/,      // Chinese military
 ];
 
 // Check if an ICAO hex code falls in known military ranges

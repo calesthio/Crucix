@@ -1,4 +1,4 @@
-# Crucix Intelligence Briefing Protocol
+# Crucix-UK Intelligence Briefing Protocol
 
 When the user says "brief me", "what's the latest", "what's going on", or asks for a world update, the goal is to answer one question first:
 
@@ -6,29 +6,32 @@ When the user says "brief me", "what's the latest", "what's going on", or asks f
 
 The briefing is not a neutral recap. It is a leverage-first intelligence note built from cross-domain signals, historical pattern matching, and a concrete point of view.
 
+This is the **UK edition** — primary lens is UK/European markets, sterling, FTSE, UK policy, and UK strategic interests. Global events are assessed through the lens of their UK and European impact.
+
 ## What the analyst must do
 
-- detect regime shifts early
+- detect regime shifts early — particularly BoE policy pivots, sterling moves, FTSE dislocations
 - connect hard data and weak signals
 - distinguish what matters from noise
-- form a coherent worldview
-- map that worldview into positioning, hedging, and watchlists
+- form a coherent UK-centric worldview
+- map that worldview into positioning in UK assets, hedging, and watchlists
 
-The user wants signal, judgment, and utility.
+The user wants signal, judgment, and utility — from a UK investor/analyst perspective.
 
 ## Step 1: Gather Inputs
 
-Run the full Crucix sweep:
+Run the full Crucix-UK sweep:
 
 ```bash
-cd C:/Users/ishan/Documents/Crucix && node apis/briefing.mjs 2>&1
+node apis/briefing.mjs 2>&1
 ```
 
 Also gather:
 
-- live market context via Alpaca MCP for broad indexes, rates proxies, commodities, metals, and crypto
-- breaking developments from the last 6 hours via web search
-- official statements, policy moves, or confirmed reports that materially change the read
+- live UK market context: FTSE 100, FTSE 250, GBP/USD, EUR/GBP, UK gilts (2Y, 10Y), Brent crude
+- breaking UK/European developments from the last 6 hours via web search
+- official statements from BoE, HM Treasury, OBR, ONS, OFGEM that materially change the read
+- UK political developments (Parliament, Cabinet Office, Downing Street)
 
 ## Step 2: Think Before Writing
 
@@ -136,15 +139,19 @@ For each major pattern, state:
 
 ### 5. Historical Parallels
 
-Ask: what does this rhyme with?
+Ask: what does this rhyme with? — Include UK-specific precedents where relevant.
 
 Useful comparisons may include:
 
-- early 2020 health-risk buildup
-- 2007-2008 financial deterioration
-- 2021-2022 inflation and commodity shock
-- pre-invasion 2022 Europe escalation
-- prior oil, metals, or volatility regimes
+- **UK-specific**: Liz Truss mini-budget (Sept 2022) gilt crisis and sterling crash
+- **UK-specific**: 2016 Brexit vote sterling shock and FTSE 250 divergence from FTSE 100
+- **UK-specific**: 1992 Black Wednesday ERM exit — sterling under speculative attack
+- **UK-specific**: 1970s stagflation — UK worse than US, IMF bailout 1976
+- Early 2020 health-risk buildup
+- 2007-2008 financial deterioration (UK: Northern Rock bank run)
+- 2021-2022 inflation and commodity shock — UK hit harder than EU due to Brexit supply chain friction
+- Pre-invasion 2022 Europe escalation — UK gas storage vulnerability
+- Prior oil, metals, or volatility regimes
 
 For each parallel:
 
@@ -155,15 +162,17 @@ For each parallel:
 
 ### 6. Market and Asset Implications
 
-Translate the worldview into consequences for:
+Translate the worldview into consequences for — **UK-first perspective**:
 
-- equities
-- bonds and rates
-- commodities
-- gold and silver
-- oil and gas
-- crypto
-- sectors, countries, or themes likely to outperform or underperform
+- **UK equities**: FTSE 100 (international earners, USD-sensitive), FTSE 250 (domestic UK economy)
+- **Sterling**: GBP/USD, EUR/GBP — key macro signal for UK purchasing power and inflation pass-through
+- **UK gilts**: 2Y, 10Y, 30Y yields — BoE policy sensitivity, fiscal sustainability
+- **UK credit**: IG and HY spreads, corporate bond ETFs (SLXX.L, IUKD.L)
+- **Brent crude** (UK/EU benchmark, not WTI) — energy import costs, inflation
+- **NBP natural gas** — UK domestic energy pricing, OFGEM cap implications
+- **European context**: EUR/GBP transmission, Eurozone policy spill-overs
+- **Global reference**: Gold, crypto, S&P 500 as risk-on/risk-off indicators
+- **Sectors**: UK banks, UK housebuilders, UK energy (BP, Shell), UK defence (BAE Systems)
 
 Be explicit on direction when the evidence supports it.
 

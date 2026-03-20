@@ -82,13 +82,16 @@ Use this output shape for every intelligence briefing.
 
 ## 6. Market and Asset Implications
 
-- Equities:
-- Bonds and rates:
-- Commodities:
+- UK equities (FTSE 100 / FTSE 250):
+- Sterling (GBP/USD, EUR/GBP):
+- UK gilts (2Y / 10Y / 30Y):
+- Brent crude (UK/EU oil benchmark):
+- UK energy / NBP gas:
+- European context (Euro Stoxx, ECB):
 - Gold and silver:
-- Oil and gas:
 - Crypto:
-- Sector and country effects:
+- Global reference (S&P 500, USD):
+- UK sector and theme effects:
 
 ## 7. Decision Board
 

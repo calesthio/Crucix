@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-// Crucix Master Orchestrator — runs all intelligence sources in parallel
-// Outputs structured JSON for Claude to synthesize into actionable briefing
+// Crucix-UK Master Orchestrator — UK-centric intelligence sweep
+// Runs all intelligence sources in parallel, UK data sources replacing US equivalents.
+// Outputs structured JSON for LLM synthesis into actionable briefings.
 
 import './utils/env.mjs'; // Load API keys from .env
 import { pathToFileURL } from 'node:url';
@@ -15,33 +16,33 @@ import { briefing as safecast } from './sources/safecast.mjs';
 import { briefing as acled } from './sources/acled.mjs';
 import { briefing as reliefweb } from './sources/reliefweb.mjs';
 import { briefing as who } from './sources/who.mjs';
-import { briefing as ofac } from './sources/ofac.mjs';
+import { briefing as ofac } from './sources/ofac.mjs';           // US OFAC + UK OFSI
 import { briefing as opensanctions } from './sources/opensanctions.mjs';
 import { briefing as adsb } from './sources/adsb.mjs';
 
-// === Tier 2: Economic & Financial ===
-import { briefing as fred } from './sources/fred.mjs';
-import { briefing as treasury } from './sources/treasury.mjs';
-import { briefing as bls } from './sources/bls.mjs';
-import { briefing as eia } from './sources/eia.mjs';
-import { briefing as gscpi } from './sources/gscpi.mjs';
-import { briefing as usaspending } from './sources/usaspending.mjs';
+// === Tier 2: Economic & Financial (UK-centric) ===
+import { briefing as boe } from './sources/boe.mjs';             // Bank of England (replaces FRED)
+import { briefing as ukdmo } from './sources/ukdmo.mjs';         // UK DMO gilts (replaces US Treasury)
+import { briefing as ons } from './sources/ons.mjs';             // ONS UK stats (replaces BLS)
+import { briefing as ukpower } from './sources/ukpower.mjs';     // UK energy/grid (replaces EIA)
+import { briefing as gscpi } from './sources/gscpi.mjs';         // NY Fed GSCPI (global supply chains)
+import { briefing as ukspending } from './sources/ukspending.mjs'; // UK Contracts Finder (replaces USAspending)
 import { briefing as comtrade } from './sources/comtrade.mjs';
 
-// === Tier 3: Weather, Environment, Technology, Social ===
-import { briefing as noaa } from './sources/noaa.mjs';
-import { briefing as epa } from './sources/epa.mjs';
-import { briefing as patents } from './sources/patents.mjs';
+// === Tier 3: Weather, Environment, Technology, Social (UK-centric) ===
+import { briefing as metoffice } from './sources/metoffice.mjs'; // UK Met Office/EA (replaces NOAA)
+import { briefing as eurdep } from './sources/eurdep.mjs';       // EURDEP radiation (replaces EPA RadNet)
+import { briefing as ukpatents } from './sources/ukpatents.mjs'; // UK/EU patents (replaces USPTO)
 import { briefing as bluesky } from './sources/bluesky.mjs';
-import { briefing as reddit } from './sources/reddit.mjs';
+import { briefing as reddit } from './sources/reddit.mjs';       // UK-focused subreddits
 import { briefing as telegram } from './sources/telegram.mjs';
 import { briefing as kiwisdr } from './sources/kiwisdr.mjs';
 
 // === Tier 4: Space & Satellites ===
 import { briefing as space } from './sources/space.mjs';
 
-// === Tier 5: Live Market Data ===
-import { briefing as yfinance } from './sources/yfinance.mjs';
+// === Tier 5: Live Market Data (UK-centric) ===
+import { briefing as yfinance } from './sources/yfinance.mjs';   // FTSE 100, GBP/USD, Brent, gilts ETF
 
 const SOURCE_TIMEOUT_MS = 30_000; // 30s max per individual source
 
@@ -63,7 +64,7 @@ export async function runSource(name, fn, ...args) {
 }
 
 export async function fullBriefing() {
-  console.error('[Crucix] Starting intelligence sweep — 27 sources...');
+  console.error('[Crucix-UK] Starting UK intelligence sweep — 27 sources...');
   const start = Date.now();
 
   const allPromises = [
@@ -76,33 +77,33 @@ export async function fullBriefing() {
     runSource('ACLED', acled),
     runSource('ReliefWeb', reliefweb),
     runSource('WHO', who),
-    runSource('OFAC', ofac),
+    runSource('OFAC+OFSI', ofac),                                  // US + UK sanctions
     runSource('OpenSanctions', opensanctions),
     runSource('ADS-B', adsb),
 
-    // Tier 2: Economic & Financial
-    runSource('FRED', fred, process.env.FRED_API_KEY),
-    runSource('Treasury', treasury),
-    runSource('BLS', bls, process.env.BLS_API_KEY),
-    runSource('EIA', eia, process.env.EIA_API_KEY),
+    // Tier 2: Economic & Financial (UK-centric)
+    runSource('BoE', boe),                                         // Bank of England
+    runSource('UK-DMO', ukdmo),                                    // UK gilts & fiscal
+    runSource('ONS', ons),                                         // UK CPI, unemployment, GDP
+    runSource('UK-Power', ukpower),                                // National Grid ESO
     runSource('GSCPI', gscpi),
-    runSource('USAspending', usaspending),
+    runSource('UK-Spending', ukspending),                          // UK Contracts Finder
     runSource('Comtrade', comtrade),
 
-    // Tier 3: Weather, Environment, Technology, Social
-    runSource('NOAA', noaa),
-    runSource('EPA', epa),
-    runSource('Patents', patents),
+    // Tier 3: Weather, Environment, Technology, Social (UK-centric)
+    runSource('MetOffice', metoffice),                             // UK weather & flood warnings
+    runSource('EURDEP', eurdep),                                   // UK/European radiation
+    runSource('UK-Patents', ukpatents),                            // UK/EU patent intelligence
     runSource('Bluesky', bluesky),
-    runSource('Reddit', reddit),
+    runSource('Reddit', reddit),                                   // UK-focused subreddits
     runSource('Telegram', telegram),
     runSource('KiwiSDR', kiwisdr),
 
     // Tier 4: Space & Satellites
     runSource('Space', space),
 
-    // Tier 5: Live Market Data
-    runSource('YFinance', yfinance),
+    // Tier 5: Live Market Data (UK-centric)
+    runSource('YFinance', yfinance),                               // FTSE 100, GBP/USD, Brent crude
   ];
 
   // Each runSource has its own 30s timeout, so allSettled will resolve
@@ -114,7 +115,8 @@ export async function fullBriefing() {
 
   const output = {
     crucix: {
-      version: '2.0.0',
+      version: '2.0.0-uk',
+      edition: 'UK',
       timestamp: new Date().toISOString(),
       totalDurationMs: totalMs,
       sourcesQueried: sources.length,
@@ -130,7 +132,7 @@ export async function fullBriefing() {
     ),
   };
 
-  console.error(`[Crucix] Sweep complete in ${totalMs}ms — ${output.crucix.sourcesOk}/${sources.length} sources returned data`);
+  console.error(`[Crucix-UK] Sweep complete in ${totalMs}ms — ${output.crucix.sourcesOk}/${sources.length} sources returned data`);
   return output;
 }
 

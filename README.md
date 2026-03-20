@@ -1,13 +1,12 @@
 <div align="center">
 
-# Crucix
+# Crucix-UK
 
-**Your own intelligence terminal. 27 sources. One command. Zero cloud.**
+**Your own intelligence terminal. 27 sources. One command. Zero cloud. UK-centric edition.**
 
-## [Visit The Live Site: crucix.live](https://www.crucix.live/)
+> **This is a UK-centric fork of [Crucix](https://www.crucix.live/).** US data sources (FRED, BLS, NOAA, EPA RadNet, EIA, USAspending, USPTO) have been replaced with UK and European equivalents. The intelligence lens is calibrated for UK investors, analysts, and researchers: FTSE 100, sterling, Bank of England, UK gilts, Brent crude, and UK strategic interests.
 
-[![Live Website](https://img.shields.io/badge/live-crucix.live-00d4ff?style=for-the-badge)](https://www.crucix.live/)
-[![Open Demo](https://img.shields.io/badge/open-live%20dashboard-0b1220?style=for-the-badge&logo=googlechrome&logoColor=white)](https://www.crucix.live/)
+## [Visit The Original: crucix.live](https://www.crucix.live/)
 
 [![Node.js 22+](https://img.shields.io/badge/node-22%2B-brightgreen)](#quick-start)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
@@ -115,15 +114,15 @@ A self-contained Jarvis-style HUD with:
 - **9 marker types** across both views: fire detections, air traffic, radiation sites, maritime chokepoints, SDR receivers, OSINT events, health alerts, geolocated news, conflict events
 - **Animated 3D flight corridor arcs** between air traffic hotspots and global hubs
 - **Region filters** (World, Americas, Europe, Middle East, Asia Pacific, Africa) — rotates the globe or zooms the flat map
-- **Live market data** — indexes, crypto, energy, commodities via Yahoo Finance (no API key needed)
-- **Risk gauges** — VIX, high-yield spread, supply chain pressure index
+- **Live UK market data** — FTSE 100, FTSE 250, GBP/USD, EUR/GBP, UK gilts ETF, Brent crude, gold, crypto via Yahoo Finance (no API key needed)
+- **Risk gauges** — VIX, VFTSE, high-yield spread, UK supply chain pressure index
 - **OSINT feed** — English-language posts from 17 Telegram intelligence channels (expandable)
 - **News ticker** — merged RSS + GDELT headlines + Telegram posts, auto-scrolling
 - **Sweep delta** — live panel showing what changed since last sweep (new signals, escalations, de-escalations with severity)
 - **Cross-source signals** — correlated intelligence across satellite, economic, conflict, and social domains
-- **Nuclear watch** — real-time radiation readings from Safecast + EPA RadNet
+- **Nuclear watch** — real-time radiation readings from Safecast + EURDEP (European Radiological Data Exchange Platform, UK stations via UKHSA)
 - **Space watch** — CelesTrak satellite tracking: recent launches, ISS, military constellations, Starlink/OneWeb counts
-- **Leverageable ideas** — AI-generated trade ideas (with LLM) or signal-correlated ideas (without)
+- **Leverageable ideas** — AI-generated UK-focused trade ideas (with LLM) or signal-correlated ideas (without)
 
 ### Performance Modes
 The `PERF HIGH` / `PERF LOW` button in the top bar only changes rendering behavior - it does **not** remove data sources or reduce sweep coverage.
@@ -206,11 +205,12 @@ cp .env.example .env
 
 | Key | Source | How to Get |
 |-----|--------|------------|
-| `FRED_API_KEY` | Federal Reserve Economic Data | [fred.stlouisfed.org](https://fred.stlouisfed.org/docs/api/api_key.html) — instant, free |
 | `FIRMS_MAP_KEY` | NASA FIRMS (satellite fire data) | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov/api/area/) — instant, free |
-| `EIA_API_KEY` | US Energy Information Administration | [api.eia.gov](https://www.eia.gov/opendata/register.php) — instant, free |
+| `MET_OFFICE_API_KEY` | UK Met Office DataPoint | [metoffice.gov.uk/services/data/datapoint](https://www.metoffice.gov.uk/services/data/datapoint/api) — instant, free |
 
-These three unlock the most valuable economic and satellite data. Each takes about 60 seconds to register.
+> **Note (UK edition):** Bank of England, ONS, UK DMO, National Grid ESO, Contracts Finder, and Environment Agency data are all free with **no API key required** — they'll work out of the box. `FIRMS_MAP_KEY` unlocks satellite fire detection globally. `MET_OFFICE_API_KEY` adds enhanced UK weather warnings beyond the free EA flood data.
+
+These unlock the most valuable satellite and weather data. Each takes about 60 seconds to register.
 
 ### Optional (enable additional sources)
 
@@ -350,31 +350,31 @@ crucix/
 | **ACLED** | Armed conflict events: battles, explosions, protests | Free (OAuth2) |
 | **ReliefWeb** | UN humanitarian crisis tracking | None |
 | **WHO** | Disease outbreaks and health emergencies | None |
-| **OFAC** | US Treasury sanctions (SDN list) | None |
+| **OFAC + OFSI** | US Treasury SDN list + UK OFSI Consolidated Sanctions List (HM Treasury) | None |
 | **OpenSanctions** | Aggregated global sanctions (30+ sources) | Partial |
-| **ADS-B Exchange** | Unfiltered flight tracking including military | Paid |
+| **ADS-B Exchange** | Unfiltered flight tracking including military (UK RAF callsigns prioritised) | Paid |
 
-### Tier 2: Economic & Financial (7)
+### Tier 2: Economic & Financial — UK Edition (7)
 
 | Source | What It Tracks | Auth |
 |--------|---------------|------|
-| **FRED** | 22 key indicators: yield curve, CPI, VIX, fed funds, M2 | Free key |
-| **US Treasury** | National debt, yields, fiscal data | None |
-| **BLS** | CPI, unemployment, nonfarm payrolls, PPI | None |
-| **EIA** | WTI/Brent crude, natural gas, inventories | Free key |
+| **Bank of England** | Bank Rate, gilt yields (2Y/5Y/10Y/30Y), M4, Sterling ERI | None |
+| **UK DMO** | UK gilt market, UK national debt, public sector borrowing | None |
+| **ONS** | UK CPI, core inflation, unemployment, GDP growth, average earnings | None |
+| **UK Power (NESO)** | National Grid generation mix (wind/gas/nuclear/solar), carbon intensity | None |
 | **GSCPI** | NY Fed Global Supply Chain Pressure Index | None |
-| **USAspending** | Federal spending and defense contracts | None |
+| **UK Spending** | UK government contracts (Contracts Finder, Find a Tender) — defence, MoD, Home Office | None |
 | **UN Comtrade** | Strategic commodity trade flows between major powers | None |
 
-### Tier 3: Weather, Environment, Tech, Social, SIGINT (7)
+### Tier 3: Weather, Environment, Tech, Social, SIGINT — UK Edition (7)
 
 | Source | What It Tracks | Auth |
 |--------|---------------|------|
-| **NOAA/NWS** | Active US weather alerts | None |
-| **EPA RadNet** | US government radiation monitoring | None |
-| **USPTO Patents** | Patent filings in 7 strategic tech areas | None |
+| **Met Office / EA** | UK flood warnings (Environment Agency), UK weather alerts (Met Office DataPoint) | Optional |
+| **EURDEP** | European Radiological Data Exchange Platform — gamma dose rates, UK UKHSA stations | None |
+| **UK Patents** | Patent filings in 8 strategic tech areas, UK/EU assignee focus (BAE, Arm, AZ, QinetiQ…) | None |
 | **Bluesky** | Social sentiment on geopolitical/market topics | None |
-| **Reddit** | Social sentiment from key subreddits | OAuth |
+| **Reddit** | UK-focused subreddits: r/unitedkingdom, r/ukpolitics, r/UKInvesting, r/Economics | OAuth |
 | **Telegram** | 17 curated OSINT/conflict/finance channels (web scraping, expandable via config) | None |
 | **KiwiSDR** | Global HF radio receiver network (~600 receivers) | None |
 
@@ -388,7 +388,7 @@ crucix/
 
 | Source | What It Tracks | Auth |
 |--------|---------------|------|
-| **Yahoo Finance** | Real-time prices: SPY, QQQ, BTC, Gold, WTI, VIX + 9 more | None |
+| **Yahoo Finance** | FTSE 100, FTSE 250, GBP/USD, EUR/GBP, UK gilts ETF, Brent crude, gold, BTC, VFTSE | None |
 
 ---
 
@@ -491,7 +491,7 @@ This is normal — the first sweep takes 30–60 seconds to query all 27 sources
 
 ### Some sources show errors
 
-Expected behavior. Sources that require API keys will return structured errors if the key isn't set. The rest of the sweep continues normally. Check the Source Integrity section in the dashboard (or the server logs) to see which sources failed and why. The 3 most impactful free keys to add are `FRED_API_KEY`, `FIRMS_MAP_KEY`, and `EIA_API_KEY`.
+Expected behavior. Sources that require API keys will return structured errors if the key isn't set. The rest of the sweep continues normally. Check the Source Integrity section in the dashboard (or the server logs) to see which sources failed and why. The most impactful free keys to add are `FIRMS_MAP_KEY` (satellite fire data) and `MET_OFFICE_API_KEY` (UK weather warnings). Bank of England, ONS, and National Grid ESO work without any key.
 
 OpenSky can also return `HTTP 429` when its public hotspots are queried too aggressively. Crucix does not try to evade that limit. Instead, it surfaces the throttle/error in source health and preserves the most recent non-empty air traffic snapshot from `runs/` so the dashboard flight layer does not suddenly go blank on a throttled sweep.
 
