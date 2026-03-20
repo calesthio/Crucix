@@ -57,15 +57,33 @@ export async function briefing() {
       wildfires: fire.length,
       other: other.length,
     },
-    topAlerts: features.slice(0, 15).map(f => ({
-      event: f.properties?.event,
-      severity: f.properties?.severity,
-      urgency: f.properties?.urgency,
-      headline: f.properties?.headline,
-      areas: f.properties?.areaDesc,
-      onset: f.properties?.onset,
-      expires: f.properties?.expires,
-    })),
+    topAlerts: features.slice(0, 15).map(f => {
+      // Extract centroid from GeoJSON geometry
+      let lat = null, lon = null;
+      const geo = f.geometry;
+      if (geo?.type === 'Polygon' && geo.coordinates?.[0]?.length) {
+        const coords = geo.coordinates[0];
+        lat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+        lon = coords.reduce((s, c) => s + c[0], 0) / coords.length;
+      } else if (geo?.type === 'MultiPolygon' && geo.coordinates?.length) {
+        const coords = geo.coordinates[0][0];
+        lat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+        lon = coords.reduce((s, c) => s + c[0], 0) / coords.length;
+      } else if (geo?.type === 'Point') {
+        [lon, lat] = geo.coordinates;
+      }
+      return {
+        event: f.properties?.event,
+        severity: f.properties?.severity,
+        urgency: f.properties?.urgency,
+        headline: f.properties?.headline,
+        areas: f.properties?.areaDesc,
+        onset: f.properties?.onset,
+        expires: f.properties?.expires,
+        lat: lat != null ? +lat.toFixed(3) : null,
+        lon: lon != null ? +lon.toFixed(3) : null,
+      };
+    }),
   };
 }
 

@@ -34,8 +34,6 @@ AGENTS.md
 *.log
 npm-debug.log*
 
-# Docker
-.dockerignore
 
 # Package lock (optional — remove this line if you want deterministic installs)
 # package-lock.json
@@ -45,3 +43,6 @@ npm-debug.log*
 
 # Local maintainer notes
 MAINTAINER_DECISIONS.local.md
+
+# Local deploy config
+dashboard/public/vercel.json

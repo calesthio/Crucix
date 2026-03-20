@@ -1,7 +1,7 @@
 {
   "name": "crucix",
   "version": "2.0.0",
-  "description": "Local intelligence engine — 26 OSINT sources, live dashboard, auto-refresh, optional LLM layer.",
+  "description": "Local intelligence engine - 27 OSINT sources, live dashboard, public demo at crucix.live, auto-refresh, optional LLM layer.",
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
@@ -16,7 +16,12 @@
     "test": "node --test test/",
     "test:cursor-integration": "node --test test/llm-cursor-integration.test.mjs"
   },
-  "keywords": ["osint", "intelligence", "dashboard", "geopolitical"],
+  "keywords": [
+    "osint",
+    "intelligence",
+    "dashboard",
+    "geopolitical"
+  ],
   "author": "Crucix",
   "license": "AGPL-3.0-only",
   "engines": {
@@ -28,6 +33,7 @@
     "express": "^5.1.0"
   },
   "optionalDependencies": {
-    "discord.js": "^14.25.0"
-  }
+    "discord.js": "^14.25.1"  },
+  "overrides": {
+    "undici": "^7.24.4"  }
 }
