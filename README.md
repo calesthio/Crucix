@@ -48,6 +48,13 @@ Try the live demo first at [https://www.crucix.live/](https://www.crucix.live/),
 
 No cloud. No telemetry. No subscriptions. Just `node server.mjs` and you're running.
 
+## Token / Asset Warning
+
+> [!WARNING]
+> **Crucix has not launched any official token, coin, NFT, airdrop, presale, or other blockchain-based asset.**
+> Any token or digital asset using the Crucix name, logo, or branding is not affiliated with or endorsed by Crucix.
+> Do not buy it, promote it, connect a wallet to claim it, sign transactions, or send funds based on third-party posts, DMs, or websites.
+
 ---
 
 ## Why This Exists
