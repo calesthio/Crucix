@@ -2,8 +2,18 @@
 
 import './apis/utils/env.mjs'; // Load .env first
 
+// Security: validate PORT is numeric and in safe range
+function validatePort(val) {
+  const port = parseInt(val);
+  if (isNaN(port) || port < 1024 || port > 65535) {
+    console.warn('[Crucix] Invalid PORT, using default 3117');
+    return 3117;
+  }
+  return port;
+}
+
 export default {
-  port: parseInt(process.env.PORT) || 3117,
+  port: validatePort(process.env.PORT),
   refreshIntervalMinutes: parseInt(process.env.REFRESH_INTERVAL_MINUTES) || 15,
 
   llm: {
