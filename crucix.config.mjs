@@ -5,6 +5,7 @@ import './apis/utils/env.mjs'; // Load .env first
 export default {
   port: parseInt(process.env.PORT) || 3117,
   refreshIntervalMinutes: parseInt(process.env.REFRESH_INTERVAL_MINUTES) || 15,
+  llmEveryNSweeps: parseInt(process.env.LLM_EVERY_N_SWEEPS) || 1,
 
   llm: {
     provider: process.env.LLM_PROVIDER || null, // anthropic | openai | gemini | codex | openrouter | minimax | mistral
