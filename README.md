@@ -186,10 +186,11 @@ Alerts are delivered as rich embeds with color-coded sidebars: red for FLASH, ye
 **Optional dependency:** The full bot requires `discord.js`. Install it with `npm install discord.js`. If it's not installed, Crucix automatically falls back to webhook-only mode.
 
 ### Optional LLM Layer
-Connect any of 6 LLM providers for enhanced analysis:
+Connect any of 7 LLM providers — including local models — for enhanced analysis:
 - **AI trade ideas** — quantitative analyst producing 5-8 actionable ideas citing specific data
 - **Smarter alert evaluation** — LLM classifies signals into FLASH/PRIORITY/ROUTINE tiers with cross-domain correlation and confidence scoring
 - Providers: Anthropic Claude, OpenAI, Google Gemini, OpenRouter (Unified API), OpenAI Codex (ChatGPT subscription), MiniMax, Mistral
+- **Local LLMs** — use `openai-compatible` with `LLM_BASE_URL` to point at LM Studio, Ollama, or any OpenAI-compatible endpoint. No API key required.
 - Graceful fallback — when LLM is unavailable, a rule-based engine takes over alert evaluation. LLM failures never crash the sweep cycle.
 
 ---
@@ -222,12 +223,13 @@ These three unlock the most valuable economic and satellite data. Each takes abo
 
 ### LLM Provider (optional, for AI-enhanced ideas)
 
-Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`
+Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `openai-compatible`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`
 
 | Provider | Key Required | Default Model |
 |----------|-------------|---------------|
 | `anthropic` | `LLM_API_KEY` | claude-sonnet-4-6 |
 | `openai` | `LLM_API_KEY` | gpt-5.4 |
+| `openai-compatible` | None (set `LLM_BASE_URL`) | — |
 | `gemini` | `LLM_API_KEY` | gemini-3.1-pro |
 | `openrouter` | `LLM_API_KEY` | openrouter/auto |
 | `codex` | None (uses `~/.codex/auth.json`) | gpt-5.3-codex |
@@ -235,6 +237,14 @@ Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrou
 | `mistral` | `LLM_API_KEY` | mistral-large-latest |
 
 For Codex, run `npx @openai/codex login` to authenticate via your ChatGPT subscription.
+
+**Local LLMs (LM Studio, Ollama, etc.):** Set `LLM_PROVIDER=openai-compatible` and point `LLM_BASE_URL` at any OpenAI-compatible endpoint. No API key needed.
+
+```env
+LLM_PROVIDER=openai-compatible
+LLM_MODEL=local-model-name
+LLM_BASE_URL=http://localhost:1234/v1/chat/completions
+```
 
 ### Telegram Bot + Alerts (optional)
 
@@ -401,6 +411,7 @@ crucix/
 | `npm run inject` | `node dashboard/inject.mjs` | Inject latest data into static HTML |
 | `npm run brief:save` | `node apis/save-briefing.mjs` | Run sweep + save timestamped JSON |
 | `npm run diag` | `node diag.mjs` | Run diagnostics (Node version, imports, port check) |
+| `npm test` | `node --test test/*.test.mjs` | Run full test suite (412 tests, 100% coverage) |
 
 ---
 
@@ -412,9 +423,10 @@ All settings are in `.env` with sensible defaults:
 |----------|---------|-------------|
 | `PORT` | `3117` | Dashboard server port |
 | `REFRESH_INTERVAL_MINUTES` | `15` | Auto-refresh interval |
-| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, or `mistral` |
+| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `openai-compatible`, `gemini`, `codex`, `openrouter`, `minimax`, or `mistral` |
 | `LLM_API_KEY` | — | API key (not needed for codex) |
 | `LLM_MODEL` | per-provider default | Override model selection |
+| `LLM_BASE_URL` | — | Custom endpoint for local/OpenAI-compatible LLMs (LM Studio, Ollama, etc.) |
 | `TELEGRAM_BOT_TOKEN` | disabled | For Telegram alerts + bot commands |
 | `TELEGRAM_CHAT_ID` | — | Your Telegram chat ID |
 | `TELEGRAM_CHANNELS` | — | Extra channel IDs to monitor (comma-separated) |
