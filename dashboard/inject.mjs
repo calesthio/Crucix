@@ -5,7 +5,7 @@
 //
 // Exports synthesize(), generateIdeas(), fetchAllNews() for use by server.mjs
 
-import { readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
@@ -102,6 +102,49 @@ function sanitizeExternalUrl(raw) {
   }
 }
 
+function sumAirHotspots(hotspots = []) {
+  return hotspots.reduce((sum, hotspot) => sum + (hotspot.totalAircraft || 0), 0);
+}
+
+function summarizeAirHotspots(hotspots = []) {
+  return hotspots.map(h => ({
+    region: h.region,
+    total: h.totalAircraft || 0,
+    noCallsign: h.noCallsign || 0,
+    highAlt: h.highAltitude || 0,
+    top: Object.entries(h.byCountry || {}).sort((a, b) => b[1] - a[1]).slice(0, 5),
+  }));
+}
+
+function loadOpenSkyFallback(currentTimestamp) {
+  const runsDir = join(ROOT, 'runs');
+  if (!existsSync(runsDir)) return null;
+
+  const currentMs = currentTimestamp ? new Date(currentTimestamp).getTime() : NaN;
+  const files = readdirSync(runsDir)
+    .filter(name => /^briefing_.*\.json$/.test(name))
+    .sort()
+    .reverse();
+
+  for (const file of files) {
+    const filePath = join(runsDir, file);
+    try {
+      const prior = JSON.parse(readFileSync(filePath, 'utf8'));
+      const priorTimestamp = prior.sources?.OpenSky?.timestamp || prior.crucix?.timestamp || null;
+      if (priorTimestamp && Number.isFinite(currentMs) && new Date(priorTimestamp).getTime() >= currentMs) continue;
+
+      const hotspots = prior.sources?.OpenSky?.hotspots || [];
+      if (sumAirHotspots(hotspots) > 0) {
+        return { file, timestamp: priorTimestamp, hotspots };
+      }
+    } catch {
+      // Ignore unreadable historical runs and continue searching backward.
+    }
+  }
+
+  return null;
+}
+
 // === RSS Fetching ===
 async function fetchRSS(url, source) {
   try {
@@ -123,6 +166,14 @@ async function fetchRSS(url, source) {
     return [];
   }
 }
+
+const RSS_SOURCE_FALLBACKS = {
+  'SBS Australia': { lat: -35.2809, lon: 149.13, region: 'Australia' },
+  'Indian Express': { lat: 28.6139, lon: 77.209, region: 'India' },
+  'The Hindu': { lat: 13.0827, lon: 80.2707, region: 'India' },
+  'MercoPress': { lat: -34.9011, lon: -56.1645, region: 'South America' }
+};
+const REGIONAL_NEWS_SOURCES = ['MercoPress', 'Indian Express', 'The Hindu', 'SBS Australia'];
 
 export async function fetchAllNews() {
   const feeds = [
@@ -146,6 +197,12 @@ export async function fetchAllNews() {
     ['https://rss.nytimes.com/services/xml/rss/nyt/Africa.xml', 'NYT Africa'],
     // Asia-Pacific
     ['https://rss.nytimes.com/services/xml/rss/nyt/AsiaPacific.xml', 'NYT Asia'],
+    ['https://www.sbs.com.au/news/topic/australia/feed', 'SBS Australia'],
+    // India
+    ['https://indianexpress.com/section/india/feed/', 'Indian Express'],
+    ['https://www.thehindu.com/news/national/feeder/default.rss', 'The Hindu'],
+    // South America
+    ['https://en.mercopress.com/rss/latin-america', 'MercoPress'],
   ];
 
   const results = await Promise.allSettled(
@@ -163,7 +220,7 @@ export async function fetchAllNews() {
     const key = item.title.substring(0, 40).toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    const geo = geoTagText(item.title);
+    const geo = geoTagText(item.title) || RSS_SOURCE_FALLBACKS[item.source];
     if (geo) {
       geoNews.push({
         title: item.title.substring(0, 100),
@@ -180,7 +237,23 @@ export async function fetchAllNews() {
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const filtered = geoNews.filter(n => !n.date || new Date(n.date) >= cutoff);
   filtered.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-  return filtered.slice(0, 50);
+
+  const selected = [];
+  const selectedKeys = new Set();
+  const keyFor = item => `${item.source}|${item.title}|${item.date}`;
+  const pushUnique = item => {
+    const key = keyFor(item);
+    if (selectedKeys.has(key)) return;
+    selected.push(item);
+    selectedKeys.add(key);
+  };
+
+  // Reserve a little space so newly-added regional feeds are not crowded out by larger globals.
+  for (const source of REGIONAL_NEWS_SOURCES) {
+    filtered.filter(item => item.source === source).slice(0, 2).forEach(pushUnique);
+  }
+  filtered.forEach(pushUnique);
+  return selected.slice(0, 50);
 }
 
 // === Leverageable Ideas from Signals ===
@@ -326,11 +399,12 @@ export function generateIdeas(V2) {
 
 // === Synthesize raw sweep data into dashboard format ===
 export async function synthesize(data) {
-  const air = (data.sources.OpenSky?.hotspots || []).map(h => ({
-    region: h.region, total: h.totalAircraft || 0, noCallsign: h.noCallsign || 0,
-    highAlt: h.highAltitude || 0,
-    top: Object.entries(h.byCountry || {}).sort((a, b) => b[1] - a[1]).slice(0, 5)
-  }));
+  const liveAirHotspots = data.sources.OpenSky?.hotspots || [];
+  const airFallback = sumAirHotspots(liveAirHotspots) > 0
+    ? null
+    : loadOpenSkyFallback(data.sources.OpenSky?.timestamp || data.crucix?.timestamp);
+  const effectiveAirHotspots = airFallback?.hotspots || liveAirHotspots;
+  const air = summarizeAirHotspots(effectiveAirHotspots);
   const thermal = (data.sources.FIRMS?.hotspots || []).map(h => ({
     region: h.region, det: h.totalDetections || 0, night: h.nightDetections || 0,
     hc: h.highConfidence || 0,
@@ -511,6 +585,14 @@ export async function synthesize(data) {
 
   const V2 = {
     meta: data.crucix, air, thermal, tSignals, chokepoints, nuke, nukeSignals,
+    airMeta: {
+      fallback: Boolean(airFallback),
+      liveTotal: sumAirHotspots(liveAirHotspots),
+      timestamp: airFallback?.timestamp || data.sources.OpenSky?.timestamp || data.crucix?.timestamp || null,
+      source: airFallback ? 'OpenSky fallback' : 'OpenSky',
+      ...(airFallback ? { fallbackFile: airFallback.file } : {}),
+      ...(data.sources.OpenSky?.error ? { error: data.sources.OpenSky.error } : {}),
+    },
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
     tg: { posts: tgData.totalPosts || 0, urgent: tgUrgent, topPosts: tgTop },
     who, fred, energy, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, news,
@@ -568,7 +650,22 @@ function buildNewsFeed(rssNews, gdeltData, tgUrgent, tgTop) {
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const recent = feed.filter(item => !item.timestamp || new Date(item.timestamp) >= cutoff);
   recent.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
-  return recent.slice(0, 50);
+
+  const selected = [];
+  const selectedKeys = new Set();
+  const keyFor = item => `${item.type}|${item.source}|${item.headline}|${item.timestamp}`;
+  const pushUnique = item => {
+    const key = keyFor(item);
+    if (selectedKeys.has(key)) return;
+    selected.push(item);
+    selectedKeys.add(key);
+  };
+
+  for (const source of REGIONAL_NEWS_SOURCES) {
+    recent.filter(item => item.source === source).slice(0, 2).forEach(pushUnique);
+  }
+  recent.forEach(pushUnique);
+  return selected.slice(0, 50);
 }
 
 // === CLI Mode: inject into HTML file ===

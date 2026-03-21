@@ -48,6 +48,13 @@ Try the live demo first at [https://www.crucix.live/](https://www.crucix.live/),
 
 No cloud. No telemetry. No subscriptions. Just `node server.mjs` and you're running.
 
+## Token / Asset Warning
+
+> [!WARNING]
+> **Crucix has not launched any official token, coin, NFT, airdrop, presale, or other blockchain-based asset.**
+> Any token or digital asset using the Crucix name, logo, or branding is not affiliated with or endorsed by Crucix.
+> Do not buy it, promote it, connect a wallet to claim it, sign transactions, or send funds based on third-party posts, DMs, or websites.
+
 ---
 
 ## Why This Exists
@@ -117,6 +124,22 @@ A self-contained Jarvis-style HUD with:
 - **Nuclear watch** — real-time radiation readings from Safecast + EPA RadNet
 - **Space watch** — CelesTrak satellite tracking: recent launches, ISS, military constellations, Starlink/OneWeb counts
 - **Leverageable ideas** — AI-generated trade ideas (with LLM) or signal-correlated ideas (without)
+
+### Performance Modes
+The `VISUALS FULL` / `VISUALS LITE` button in the top bar only changes rendering behavior - it does **not** remove data sources or reduce sweep coverage.
+
+When you switch to **VISUALS LITE**, the dashboard:
+- Disables decorative background effects such as the radial/grid overlays and scanlines
+- Removes expensive blur/backdrop-filter effects on panels and overlays
+- Stops non-essential animations like the logo ring blink, conflict rings, and corridor flow effects
+- Disables globe auto-rotation and turns off animated flight-arc dashes
+- Converts the horizontal news ticker and OSINT stream into static, scrollable lists instead of continuously animated marquees
+
+Mobile-specific behavior:
+- On mobile, `VISUALS LITE` also forces the dashboard into **flat map mode** if you are currently on the globe
+- Future mobile loads will continue to start flat while low-perf mode is enabled
+
+The preference is saved in browser local storage, so the UI will remember your last setting.
 
 ### Auto-Refresh
 The server runs a sweep cycle every 15 minutes (configurable). Each cycle:
@@ -470,6 +493,8 @@ This is normal — the first sweep takes 30–60 seconds to query all 27 sources
 
 Expected behavior. Sources that require API keys will return structured errors if the key isn't set. The rest of the sweep continues normally. Check the Source Integrity section in the dashboard (or the server logs) to see which sources failed and why. The 3 most impactful free keys to add are `FRED_API_KEY`, `FIRMS_MAP_KEY`, and `EIA_API_KEY`.
 
+OpenSky can also return `HTTP 429` when its public hotspots are queried too aggressively. Crucix does not try to evade that limit. Instead, it surfaces the throttle/error in source health and preserves the most recent non-empty air traffic snapshot from `runs/` so the dashboard flight layer does not suddenly go blank on a throttled sweep.
+
 ### Telegram bot not responding to commands
 
 Make sure both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set in `.env`. The bot only responds to messages from the configured chat ID (security measure). You should see `[Crucix] Telegram alerts enabled` and `[Crucix] Bot command polling started` in the server logs on startup. If not, double-check your token with `curl https://api.telegram.org/bot<YOUR_TOKEN>/getMe`.
@@ -514,6 +539,18 @@ For contribution guidelines, review expectations, and source-add rules, see `CON
 For partnerships, integrations, or other non-issue inquiries, you can reach me at `celesthioailabs@gmail.com`.
 
 For bugs and feature requests, please use GitHub Issues so discussion stays visible and actionable.
+
+---
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=calesthio%2FCrucix&type=date&legend=top-left">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=calesthio/Crucix&type=date&theme=dark&legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=calesthio/Crucix&type=date&legend=top-left" />
+    <img alt="Star History Chart" src="https://api.star-history.com/image?repos=calesthio/Crucix&type=date&legend=top-left" />
+  </picture>
+</a>
 
 ---
 
