@@ -126,9 +126,9 @@ A self-contained Jarvis-style HUD with:
 - **Leverageable ideas** — AI-generated trade ideas (with LLM) or signal-correlated ideas (without)
 
 ### Performance Modes
-The `PERF HIGH` / `PERF LOW` button in the top bar only changes rendering behavior - it does **not** remove data sources or reduce sweep coverage.
+The `VISUALS FULL` / `VISUALS LITE` button in the top bar only changes rendering behavior - it does **not** remove data sources or reduce sweep coverage.
 
-When you switch to **PERF LOW**, the dashboard:
+When you switch to **VISUALS LITE**, the dashboard:
 - Disables decorative background effects such as the radial/grid overlays and scanlines
 - Removes expensive blur/backdrop-filter effects on panels and overlays
 - Stops non-essential animations like the logo ring blink, conflict rings, and corridor flow effects
@@ -136,7 +136,7 @@ When you switch to **PERF LOW**, the dashboard:
 - Converts the horizontal news ticker and OSINT stream into static, scrollable lists instead of continuously animated marquees
 
 Mobile-specific behavior:
-- On mobile, `PERF LOW` also forces the dashboard into **flat map mode** if you are currently on the globe
+- On mobile, `VISUALS LITE` also forces the dashboard into **flat map mode** if you are currently on the globe
 - Future mobile loads will continue to start flat while low-perf mode is enabled
 
 The preference is saved in browser local storage, so the UI will remember your last setting.
@@ -539,6 +539,18 @@ For contribution guidelines, review expectations, and source-add rules, see `CON
 For partnerships, integrations, or other non-issue inquiries, you can reach me at `celesthioailabs@gmail.com`.
 
 For bugs and feature requests, please use GitHub Issues so discussion stays visible and actionable.
+
+---
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=calesthio%2FCrucix&type=date&legend=top-left">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=calesthio/Crucix&type=date&theme=dark&legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=calesthio/Crucix&type=date&legend=top-left" />
+    <img alt="Star History Chart" src="https://api.star-history.com/image?repos=calesthio/Crucix&type=date&legend=top-left" />
+  </picture>
+</a>
 
 ---
 
