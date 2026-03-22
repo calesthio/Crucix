@@ -233,9 +233,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .tk-src.dw{color:#ef9a9a;border-color:rgba(239,154,154,0.3)}
 .tk-src.eu{color:#ce93d8;border-color:rgba(206,147,216,0.3)}
 .tk-src.af{color:#a5d6a7;border-color:rgba(165,214,167,0.3)}
-.tk-src.sa{color:#ffab91;border-color:rgba(255,171,145,0.3)}
-.tk-src.ind{color:#ffcc80;border-color:rgba(255,204,128,0.3)}
-.tk-src.anz{color:#80cbc4;border-color:rgba(128,203,196,0.3)}
 .tk-src.us{color:#90caf9;border-color:rgba(144,202,249,0.3)}
 .tk-src.other{color:#b0bec5;border-color:rgba(176,190,197,0.2)}
 .tk-head{font-size:11px;line-height:1.35;color:#c8d8d2;margin-top:3px}
@@ -1399,9 +1396,6 @@ function renderLower(){
     const sl = s.toLowerCase();
     // Africa-focused sources first (before generic DW/NYT)
     if (sl.includes('dw africa') || sl.includes('africa news') || sl.includes('nyt africa') || sl.includes('rfi')) return 'af';
-    if (sl.includes('mercopress')) return 'sa';
-    if (sl.includes('indian express') || sl.includes('the hindu')) return 'ind';
-    if (sl.includes('sbs')) return 'anz';
     if (sl.includes('bbc')) return 'bbc';
     if (sl.includes('jazeera') || sl.includes('alj')) return 'alj';
     if (sl.includes('gdelt')) return 'gdelt';
