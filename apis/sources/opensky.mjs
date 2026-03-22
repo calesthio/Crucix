@@ -69,6 +69,7 @@ export async function briefing() {
   const results = await Promise.all(
     hotspotEntries.map(async ([key, box]) => {
       const data = await getFlightsInArea(box.lamin, box.lomin, box.lamax, box.lomax);
+      const error = data?.error || null;
       const states = data?.states || [];
       return {
         region: box.label,
@@ -83,14 +84,25 @@ export async function briefing() {
         // Flag potentially interesting (military often have no callsign or specific patterns)
         noCallsign: states.filter(s => !s[1]?.trim()).length,
         highAltitude: states.filter(s => s[7] && s[7] > 12000).length, // >12km altitude
+        ...(error ? { error } : {}),
       };
     })
   );
+
+  const hotspotErrors = results
+    .filter(r => r.error)
+    .map(r => ({ region: r.region, error: r.error }));
 
   return {
     source: 'OpenSky',
     timestamp: new Date().toISOString(),
     hotspots: results,
+    ...(hotspotErrors.length ? {
+      error: hotspotErrors.length === results.length
+        ? `OpenSky unavailable across all hotspots: ${hotspotErrors[0].error}`
+        : `OpenSky unavailable for ${hotspotErrors.length}/${results.length} hotspots`,
+      hotspotErrors,
+    } : {}),
   };
 }
 

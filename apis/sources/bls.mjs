@@ -37,11 +37,15 @@ export async function getSeries(seriesIds, opts = {}) {
   if (apiKey) payload.registrationkey = apiKey;
 
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
     const res = await fetch(base, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: controller.signal,
     });
+    clearTimeout(timer);
     return await res.json();
   } catch (e) {
     return { error: e.message };

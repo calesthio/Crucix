@@ -1,15 +1,16 @@
 // Crucix Configuration — all settings with env var overrides
 
-import './apis/utils/env.mjs'; // Load .env first
+import "./apis/utils/env.mjs"; // Load .env first
 
 export default {
   port: parseInt(process.env.PORT) || 3117,
   refreshIntervalMinutes: parseInt(process.env.REFRESH_INTERVAL_MINUTES) || 15,
 
   llm: {
-    provider: process.env.LLM_PROVIDER || null, // anthropic | openai | gemini | codex | openrouter | minimax
+    provider: process.env.LLM_PROVIDER || null, // anthropic | openai | gemini | codex | openrouter | minimax | mistral | ollama
     apiKey: process.env.LLM_API_KEY || null,
     model: process.env.LLM_MODEL || null,
+    baseUrl: process.env.OLLAMA_BASE_URL || null,
   },
 
   telegram: {
@@ -22,7 +23,7 @@ export default {
   discord: {
     botToken: process.env.DISCORD_BOT_TOKEN || null,
     channelId: process.env.DISCORD_CHANNEL_ID || null,
-    guildId: process.env.DISCORD_GUILD_ID || null,   // Server ID (for instant slash command registration)
+    guildId: process.env.DISCORD_GUILD_ID || null, // Server ID (for instant slash command registration)
     webhookUrl: process.env.DISCORD_WEBHOOK_URL || null, // Fallback: webhook-only alerts (no bot needed)
   },
 

@@ -8,6 +8,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import config from './crucix.config.mjs';
+import { getLocale, currentLanguage, getSupportedLocales } from './lib/i18n.mjs';
 import { fullBriefing } from './apis/briefing.mjs';
 import { synthesize, generateIdeas } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
@@ -231,12 +232,20 @@ if (discordAlerter.isConfigured) {
 const app = express();
 app.use(express.static(join(ROOT, 'dashboard/public')));
 
-// Serve loading page until first sweep completes, then the dashboard
+// Serve loading page until first sweep completes, then the dashboard with injected locale
 app.get('/', (req, res) => {
   if (!currentData) {
     res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
   } else {
-    res.sendFile(join(ROOT, 'dashboard/public/jarvis.html'));
+    const htmlPath = join(ROOT, 'dashboard/public/jarvis.html');
+    let html = readFileSync(htmlPath, 'utf-8');
+    
+    // Inject locale data into the HTML
+    const locale = getLocale();
+    const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
+    html = html.replace('</head>', `${localeScript}\n</head>`);
+    
+    res.type('html').send(html);
   }
 });
 
@@ -263,6 +272,15 @@ app.get('/api/health', (req, res) => {
     llmProvider: config.llm.provider,
     telegramEnabled: !!(config.telegram.botToken && config.telegram.chatId),
     refreshIntervalMinutes: config.refreshIntervalMinutes,
+    language: currentLanguage,
+  });
+});
+
+// API: available locales
+app.get('/api/locales', (req, res) => {
+  res.json({
+    current: currentLanguage,
+    supported: getSupportedLocales(),
   });
 });
 
@@ -408,7 +426,7 @@ async function start() {
     process.exit(1);
   });
 
-  server.on('listening', () => {
+  server.on('listening', async () => {
     console.log(`[Crucix] Server running on http://localhost:${port}`);
 
     // Auto-open browser
@@ -420,17 +438,18 @@ async function start() {
       if (err) console.log('[Crucix] Could not auto-open browser:', err.message);
     });
 
-    // Try to load existing data first for instant display
+    // Try to load existing data first for instant display (await so dashboard shows immediately)
     try {
       const existing = JSON.parse(readFileSync(join(RUNS_DIR, 'latest.json'), 'utf8'));
-      synthesize(existing).then(data => {
-        currentData = data;
-        console.log('[Crucix] Loaded existing data from runs/latest.json');
-        broadcast({ type: 'update', data: currentData });
-      }).catch(() => {});
-    } catch { /* no existing data */ }
+      const data = await synthesize(existing);
+      currentData = data;
+      console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');
+      broadcast({ type: 'update', data: currentData });
+    } catch {
+      console.log('[Crucix] No existing data found — first sweep required');
+    }
 
-    // Run first sweep
+    // Run first sweep (refreshes data in background)
     console.log('[Crucix] Running initial sweep...');
     runSweepCycle().catch(err => {
       console.error('[Crucix] Initial sweep failed:', err.message || err);

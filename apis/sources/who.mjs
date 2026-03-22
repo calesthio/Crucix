@@ -51,7 +51,11 @@ export async function getOutbreakNews() {
       return db - da;
     });
 
-    return items.map(item => ({
+    // Filter to last 30 days only
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const recent = items.filter(item => new Date(item.PublicationDate || 0) >= cutoff);
+
+    return recent.map(item => ({
       title: item.Title,
       date: item.PublicationDate,
       donId: item.DonId || null,

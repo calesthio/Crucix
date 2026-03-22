@@ -130,18 +130,26 @@ fetch('/api/health')
   .catch(() => startCountdown(0));
 
 // === SSE — wait for sweep to complete, then redirect ===
+let redirected = false;
+function goToDashboard() {
+  if (redirected) return;
+  redirected = true;
+  clearInterval(countdownInterval);
+  clearInterval(pollInterval);
+  barFill.style.transition = 'width 0.4s ease';
+  barFill.style.width = '100%';
+  etaText.textContent = '';
+  statusText.textContent = 'TERMINAL READY — LOADING DASHBOARD';
+  setTimeout(() => location.replace('/'), 800);
+}
+
 const es = new EventSource('/events');
 es.onmessage = (e) => {
   try {
     const msg = JSON.parse(e.data);
     if (msg.type === 'update') {
       es.close();
-      clearInterval(countdownInterval);
-      barFill.style.transition = 'width 0.4s ease';
-      barFill.style.width = '100%';
-      etaText.textContent = '';
-      statusText.textContent = 'TERMINAL READY — LOADING DASHBOARD';
-      setTimeout(() => location.replace('/'), 800);
+      goToDashboard();
     }
   } catch {}
 };
@@ -149,6 +157,13 @@ es.onerror = () => {
   es.close();
   setTimeout(() => location.reload(), 3000);
 };
+
+// === Fallback polling — in case SSE misses the update ===
+const pollInterval = setInterval(() => {
+  fetch('/api/data').then(r => {
+    if (r.ok) goToDashboard();
+  }).catch(() => {});
+}, 5000);
 </script>
 </body>
 </html>

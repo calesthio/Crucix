@@ -14,6 +14,7 @@ import { safeFetch } from '../utils/fetch.mjs';
 const CHOKEPOINTS = {
   straitOfHormuz: { label: 'Strait of Hormuz', lat: 26.5, lon: 56.5, note: '20% of world oil' },
   suezCanal: { label: 'Suez Canal', lat: 30.5, lon: 32.3, note: '12% of world trade' },
+  straitOfGibraltar: { label: 'Strait of Gibraltar', lat: 36.0, lon: -5.7, note: 'Gateway to Mediterranean, ~10-20% global trade influence' },
   straitOfMalacca: { label: 'Strait of Malacca', lat: 2.5, lon: 101.5, note: '25% of world trade' },
   babElMandeb: { label: 'Bab el-Mandeb', lat: 12.6, lon: 43.3, note: 'Red Sea gateway' },
   taiwanStrait: { label: 'Taiwan Strait', lat: 24.0, lon: 119.0, note: '88% of largest container ships' },
