@@ -157,7 +157,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .lower{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;align-items:flex-start}
 .lower .g-panel{min-width:0;box-sizing:border-box}
 .lower .lp-ticker{flex:1.2 1 240px;max-width:380px}
-.lower .lp-delta{flex:1 1 200px;max-width:300px}
+.right-delta .delta-list{max-height:200px}
 .lower .lp-macro{flex:2.5 1 360px}
 .lower .lp-ideas{flex:1.5 1 300px}
 .lower-wide{width:100%}
@@ -277,7 +277,7 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
   .top-left,.top-center,.top-right{width:100%}
   .top-center{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
   .map-region-bar{display:none}
-  .top-right{gap:6px}
+  .top-right{gap:6px ; flex-wrap: wrap; justify-content: center;}
   .region-btn,.meta-pill,.alert-badge,.guide-btn{font-size:10px}
   .grid{display:flex;flex-direction:column}
   #centerCol{order:1}
@@ -287,7 +287,7 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
   .map-hint{font-size:8px;right:8px}
   .map-legend{left:8px;right:8px;bottom:8px;gap:4px}
   .leg-item{font-size:8px}
-  .lower .lp-ticker,.lower .lp-osint,.lower .lp-delta,.lower .lp-macro,.lower .lp-ideas{flex:1 1 100%;max-width:none}
+  .lower .lp-ticker,.lower .lp-osint,.lower .lp-macro,.lower .lp-ideas{flex:1 1 100%;max-width:none}
   .metrics-row{grid-template-columns:repeat(2,1fr)}
   .src-grid{grid-template-columns:repeat(2,1fr)}
   .glossary-panel{top:auto;right:0;left:0;bottom:0;width:100%;max-height:min(72vh,720px);border-left:none;border-right:none;border-bottom:none}
@@ -1437,29 +1437,6 @@ function renderLower(){
       <div style="font-size:9px;margin-top:6px;opacity:0.6">Set LLM_PROVIDER + credentials in .env to enable AI-powered trade ideas</div>
     </div>`;
 
-  // DELTA PANEL — what changed since last sweep
-  const delta = D.delta || {};
-  const ds = delta.summary || {};
-  const hasDelta = ds.totalChanges > 0;
-  const dirEmoji = {'risk-off':'&#9650;','risk-on':'&#9660;','mixed':'&#9670;'}[ds.direction]||'&#9670;';
-  const dirClass = {'risk-off':'up','risk-on':'down','mixed':''}[ds.direction]||'';
-  const escalated = (delta.signals?.escalated || []).slice(0,6);
-  const deescalated = (delta.signals?.deescalated || []).slice(0,4);
-  const newSigs = (delta.signals?.new || []).slice(0,4);
-  const deltaRows = [];
-  for(const s of newSigs){
-    deltaRows.push(`<div class="delta-row new"><span class="delta-badge new">NEW</span><span class="delta-label">${s.reason||s.label||s.key}</span></div>`);
-  }
-  for(const s of escalated){
-    const sev = s.severity==='critical'?'style="color:var(--warn);font-weight:600"':s.severity==='high'?'style="color:#ffab40"':'';
-    const val = s.pctChange!==undefined?`${s.pctChange>0?'+':''}${s.pctChange}%`:`${s.change>0?'+':''}${s.change}`;
-    deltaRows.push(`<div class="delta-row"><span class="delta-badge up">&#9650;</span><span class="delta-label" ${sev}>${s.label}</span><span class="delta-val">${s.from}→${s.to} (${val})</span></div>`);
-  }
-  for(const s of deescalated){
-    const val = s.pctChange!==undefined?`${s.pctChange}%`:`${s.change}`;
-    deltaRows.push(`<div class="delta-row"><span class="delta-badge down">&#9660;</span><span class="delta-label">${s.label||s.key}</span><span class="delta-val">${s.from}→${s.to} (${val})</span></div>`);
-  }
-  const deltaHtml = hasDelta ? deltaRows.join('') : '<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">No changes since last sweep</div>';
 
   const tickerPanel = `<div class="g-panel lp-ticker" style="display:flex;flex-direction:column">
       <div class="sec-head"><h3>${t('panels.newsTicker','Live News Ticker')}</h3><span class="badge">${feed.length} ${t('badges.items','ITEMS')}</span></div>
@@ -1495,17 +1472,7 @@ function renderLower(){
       ${ideasHtml}
       <div class="disclosure">FOR INFORMATIONAL PURPOSES ONLY. This is not financial advice, a recommendation to buy or sell any security, or a solicitation of any kind. All signal-based observations are derived from publicly available OSINT data and should not be relied upon for investment decisions. Consult a licensed financial advisor before making any investment. Past performance does not guarantee future results.</div>
     </div>`;
-  const deltaPanel = `<div class="g-panel lp-delta">
-      <div class="sec-head"><h3>${t('panels.sweepDelta','Sweep Delta')}</h3><span class="badge ${dirClass}">${dirEmoji} ${ds.direction?t('delta.'+ds.direction,ds.direction.toUpperCase()):t('delta.baseline','BASELINE')}</span></div>
-      ${hasDelta?`<div style="display:flex;gap:12px;margin-bottom:6px;font-family:var(--mono);font-size:10px">
-        <span style="color:var(--dim)">${t('delta.changes','Changes')}: <span style="color:var(--accent)">${ds.totalChanges}</span></span>
-        <span style="color:var(--dim)">${t('delta.critical','Critical')}: <span style="color:${ds.criticalChanges>0?'var(--warn)':'var(--dim)'}">${ds.criticalChanges||0}</span></span>
-        ${ds.signalBreakdown?`<span style="color:var(--dim)">${t('delta.new','New')}: <span style="color:#4dd0e1">${ds.signalBreakdown.new}</span> &#8593;${ds.signalBreakdown.escalated} &#8595;${ds.signalBreakdown.deescalated}</span>`:''}
-      </div>`:''}
-      <div class="delta-list">${deltaHtml}</div>
-    </div>`;
-
-  document.getElementById('lowerGrid').innerHTML=`${tickerPanel}${osintPanel}${macroPanel}${ideasPanel}${deltaPanel}`;
+  document.getElementById('lowerGrid').innerHTML=`${tickerPanel}${osintPanel}${macroPanel}${ideasPanel}`;
 }
 
 // === RIGHT RAIL ===
@@ -1524,6 +1491,30 @@ function renderRight(){
     {l:'WHO Alerts',v:D.who.length,p:40}
   ];
 
+  // DELTA PANEL — what changed since last sweep
+  const delta = D.delta || {};
+  const ds = delta.summary || {};
+  const hasDelta = ds.totalChanges > 0;
+  const dirEmoji = {'risk-off':'&#9650;','risk-on':'&#9660;','mixed':'&#9670;'}[ds.direction]||'&#9670;';
+  const dirClass = {'risk-off':'up','risk-on':'down','mixed':''}[ds.direction]||'';
+  const escalated = (delta.signals?.escalated || []).slice(0,6);
+  const deescalated = (delta.signals?.deescalated || []).slice(0,4);
+  const newSigs = (delta.signals?.new || []).slice(0,4);
+  const deltaRows = [];
+  for(const s of newSigs){
+    deltaRows.push(`<div class="delta-row new"><span class="delta-badge new">NEW</span><span class="delta-label">${s.reason||s.label||s.key}</span></div>`);
+  }
+  for(const s of escalated){
+    const sev = s.severity==='critical'?'style="color:var(--warn);font-weight:600"':s.severity==='high'?'style="color:#ffab40"':'';
+    const val = s.pctChange!==undefined?`${s.pctChange>0?'+':''}${s.pctChange}%`:`${s.change>0?'+':''}${s.change}`;
+    deltaRows.push(`<div class="delta-row"><span class="delta-badge up">&#9650;</span><span class="delta-label" ${sev}>${s.label}</span><span class="delta-val">${s.from}→${s.to} (${val})</span></div>`);
+  }
+  for(const s of deescalated){
+    const val = s.pctChange!==undefined?`${s.pctChange}%`:`${s.change}`;
+    deltaRows.push(`<div class="delta-row"><span class="delta-badge down">&#9660;</span><span class="delta-label">${s.label||s.key}</span><span class="delta-val">${s.from}→${s.to} (${val})</span></div>`);
+  }
+  const deltaHtml = hasDelta ? deltaRows.join('') : `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${t('delta.noChanges','No changes since last sweep')}</div>`;
+
   document.getElementById('rightRail').innerHTML=`
     <div class="g-panel right-signals">
       <div class="sec-head"><h3>${t('panels.crossSourceSignals','Cross-Source Signals')}</h3><span class="badge">${t('badges.worldview','WORLDVIEW')}</span></div>
@@ -1533,6 +1524,15 @@ function renderRight(){
     <div class="g-panel right-core">
       <div class="sec-head"><h3>${t('panels.signalCore','Signal Core')}</h3><span class="badge">${t('badges.hotMetrics','HOT METRICS')}</span></div>
       ${signalMetrics.map(s=>`<div class="sm"><span class="sml">${s.l}</span><div class="smb"><span style="width:${s.p}%"></span></div><span class="smv">${s.v}</span></div>`).join('')}
+    </div>
+    <div class="g-panel right-delta">
+      <div class="sec-head"><h3>${t('panels.sweepDelta','Sweep Delta')}</h3><span class="badge ${dirClass}">${dirEmoji} ${ds.direction?t('delta.'+ds.direction,ds.direction.toUpperCase()):t('delta.baseline','BASELINE')}</span></div>
+      ${hasDelta?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;font-family:var(--mono);font-size:10px">
+        <span style="color:var(--dim)">${t('delta.changes','Changes')}: <span style="color:var(--accent)">${ds.totalChanges}</span></span>
+        <span style="color:var(--dim)">${t('delta.critical','Critical')}: <span style="color:${ds.criticalChanges>0?'var(--warn)':'var(--dim)'}">${ds.criticalChanges||0}</span></span>
+        ${ds.signalBreakdown?`<span style="color:var(--dim)">${t('delta.new','New')}: <span style="color:#4dd0e1">${ds.signalBreakdown.new}</span> &#8593;${ds.signalBreakdown.escalated} &#8595;${ds.signalBreakdown.deescalated}</span>`:''}
+      </div>`:''}
+      <div class="delta-list">${deltaHtml}</div>
     </div>`;
 }
 
