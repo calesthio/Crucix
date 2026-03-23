@@ -75,7 +75,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .badge{font-family:var(--mono);font-size:10px;padding:2px 7px;border:1px solid var(--border);color:var(--accent)}
 
 /* LEFT RAIL */
-.layer-item{display:flex;align-items:center;justify-content:space-between;padding:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);margin-bottom:4px}
+.layer-item{display:flex;align-items:center;justify-content:space-between;padding:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);margin-bottom:4px;cursor:pointer;transition:opacity 0.2s,border-color 0.2s}
 .layer-left{display:flex;align-items:center;gap:8px}
 .ldot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .ldot.air{background:var(--accent);box-shadow:0 0 6px rgba(100,240,200,0.4)}
@@ -92,7 +92,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .ldot.epa{background:#cddc39;box-shadow:0 0 6px rgba(205,220,57,0.4)}
 .ldot.gdelt{background:#6495ed;box-shadow:0 0 6px rgba(100,149,237,0.4)}
 .ldot.capital{background:#ffd54f;box-shadow:0 0 6px rgba(255,213,79,0.4)}
-.layer-item{cursor:pointer;transition:opacity 0.2s,border-color 0.2s}
 .layer-item-off{opacity:0.35}
 .layer-item-off .ldot{box-shadow:none}
 .layer-item-off .layer-name{color:#8899aa}
@@ -405,7 +404,8 @@ function t(keyPath, fallback) {
 // === GLOBALS ===
 let globe = null;
 let globeInitialized = false;
-let lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true';
+let lowPerfMode = false;
+try { lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true'; } catch (e) { console.warn('[Crucix] localStorage unavailable:', e.message); }
 let isFlat = shouldStartFlat();
 
 // === LAYER TOGGLE STATE ===
@@ -425,23 +425,21 @@ const LAYERS = [
   {id:'gdelt',   label:'GDELT Events',  color:'#6495ed',             dot:'gdelt'},
   {id:'capitals',label:'World Capitals',color:'#ffd54f',             dot:'capital'},
 ];
-let layerVisibility = (()=>{
-  try {
-    const saved = JSON.parse(localStorage.getItem('crucix-layers'));
-    if (saved && typeof saved === 'object') {
-      const vis = {};
-      for (const l of LAYERS) vis[l.id] = saved[l.id] !== undefined ? saved[l.id] : true;
-      return vis;
-    }
-  } catch {}
-  return Object.fromEntries(LAYERS.map(l => [l.id, true]));
-})();
+let layerVisibility = Object.fromEntries(LAYERS.map(l => [l.id, true]));
+try {
+  const saved = JSON.parse(localStorage.getItem('crucix-layers'));
+  if (saved && typeof saved === 'object') {
+    for (const l of LAYERS) if (saved[l.id] !== undefined) layerVisibility[l.id] = saved[l.id];
+  }
+} catch (e) { console.warn('[Crucix] Could not restore layer preferences:', e.message); }
 function toggleLayer(id) {
+  if (!LAYERS.some(l => l.id === id)) return;
   layerVisibility[id] = !layerVisibility[id];
-  localStorage.setItem('crucix-layers', JSON.stringify(layerVisibility));
+  try { localStorage.setItem('crucix-layers', JSON.stringify(layerVisibility)); }
+  catch (e) { console.warn('[Crucix] Could not save layer preferences:', e.message); }
   renderLeftRail();
   renderMapLegend();
-  plotMarkers();
+  if (!isFlat) plotMarkers();
   if (isFlat && flatG) { flatG.selectAll('*').remove(); drawFlatMap(); }
 }
 const CAPITALS=[
@@ -520,7 +518,7 @@ const CAPITALS=[
 {name:"Paris",country:"France",iso2:"FR",flag:"\ud83c\uddeb\ud83c\uddf7",lat:48.87,lng:2.33},
 {name:"Cayenne",country:"French Guiana",iso2:"GF",flag:"\ud83c\uddec\ud83c\uddeb",lat:4.94,lng:-52.33},
 {name:"Papeet\u0113",country:"French Polynesia",iso2:"PF",flag:"\ud83c\uddf5\ud83c\uddeb",lat:-17.53,lng:-149.56},
-{name:"Port-aux-Fran\u00e7ais",country:"French Southern and Antarctic Lands",iso2:"TF",flag:"\ud83c\uddf9\ud83c\uddeb",lat:48.81,lng:-1.4},
+{name:"Port-aux-Fran\u00e7ais",country:"French Southern and Antarctic Lands",iso2:"TF",flag:"\ud83c\uddf9\ud83c\uddeb",lat:-49.35,lng:70.22},
 {name:"Libreville",country:"Gabon",iso2:"GA",flag:"\ud83c\uddec\ud83c\udde6",lat:0.38,lng:9.45},
 {name:"Banjul",country:"Gambia",iso2:"GM",flag:"\ud83c\uddec\ud83c\uddf2",lat:13.45,lng:-16.57},
 {name:"Tbilisi",country:"Georgia",iso2:"GE",flag:"\ud83c\uddec\ud83c\uddea",lat:41.68,lng:44.83},
@@ -529,7 +527,7 @@ const CAPITALS=[
 {name:"Gibraltar",country:"Gibraltar",iso2:"GI",flag:"\ud83c\uddec\ud83c\uddee",lat:36.13,lng:-5.35},
 {name:"Athens",country:"Greece",iso2:"GR",flag:"\ud83c\uddec\ud83c\uddf7",lat:37.98,lng:23.73},
 {name:"Nuuk",country:"Greenland",iso2:"GL",flag:"\ud83c\uddec\ud83c\uddf1",lat:64.18,lng:-51.75},
-{name:"St. George's",country:"Grenada",iso2:"GD",flag:"\ud83c\uddec\ud83c\udde9",lat:32.38,lng:-64.68},
+{name:"St. George's",country:"Grenada",iso2:"GD",flag:"\ud83c\uddec\ud83c\udde9",lat:12.05,lng:-61.75},
 {name:"Basse-Terre",country:"Guadeloupe",iso2:"GP",flag:"\ud83c\uddec\ud83c\uddf5",lat:16.03,lng:-61.73},
 {name:"Hag\u00e5t\u00f1a",country:"Guam",iso2:"GU",flag:"\ud83c\uddec\ud83c\uddfa",lat:13.48,lng:144.75},
 {name:"Guatemala City",country:"Guatemala",iso2:"GT",flag:"\ud83c\uddec\ud83c\uddf9",lat:14.62,lng:-90.52},
@@ -685,7 +683,7 @@ const CAPITALS=[
 {name:"Caracas",country:"Venezuela",iso2:"VE",flag:"\ud83c\uddfb\ud83c\uddea",lat:10.48,lng:-66.87},
 {name:"Hanoi",country:"Vietnam",iso2:"VN",flag:"\ud83c\uddfb\ud83c\uddf3",lat:21.03,lng:105.85},
 {name:"Mata-Utu",country:"Wallis and Futuna",iso2:"WF",flag:"\ud83c\uddfc\ud83c\uddeb",lat:-13.95,lng:-171.93},
-{name:"El Aai\u00fan",country:"Western Sahara",iso2:"EH",flag:"\ud83c\uddea\ud83c\udded",lat:-13.28,lng:27.14},
+{name:"El Aai\u00fan",country:"Western Sahara",iso2:"EH",flag:"\ud83c\uddea\ud83c\udded",lat:27.15,lng:-13.20},
 {name:"Sana'a",country:"Yemen",iso2:"YE",flag:"\ud83c\uddfe\ud83c\uddea",lat:15.37,lng:44.19},
 {name:"Lusaka",country:"Zambia",iso2:"ZM",flag:"\ud83c\uddff\ud83c\uddf2",lat:-15.42,lng:28.28},
 {name:"Harare",country:"Zimbabwe",iso2:"ZW",flag:"\ud83c\uddff\ud83c\uddfc",lat:-17.82,lng:31.03},
