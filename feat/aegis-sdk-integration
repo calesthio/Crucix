@@ -1,0 +1,15 @@
+# Drop files into their correct locations:
+cp aegis-adapter.mjs     sdk/aegis-adapter.mjs
+cp CLAUDE.md             CLAUDE.md
+cp adapter.test.mjs      tests/aegis/adapter.test.mjs
+cp aegis-health.mjs      scripts/aegis-health.mjs
+cp crucix-ci.yml         .github/workflows/crucix-ci.yml
+cp package.json          package.json
+cp .env.example          .env.example
+
+mkdir -p .claude/skills docs/agent-guides
+cp aegis-sdk.md          .claude/skills/aegis-sdk.md
+cp build-test-verify.md  .claude/skills/build-test-verify.md
+cp git-commit.md         .claude/skills/git-commit.md
+cp architecture.md       docs/agent-guides/architecture.md
+cp aegis-sdk-guide.md    docs/agent-guides/aegis-sdk-guide.md
