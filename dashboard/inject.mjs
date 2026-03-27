@@ -418,6 +418,12 @@ export async function synthesize(data) {
     site: s.site, anom: s.anomaly || false, cpm: s.avgCPM, n: s.recentReadings || 0
   }));
   const nukeSignals = (data.sources.Safecast?.signals || []).filter(s => s);
+  const earthquakes = (data.sources.USGS?.earthquakes || []).map(eq => ({
+    id: eq.id, mag: eq.magnitude, place: eq.place, time: eq.time,
+    lat: eq.coordinates[1], lon: eq.coordinates[0], depth: eq.depth,
+    tsunami: eq.tsunami === 'Warning issued'
+  }));
+  const quakeSignals = (data.sources.USGS?.signals || []).filter(s => s);
   const sdrData = data.sources.KiwiSDR || {};
   const sdrNet = sdrData.network || {};
   const sdrConflict = sdrData.conflictZones || {};
@@ -584,7 +590,7 @@ export async function synthesize(data) {
   const news = await fetchAllNews();
 
   const V2 = {
-    meta: data.crucix, air, thermal, tSignals, chokepoints, nuke, nukeSignals,
+    meta: data.crucix, air, thermal, tSignals, chokepoints, nuke, nukeSignals, earthquakes, quakeSignals,
     airMeta: {
       fallback: Boolean(airFallback),
       liveTotal: sumAirHotspots(liveAirHotspots),

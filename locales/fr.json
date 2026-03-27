@@ -7,7 +7,7 @@
   "dashboard": {
     "title": "CRUCIX — Terminal de Renseignement",
     "bootTitle": "CRUCIX MOTEUR DE RENSEIGNEMENT",
-    "bootSubtitle": "Palantir Local · 31 Sources",
+    "bootSubtitle": "Palantir Local · 28 Sources",
     "waitingForSweep": "En attente du premier scan...",
     "sourcesOk": "Sources OK",
     "lastSweep": "Dernier scan",
