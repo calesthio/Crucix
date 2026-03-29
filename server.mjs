@@ -33,6 +33,7 @@ let lastSweepTime = null;  // Timestamp of last sweep
 let sweepStartedAt = null; // Timestamp when current/last sweep started
 let sweepInProgress = false;
 const startTime = Date.now();
+let sweepCount = 0;
 const sseClients = new Set();
 
 // === Delta/Memory ===
@@ -276,6 +277,7 @@ app.get('/api/health', (req, res) => {
     llmProvider: config.llm.provider,
     telegramEnabled: !!(config.telegram.botToken && config.telegram.chatId),
     refreshIntervalMinutes: config.refreshIntervalMinutes,
+    llmEveryNSweeps: config.llmEveryNSweeps,
     language: currentLanguage,
   });
 });
@@ -339,7 +341,14 @@ async function runSweepCycle() {
     synthesized.delta = delta;
 
     // 5. LLM-powered trade ideas (LLM-only feature) — isolated so failures don't kill sweep
-    if (llmProvider?.isConfigured) {
+    sweepCount++;
+    const runLLM = (sweepCount % config.llmEveryNSweeps) === 0;
+    if (!runLLM && llmProvider?.isConfigured) {
+      console.log(`[Crucix] Skipping LLM this sweep (${sweepCount}/${config.llmEveryNSweeps})`);
+      const prev = memory.getLastRun();
+      synthesized.ideas = prev?.ideas || [];
+      synthesized.ideasSource = prev?.ideasSource || 'carried';
+    } else if (runLLM && llmProvider?.isConfigured) {
       try {
         console.log('[Crucix] Generating LLM trade ideas...');
         const previousIdeas = memory.getLastRun()?.ideas || [];
@@ -357,13 +366,13 @@ async function runSweepCycle() {
         synthesized.ideas = [];
         synthesized.ideasSource = 'llm-failed';
       }
-    } else {
+    } else if (!llmProvider?.isConfigured) {
       synthesized.ideas = [];
       synthesized.ideasSource = 'disabled';
     }
 
     // 6. Alert evaluation — Telegram + Discord (LLM with rule-based fallback, multi-tier, semantic dedup)
-    if (delta?.summary?.totalChanges > 0) {
+    if (delta?.summary?.totalChanges > 0 && runLLM) {
       if (telegramAlerter.isConfigured) {
         telegramAlerter.evaluateAndAlert(llmProvider, delta, memory).catch(err => {
           console.error('[Crucix] Telegram alert error:', err.message);
