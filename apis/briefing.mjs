@@ -31,6 +31,7 @@ import { briefing as comtrade } from './sources/comtrade.mjs';
 // === Tier 3: Weather, Environment, Technology, Social ===
 import { briefing as noaa } from './sources/noaa.mjs';
 import { briefing as epa } from './sources/epa.mjs';
+import { briefing as usgs } from './sources/usgs.mjs';
 import { briefing as patents } from './sources/patents.mjs';
 import { briefing as bluesky } from './sources/bluesky.mjs';
 import { briefing as reddit } from './sources/reddit.mjs';
@@ -67,7 +68,7 @@ export async function runSource(name, fn, ...args) {
 }
 
 export async function fullBriefing() {
-  console.error('[Crucix] Starting intelligence sweep — 29 sources...');
+  console.error('[Crucix] Starting intelligence sweep — 30 sources...');
   const start = Date.now();
 
   const allPromises = [
@@ -96,6 +97,7 @@ export async function fullBriefing() {
     // Tier 3: Weather, Environment, Technology, Social
     runSource('NOAA', noaa),
     runSource('EPA', epa),
+    runSource('USGS', usgs),
     runSource('Patents', patents),
     runSource('Bluesky', bluesky),
     runSource('Reddit', reddit),

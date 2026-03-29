@@ -81,6 +81,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .ldot.thermal{background:var(--danger);box-shadow:0 0 6px rgba(255,95,99,0.4)}
 .ldot.sdr{background:var(--accent2);box-shadow:0 0 6px rgba(68,204,255,0.4)}
 .ldot.nuke{background:#ffe082;box-shadow:0 0 6px rgba(255,224,130,0.4)}
+.ldot.quake{background:#ff6b6b;box-shadow:0 0 6px rgba(255,107,107,0.4)}
 .ldot.incident{background:var(--warn);box-shadow:0 0 6px rgba(255,184,76,0.4)}
 .ldot.maritime{background:#b388ff;box-shadow:0 0 6px rgba(179,136,255,0.4)}
 .ldot.health{background:#69f0ae;box-shadow:0 0 6px rgba(105,240,174,0.4)}
@@ -616,6 +617,7 @@ function renderLeftRail(){
     {name:t('layers.sdrCoverage','SDR Coverage'),count:D.sdr.total,dot:'sdr',sub:`${D.sdr.online} ${t('layers.online','online')}`},
     {name:t('layers.maritimeWatch','Maritime Watch'),count:D.chokepoints.length,dot:'maritime',sub:t('layers.chokepoints','chokepoints')},
     {name:t('layers.nuclearSites','Nuclear Sites'),count:D.nuke.length,dot:'nuke',sub:t('layers.monitors','monitors')},
+    {name:t('layers.earthquakes','Earthquakes'),count:D.earthquakes.length,dot:'quake',sub:t('layers.significant','significant')},
     {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'thermal',sub:`${conflictFatal.toLocaleString()} ${t('layers.fatalities','fatalities')}`},
     {name:t('layers.healthWatch','Health Watch'),count:D.who.length,dot:'health',sub:t('layers.whoAlerts','WHO alerts')},
     {name:t('layers.worldNews','World News'),count:newsCount,dot:'news',sub:t('layers.rssGeolocated','RSS geolocated')},
@@ -885,6 +887,16 @@ function plotMarkers(){
       color: n.anom ? 'rgba(255,95,99,0.9)' : 'rgba(255,224,130,0.8)', type:'nuke', priority:2,
       popHead:n.site, popMeta:'Radiation Monitoring',
       popText:`Status: ${n.anom?'ANOMALY':'Normal'}<br>Avg CPM: ${n.cpm?.toFixed(1)||'No data'}<br>Readings: ${n.n}`
+    });
+  });
+
+  // === Earthquakes (red) ===
+  D.earthquakes.forEach(eq=>{
+    points.push({
+      lat:eq.lat, lng:eq.lon, size:0.2 + (eq.mag - 4) * 0.1, alt:0.01,
+      color: eq.tsunami ? 'rgba(255,0,0,0.9)' : 'rgba(255,107,107,0.8)', type:'quake', priority:1,
+      popHead:`M${eq.mag.toFixed(1)} Earthquake`, popMeta:'USGS Seismic Monitoring',
+      popText:`${eq.place}<br>Depth: ${eq.depth?.toFixed(1)||'--'} km<br>Time: ${new Date(eq.time).toLocaleString()}<br>${eq.tsunami?'TSUNAMI WARNING':'No tsunami warning'}`
     });
   });
 
@@ -1231,6 +1243,8 @@ function plotFlatMarkers(){
   // Nuclear
   const nukeCoords=[{lat:47.5,lon:34.6},{lat:51.4,lon:30.1},{lat:28.8,lon:50.9},{lat:39.8,lon:125.8},{lat:37.4,lon:141},{lat:31.0,lon:35.1}];
   D.nuke.forEach((n,i)=>{const c=nukeCoords[i];if(!c)return;addPt(c.lat,c.lon,4,'rgba(255,224,130,0.7)','rgba(255,224,130,0.3)',ev=>showPopup(ev,n.site,`CPM: ${n.cpm?.toFixed(1)||'--'}`,'Radiation'),2)});
+  // Earthquakes
+  D.earthquakes.forEach(eq=>{addPt(eq.lat,eq.lon,3 + (eq.mag - 4) * 0.5,'rgba(255,107,107,0.7)','rgba(255,107,107,0.3)',ev=>showPopup(ev,`M${eq.mag.toFixed(1)}`,eq.place,'Earthquake'),1)});
   // SDR
   D.sdr.zones.forEach(z=>z.receivers.forEach(r=>{addPt(r.lat,r.lon,2.5,'rgba(68,204,255,0.5)','rgba(68,204,255,0.2)',ev=>showPopup(ev,'SDR',`${r.name}<br>${z.region}`,'KiwiSDR'),3)}));
   // OSINT
