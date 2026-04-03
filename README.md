@@ -417,6 +417,8 @@ All settings are in `.env` with sensible defaults:
 | `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, or `grok` |
 | `LLM_API_KEY` | — | API key (not needed for codex) |
 | `LLM_MODEL` | per-provider default | Override model selection |
+| `OLLAMA_BASE_URL` | Ollama base URL (only needed if not using default http://localhost:11434) |
+| `OLLAMA_TIMEOUT` | imeout for local Ollama instances. Default is 120000 for 120 seconds. |
 | `TELEGRAM_BOT_TOKEN` | disabled | For Telegram alerts + bot commands |
 | `TELEGRAM_CHAT_ID` | — | Your Telegram chat ID |
 | `TELEGRAM_CHANNELS` | — | Extra channel IDs to monitor (comma-separated) |
