@@ -394,6 +394,33 @@ export function generateIdeas(V2) {
     }
   }
 
+  // Adanos Social Sentiment Signals
+  const sentAgg = V2.sentiment?.aggregate || {};
+  if (sentAgg.bullishPct > 65 && vix && vix.value < 18) {
+    ideas.push({
+      title: 'Retail Euphoria vs Low Vol',
+      text: `Social sentiment ${sentAgg.bullishPct}% bullish but VIX at ${vix.value.toFixed(0)} — retail exuberance with low hedging. Contrarian caution warranted.`,
+      type: 'watch', confidence: 'Medium', horizon: 'tactical'
+    });
+  }
+  if (sentAgg.bearishPct > 40 && vix && vix.value > 22) {
+    ideas.push({
+      title: 'Social Fear Confirming Vol Spike',
+      text: `Social sentiment ${sentAgg.bearishPct}% bearish + VIX ${vix.value.toFixed(0)}. Retail and institutional fear aligned — capitulation may be near.`,
+      type: 'watch', confidence: 'Medium', horizon: 'swing'
+    });
+  }
+  const sentTrending = V2.sentiment?.trending || [];
+  const risingTickers = sentTrending.filter(t => t.trend === 'rising' && t.buzz > 50);
+  if (risingTickers.length >= 3) {
+    const names = risingTickers.slice(0, 3).map(t => t.ticker).join(', ');
+    ideas.push({
+      title: 'Social Momentum Cluster',
+      text: `${risingTickers.length} tickers with rising buzz >50: ${names}. Social momentum often precedes volume spikes.`,
+      type: 'long', confidence: 'Medium', horizon: 'swing'
+    });
+  }
+
   return ideas.slice(0, 8);
 }
 
@@ -593,6 +620,38 @@ export async function synthesize(data) {
   if (yfNatgas?.price) energy.natgas = yfNatgas.price;
   if (yfWti?.history?.length) energy.wtiRecent = yfWti.history.map(h => h.close);
 
+  // === Adanos Social Sentiment ===
+  const adanosData = data.sources.Adanos || {};
+  const sentiment = adanosData.error ? { trending: [], xTrending: [], sectors: [], signals: [] } : {
+    trending: (adanosData.reddit?.trending || []).slice(0, 15).map(t => ({
+      ticker: t.ticker,
+      name: t.name,
+      buzz: t.buzz,
+      trend: t.trend,
+      mentions: t.mentions,
+      sentiment: t.sentiment,
+      bullishPct: t.bullishPct,
+      bearishPct: t.bearishPct,
+    })),
+    xTrending: (adanosData.x?.trending || []).slice(0, 10).map(t => ({
+      ticker: t.ticker,
+      name: t.name,
+      buzz: t.buzz,
+      trend: t.trend,
+      mentions: t.mentions,
+      sentiment: t.sentiment,
+    })),
+    sectors: (adanosData.reddit?.sectors || []).map(s => ({
+      sector: s.sector,
+      buzz: s.buzz,
+      trend: s.trend,
+      sentiment: s.sentiment,
+      topTickers: s.topTickers,
+    })),
+    aggregate: adanosData.aggregate || {},
+    signals: adanosData.signals || [],
+  };
+
   // Fetch RSS
   const news = await fetchAllNews();
 
@@ -609,6 +668,7 @@ export async function synthesize(data) {
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
     tg: { posts: tgData.totalPosts || 0, urgent: tgUrgent, topPosts: tgTop },
     who, fred, energy, metals, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, news,
+    sentiment,
     markets, // Live Yahoo Finance market data
     ideas: [], ideasSource: 'disabled',
     // newsFeed for ticker (merged RSS + GDELT + Telegram)
