@@ -4,11 +4,21 @@
 
 **Your own intelligence terminal. 27 sources. One command. Zero cloud.**
 
+## [Visit The Live Site: crucix.live](https://www.crucix.live/)
+
+[![Live Website](https://img.shields.io/badge/live-crucix.live-00d4ff?style=for-the-badge)](https://www.crucix.live/)
+[![Open Demo](https://img.shields.io/badge/open-live%20dashboard-0b1220?style=for-the-badge&logo=googlechrome&logoColor=white)](https://www.crucix.live/)
+
 [![Node.js 22+](https://img.shields.io/badge/node-22%2B-brightgreen)](#quick-start)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
 [![Dependencies](https://img.shields.io/badge/dependencies-1%20(express)-orange)](#architecture)
 [![Sources](https://img.shields.io/badge/OSINT%20sources-27-cyan)](#data-sources-27)
 [![Docker](https://img.shields.io/badge/docker-ready-blue?logo=docker)](#docker)
+
+**Enter The Signal Network**
+
+[![Signal Wire](https://img.shields.io/badge/Signal%20Wire-%40crucixmonitor-111111?style=for-the-badge&logo=x&logoColor=white)](https://x.com/crucixmonitor)
+[![Ops Room](https://img.shields.io/badge/Ops%20Room-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/ChVy7SF4)
 
 ![Crucix Dashboard](docs/dashboard.png)
 
@@ -27,11 +37,23 @@
 
 </div>
 
+> **Live website:** [https://www.crucix.live/](https://www.crucix.live/)
+> Explore the public demo first, then clone the repo to run Crucix locally.
+
 Crucix pulls satellite fire detection, flight tracking, radiation monitoring, satellite constellation tracking, economic indicators, live market prices, conflict data, sanctions lists, and social sentiment from 27 open-source intelligence feeds — in parallel, every 15 minutes — and renders everything on a single self-contained Jarvis-style dashboard.
 
 Hook it up to an LLM and it becomes a **two-way intelligence assistant** — pushing multi-tier alerts to Telegram and Discord when something meaningful changes, responding to commands like `/brief` and `/sweep` from your phone, and generating actionable trade ideas grounded in real cross-domain data. Your own analyst that watches the world while you sleep.
 
+Try the live demo first at [https://www.crucix.live/](https://www.crucix.live/), then clone the repo when you want the full local stack.
+
 No cloud. No telemetry. No subscriptions. Just `node server.mjs` and you're running.
+
+## Token / Asset Warning
+
+> [!WARNING]
+> **Crucix has not launched any official token, coin, NFT, airdrop, presale, or other blockchain-based asset.**
+> Any token or digital asset using the Crucix name, logo, or branding is not affiliated with or endorsed by Crucix.
+> Do not buy it, promote it, connect a wallet to claim it, sign transactions, or send funds based on third-party posts, DMs, or websites.
 
 ---
 
@@ -50,7 +72,7 @@ It was built for anyone who wants to understand what's actually happening in the
 ```bash
 # 1. Clone the repo
 git clone https://github.com/calesthio/Crucix.git
-cd crucix
+cd Crucix
 
 # 2. Install dependencies (just Express)
 npm install
@@ -76,7 +98,7 @@ The dashboard opens automatically at `http://localhost:3117` and immediately beg
 
 ```bash
 git clone https://github.com/calesthio/Crucix.git
-cd crucix
+cd Crucix
 cp .env.example .env    # add your API keys
 docker compose up -d
 ```
@@ -102,6 +124,22 @@ A self-contained Jarvis-style HUD with:
 - **Nuclear watch** — real-time radiation readings from Safecast + EPA RadNet
 - **Space watch** — CelesTrak satellite tracking: recent launches, ISS, military constellations, Starlink/OneWeb counts
 - **Leverageable ideas** — AI-generated trade ideas (with LLM) or signal-correlated ideas (without)
+
+### Performance Modes
+The `VISUALS FULL` / `VISUALS LITE` button in the top bar only changes rendering behavior - it does **not** remove data sources or reduce sweep coverage.
+
+When you switch to **VISUALS LITE**, the dashboard:
+- Disables decorative background effects such as the radial/grid overlays and scanlines
+- Removes expensive blur/backdrop-filter effects on panels and overlays
+- Stops non-essential animations like the logo ring blink, conflict rings, and corridor flow effects
+- Disables globe auto-rotation and turns off animated flight-arc dashes
+- Converts the horizontal news ticker and OSINT stream into static, scrollable lists instead of continuously animated marquees
+
+Mobile-specific behavior:
+- On mobile, `VISUALS LITE` also forces the dashboard into **flat map mode** if you are currently on the globe
+- Future mobile loads will continue to start flat while low-perf mode is enabled
+
+The preference is saved in browser local storage, so the UI will remember your last setting.
 
 ### Auto-Refresh
 The server runs a sweep cycle every 15 minutes (configurable). Each cycle:
@@ -148,10 +186,10 @@ Alerts are delivered as rich embeds with color-coded sidebars: red for FLASH, ye
 **Optional dependency:** The full bot requires `discord.js`. Install it with `npm install discord.js`. If it's not installed, Crucix automatically falls back to webhook-only mode.
 
 ### Optional LLM Layer
-Connect any of 4 LLM providers for enhanced analysis:
+Connect any of 8 LLM providers for enhanced analysis:
 - **AI trade ideas** — quantitative analyst producing 5-8 actionable ideas citing specific data
 - **Smarter alert evaluation** — LLM classifies signals into FLASH/PRIORITY/ROUTINE tiers with cross-domain correlation and confidence scoring
-- Providers: Anthropic Claude, OpenAI, Google Gemini, OpenAI Codex (ChatGPT subscription)
+- Providers: Anthropic Claude, OpenAI, Google Gemini, OpenRouter (Unified API), OpenAI Codex (ChatGPT subscription), MiniMax, Mistral, Grok
 - Graceful fallback — when LLM is unavailable, a rule-based engine takes over alert evaluation. LLM failures never crash the sweep cycle.
 
 ---
@@ -184,14 +222,18 @@ These three unlock the most valuable economic and satellite data. Each takes abo
 
 ### LLM Provider (optional, for AI-enhanced ideas)
 
-Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`
+Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, `grok`
 
 | Provider | Key Required | Default Model |
 |----------|-------------|---------------|
 | `anthropic` | `LLM_API_KEY` | claude-sonnet-4-6 |
 | `openai` | `LLM_API_KEY` | gpt-5.4 |
 | `gemini` | `LLM_API_KEY` | gemini-3.1-pro |
+| `openrouter` | `LLM_API_KEY` | openrouter/auto |
 | `codex` | None (uses `~/.codex/auth.json`) | gpt-5.3-codex |
+| `minimax` | `LLM_API_KEY` | MiniMax-M2.5 |
+| `mistral` | `LLM_API_KEY` | mistral-large-latest |
+| `grok` | `LLM_API_KEY` | grok-4-latest |
 
 For Codex, run `npx @openai/codex login` to authenticate via your ChatGPT subscription.
 
@@ -261,12 +303,16 @@ crucix/
 │       └── jarvis.html        # Self-contained Jarvis HUD
 │
 ├── lib/
-│   ├── llm/                   # LLM abstraction (4 providers, raw fetch, no SDKs)
+│   ├── llm/                   # LLM abstraction (8 providers, raw fetch, no SDKs)
 │   │   ├── provider.mjs       # Base class
 │   │   ├── anthropic.mjs      # Claude
 │   │   ├── openai.mjs         # GPT
 │   │   ├── gemini.mjs         # Gemini
+│   │   ├── grok.mjs           # Grok
+│   │   ├── openrouter.mjs     # OpenRouter (Unified API)
 │   │   ├── codex.mjs          # Codex (ChatGPT subscription)
+│   │   ├── minimax.mjs        # MiniMax (M2.5, 204K context)
+│   │   ├── mistral.mjs        # Mistral AI
 │   │   ├── ideas.mjs          # LLM-powered trade idea generation
 │   │   └── index.mjs          # Factory: createLLMProvider()
 │   ├── delta/                 # Change tracking between sweeps
@@ -368,7 +414,7 @@ All settings are in `.env` with sensible defaults:
 |----------|---------|-------------|
 | `PORT` | `3117` | Dashboard server port |
 | `REFRESH_INTERVAL_MINUTES` | `15` | Auto-refresh interval |
-| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, or `codex` |
+| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, or `grok` |
 | `LLM_API_KEY` | — | API key (not needed for codex) |
 | `LLM_MODEL` | per-provider default | Override model selection |
 | `TELEGRAM_BOT_TOKEN` | disabled | For Telegram alerts + bot commands |
@@ -449,6 +495,8 @@ This is normal — the first sweep takes 30–60 seconds to query all 27 sources
 
 Expected behavior. Sources that require API keys will return structured errors if the key isn't set. The rest of the sweep continues normally. Check the Source Integrity section in the dashboard (or the server logs) to see which sources failed and why. The 3 most impactful free keys to add are `FRED_API_KEY`, `FIRMS_MAP_KEY`, and `EIA_API_KEY`.
 
+OpenSky can also return `HTTP 429` when its public hotspots are queried too aggressively. Crucix does not try to evade that limit. Instead, it surfaces the throttle/error in source health and preserves the most recent non-empty air traffic snapshot from `runs/` so the dashboard flight layer does not suddenly go blank on a throttled sweep.
+
 ### Telegram bot not responding to commands
 
 Make sure both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set in `.env`. The bot only responds to messages from the configured chat ID (security measure). You should see `[Crucix] Telegram alerts enabled` and `[Crucix] Bot command polling started` in the server logs on startup. If not, double-check your token with `curl https://api.telegram.org/bot<YOUR_TOKEN>/getMe`.
@@ -485,6 +533,26 @@ To update them: run the dashboard, wait for a sweep to complete, then use your b
 Found a bug? Want to add a 28th source? PRs welcome. Each source is a standalone module in `apis/sources/` — just export a `briefing()` function that returns structured data and add it to the orchestrator in `apis/briefing.mjs`.
 
 If you find this useful, a star helps others find it too.
+
+For contribution guidelines, review expectations, and source-add rules, see `CONTRIBUTING.md`. For security reports, see `SECURITY.md`.
+
+## Contact
+
+For partnerships, integrations, or other non-issue inquiries, you can reach me at `celesthioailabs@gmail.com`.
+
+For bugs and feature requests, please use GitHub Issues so discussion stays visible and actionable.
+
+---
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=calesthio%2FCrucix&type=date&legend=top-left">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=calesthio/Crucix&type=date&theme=dark&legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=calesthio/Crucix&type=date&legend=top-left" />
+    <img alt="Star History Chart" src="https://api.star-history.com/image?repos=calesthio/Crucix&type=date&legend=top-left" />
+  </picture>
+</a>
 
 ---
 

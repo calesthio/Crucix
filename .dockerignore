@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log*
+.git
+.gitignore
+.github
+.omc
+.env
+.env.*
+!.env.example
+runs/
+docs/
+*.md
+!README.md
+LICENSE

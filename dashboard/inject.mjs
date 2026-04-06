@@ -5,10 +5,13 @@
 //
 // Exports synthesize(), generateIdeas(), fetchAllNews() for use by server.mjs
 
-import { readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
+import config from '../crucix.config.mjs';
+import { createLLMProvider } from '../lib/llm/index.mjs';
+import { generateLLMIdeas } from '../lib/llm/ideas.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -99,6 +102,49 @@ function sanitizeExternalUrl(raw) {
   }
 }
 
+function sumAirHotspots(hotspots = []) {
+  return hotspots.reduce((sum, hotspot) => sum + (hotspot.totalAircraft || 0), 0);
+}
+
+function summarizeAirHotspots(hotspots = []) {
+  return hotspots.map(h => ({
+    region: h.region,
+    total: h.totalAircraft || 0,
+    noCallsign: h.noCallsign || 0,
+    highAlt: h.highAltitude || 0,
+    top: Object.entries(h.byCountry || {}).sort((a, b) => b[1] - a[1]).slice(0, 5),
+  }));
+}
+
+function loadOpenSkyFallback(currentTimestamp) {
+  const runsDir = join(ROOT, 'runs');
+  if (!existsSync(runsDir)) return null;
+
+  const currentMs = currentTimestamp ? new Date(currentTimestamp).getTime() : NaN;
+  const files = readdirSync(runsDir)
+    .filter(name => /^briefing_.*\.json$/.test(name))
+    .sort()
+    .reverse();
+
+  for (const file of files) {
+    const filePath = join(runsDir, file);
+    try {
+      const prior = JSON.parse(readFileSync(filePath, 'utf8'));
+      const priorTimestamp = prior.sources?.OpenSky?.timestamp || prior.crucix?.timestamp || null;
+      if (priorTimestamp && Number.isFinite(currentMs) && new Date(priorTimestamp).getTime() >= currentMs) continue;
+
+      const hotspots = prior.sources?.OpenSky?.hotspots || [];
+      if (sumAirHotspots(hotspots) > 0) {
+        return { file, timestamp: priorTimestamp, hotspots };
+      }
+    } catch {
+      // Ignore unreadable historical runs and continue searching backward.
+    }
+  }
+
+  return null;
+}
+
 // === RSS Fetching ===
 async function fetchRSS(url, source) {
   try {
@@ -121,15 +167,42 @@ async function fetchRSS(url, source) {
   }
 }
 
+const RSS_SOURCE_FALLBACKS = {
+  'SBS Australia': { lat: -35.2809, lon: 149.13, region: 'Australia' },
+  'Indian Express': { lat: 28.6139, lon: 77.209, region: 'India' },
+  'The Hindu': { lat: 13.0827, lon: 80.2707, region: 'India' },
+  'MercoPress': { lat: -34.9011, lon: -56.1645, region: 'South America' }
+};
+const REGIONAL_NEWS_SOURCES = ['MercoPress', 'Indian Express', 'The Hindu', 'SBS Australia'];
+
 export async function fetchAllNews() {
   const feeds = [
+    // Global
     ['http://feeds.bbci.co.uk/news/world/rss.xml', 'BBC'],
     ['https://rss.nytimes.com/services/xml/rss/nyt/World.xml', 'NYT'],
-    ['https://feeds.aljazeera.com/xml/rss/all.xml', 'Al Jazeera'],
-    ['https://rss.nytimes.com/services/xml/rss/nyt/Americas.xml', 'NYT Americas'],
-    ['https://rss.nytimes.com/services/xml/rss/nyt/AsiaPacific.xml', 'NYT Asia'],
+    ['https://www.aljazeera.com/xml/rss/all.xml', 'Al Jazeera'],
+    // USA
+    ['https://feeds.npr.org/1001/rss.xml', 'NPR'],
     ['https://feeds.bbci.co.uk/news/technology/rss.xml', 'BBC Tech'],
     ['http://feeds.bbci.co.uk/news/science_and_environment/rss.xml', 'BBC Science'],
+    ['https://rss.nytimes.com/services/xml/rss/nyt/Americas.xml', 'NYT Americas'],
+    // Europe
+    ['https://rss.dw.com/rdf/rss-en-all', 'DW'],
+    ['https://www.france24.com/en/rss', 'France 24'],
+    ['https://www.euronews.com/rss?format=mrss', 'Euronews'],
+    // Africa & Cameroon region
+    ['https://rss.dw.com/rdf/rss-en-africa', 'DW Africa'],
+    ['https://www.rfi.fr/en/rss', 'RFI'],
+    ['https://www.africanews.com/feed/rss', 'Africa News'],
+    ['https://rss.nytimes.com/services/xml/rss/nyt/Africa.xml', 'NYT Africa'],
+    // Asia-Pacific
+    ['https://rss.nytimes.com/services/xml/rss/nyt/AsiaPacific.xml', 'NYT Asia'],
+    ['https://www.sbs.com.au/news/topic/australia/feed', 'SBS Australia'],
+    // India
+    ['https://indianexpress.com/section/india/feed/', 'Indian Express'],
+    ['https://www.thehindu.com/news/national/feeder/default.rss', 'The Hindu'],
+    // South America
+    ['https://en.mercopress.com/rss/latin-america', 'MercoPress'],
   ];
 
   const results = await Promise.allSettled(
@@ -147,7 +220,7 @@ export async function fetchAllNews() {
     const key = item.title.substring(0, 40).toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    const geo = geoTagText(item.title);
+    const geo = geoTagText(item.title) || RSS_SOURCE_FALLBACKS[item.source];
     if (geo) {
       geoNews.push({
         title: item.title.substring(0, 100),
@@ -161,8 +234,26 @@ export async function fetchAllNews() {
     }
   }
 
-  geoNews.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-  return geoNews.slice(0, 50);
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const filtered = geoNews.filter(n => !n.date || new Date(n.date) >= cutoff);
+  filtered.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+  const selected = [];
+  const selectedKeys = new Set();
+  const keyFor = item => `${item.source}|${item.title}|${item.date}`;
+  const pushUnique = item => {
+    const key = keyFor(item);
+    if (selectedKeys.has(key)) return;
+    selected.push(item);
+    selectedKeys.add(key);
+  };
+
+  // Reserve a little space so newly-added regional feeds are not crowded out by larger globals.
+  for (const source of REGIONAL_NEWS_SOURCES) {
+    filtered.filter(item => item.source === source).slice(0, 2).forEach(pushUnique);
+  }
+  filtered.forEach(pushUnique);
+  return selected.slice(0, 50);
 }
 
 // === Leverageable Ideas from Signals ===
@@ -335,11 +426,12 @@ export function generateIdeas(V2) {
 
 // === Synthesize raw sweep data into dashboard format ===
 export async function synthesize(data) {
-  const air = (data.sources.OpenSky?.hotspots || []).map(h => ({
-    region: h.region, total: h.totalAircraft || 0, noCallsign: h.noCallsign || 0,
-    highAlt: h.highAltitude || 0,
-    top: Object.entries(h.byCountry || {}).sort((a, b) => b[1] - a[1]).slice(0, 5)
-  }));
+  const liveAirHotspots = data.sources.OpenSky?.hotspots || [];
+  const airFallback = sumAirHotspots(liveAirHotspots) > 0
+    ? null
+    : loadOpenSkyFallback(data.sources.OpenSky?.timestamp || data.crucix?.timestamp);
+  const effectiveAirHotspots = airFallback?.hotspots || liveAirHotspots;
+  const air = summarizeAirHotspots(effectiveAirHotspots);
   const thermal = (data.sources.FIRMS?.hotspots || []).map(h => ({
     region: h.region, det: h.totalDetections || 0, night: h.nightDetections || 0,
     hc: h.highConfidence || 0,
@@ -391,16 +483,54 @@ export async function synthesize(data) {
   const defense = (data.sources.USAspending?.recentDefenseContracts || []).slice(0, 5).map(c => ({
     recipient: c.recipient?.substring(0, 40), amount: c.amount, desc: c.description?.substring(0, 80)
   }));
-  const noaa = { totalAlerts: data.sources.NOAA?.totalSevereAlerts || 0 };
+  const noaa = {
+    totalAlerts: data.sources.NOAA?.totalSevereAlerts || 0,
+    alerts: (data.sources.NOAA?.topAlerts || []).filter(a => a.lat != null && a.lon != null).slice(0, 10).map(a => ({
+      event: a.event, severity: a.severity, headline: a.headline?.substring(0, 120),
+      lat: a.lat, lon: a.lon
+    }))
+  };
+
+  // EPA RadNet — pass through geo-tagged readings
+  const epaData = data.sources.EPA || {};
+  const epaStations = [];
+  const seenEpa = new Set();
+  for (const r of (epaData.readings || [])) {
+    if (r.lat == null || r.lon == null) continue;
+    const key = `${r.lat},${r.lon}`;
+    if (seenEpa.has(key)) continue;
+    seenEpa.add(key);
+    epaStations.push({ location: r.location, state: r.state, lat: r.lat, lon: r.lon, analyte: r.analyte, result: r.result, unit: r.unit });
+  }
+  const epa = { totalReadings: epaData.totalReadings || 0, stations: epaStations.slice(0, 10) };
 
   // Space/CelesTrak satellite data
   const spaceData = data.sources.Space || {};
+  // Approximate subsatellite position from TLE orbital elements
+  function estimateSatPosition(sat) {
+    if (!sat?.inclination || !sat?.epoch) return null;
+    const epoch = new Date(sat.epoch);
+    const now = new Date();
+    const elapsed = (now - epoch) / 1000;
+    const period = (sat.period || 92.7) * 60; // minutes to seconds
+    const orbits = elapsed / period;
+    const frac = orbits % 1;
+    const lat = sat.inclination * Math.sin(frac * 2 * Math.PI);
+    const lonShift = (elapsed / 86400) * 360;
+    const orbitLon = frac * 360;
+    const lon = ((orbitLon - lonShift) % 360 + 540) % 360 - 180;
+    return { lat: +lat.toFixed(2), lon: +lon.toFixed(2), name: sat.name };
+  }
+  const issPos = estimateSatPosition(spaceData.iss);
+  const spaceStations = (spaceData.spaceStations || []).map(s => estimateSatPosition(s)).filter(Boolean);
   const space = {
     totalNewObjects: spaceData.totalNewObjects || 0,
     militarySats: spaceData.militarySatellites || 0,
     militaryByCountry: spaceData.militaryByCountry || {},
     constellations: spaceData.constellations || {},
     iss: spaceData.iss || null,
+    issPosition: issPos,
+    stationPositions: spaceStations.slice(0, 5),
     recentLaunches: (spaceData.recentLaunches || []).slice(0, 10).map(l => ({
       name: l.name, country: l.country, epoch: l.epoch,
       apogee: l.apogee, perigee: l.perigee, type: l.objectType
@@ -422,7 +552,7 @@ export async function synthesize(data) {
     }))
   };
 
-  // GDELT news articles
+  // GDELT news articles + geo events
   const gdeltData = data.sources.GDELT || {};
   const gdelt = {
     totalArticles: gdeltData.totalArticles || 0,
@@ -430,32 +560,15 @@ export async function synthesize(data) {
     economy: (gdeltData.economy || []).length,
     health: (gdeltData.health || []).length,
     crisis: (gdeltData.crisis || []).length,
-    topTitles: (gdeltData.allArticles || []).slice(0, 5).map(a => a.title?.substring(0, 80))
+    topTitles: (gdeltData.allArticles || []).slice(0, 5).map(a => a.title?.substring(0, 80)),
+    geoPoints: (gdeltData.geoPoints || []).slice(0, 20).map(p => ({
+      lat: p.lat, lon: p.lon, name: (p.name || '').substring(0, 80), count: p.count || 1
+    }))
   };
 
   const health = Object.entries(data.sources).map(([name, src]) => ({
     n: name, err: Boolean(src.error), stale: Boolean(src.stale)
   }));
-
-  // === Adanos Social Sentiment ===
-  const adanosData = data.sources.Adanos || {};
-  const sentiment = adanosData.error ? { trending: [], sectors: [], signals: [] } : {
-    trending: (adanosData.reddit?.trending || []).slice(0, 15).map(t => ({
-      ticker: t.ticker, name: t.name, buzz: t.buzz, trend: t.trend,
-      mentions: t.mentions, sentiment: t.sentiment,
-      bullishPct: t.bullishPct, bearishPct: t.bearishPct,
-    })),
-    xTrending: (adanosData.x?.trending || []).slice(0, 10).map(t => ({
-      ticker: t.ticker, name: t.name, buzz: t.buzz, trend: t.trend,
-      mentions: t.mentions, sentiment: t.sentiment,
-    })),
-    sectors: (adanosData.reddit?.sectors || []).map(s => ({
-      sector: s.sector, buzz: s.buzz, trend: s.trend,
-      sentiment: s.sentiment, topTickers: s.topTickers,
-    })),
-    aggregate: adanosData.aggregate || {},
-    signals: adanosData.signals || [],
-  };
 
   // === Yahoo Finance live market data ===
   const yfData = data.sources.YFinance || {};
@@ -485,6 +598,19 @@ export async function synthesize(data) {
     timestamp: yfData.summary?.timestamp || null,
   };
 
+  const yfGold = yfQuotes['GC=F'];
+  const yfSilver = yfQuotes['SI=F'];
+  const metals = {
+    gold: yfGold?.price,
+    goldChange: yfGold?.change,
+    goldChangePct: yfGold?.changePct,
+    goldRecent: yfGold?.history?.map(h => h.close) || [],
+    silver: yfSilver?.price,
+    silverChange: yfSilver?.change,
+    silverChangePct: yfSilver?.changePct,
+    silverRecent: yfSilver?.history?.map(h => h.close) || [],
+  };
+
   // Override stale EIA prices with live Yahoo Finance data if available
   const yfWti = yfQuotes['CL=F'];
   const yfBrent = yfQuotes['BZ=F'];
@@ -494,15 +620,55 @@ export async function synthesize(data) {
   if (yfNatgas?.price) energy.natgas = yfNatgas.price;
   if (yfWti?.history?.length) energy.wtiRecent = yfWti.history.map(h => h.close);
 
+  // === Adanos Social Sentiment ===
+  const adanosData = data.sources.Adanos || {};
+  const sentiment = adanosData.error ? { trending: [], xTrending: [], sectors: [], signals: [] } : {
+    trending: (adanosData.reddit?.trending || []).slice(0, 15).map(t => ({
+      ticker: t.ticker,
+      name: t.name,
+      buzz: t.buzz,
+      trend: t.trend,
+      mentions: t.mentions,
+      sentiment: t.sentiment,
+      bullishPct: t.bullishPct,
+      bearishPct: t.bearishPct,
+    })),
+    xTrending: (adanosData.x?.trending || []).slice(0, 10).map(t => ({
+      ticker: t.ticker,
+      name: t.name,
+      buzz: t.buzz,
+      trend: t.trend,
+      mentions: t.mentions,
+      sentiment: t.sentiment,
+    })),
+    sectors: (adanosData.reddit?.sectors || []).map(s => ({
+      sector: s.sector,
+      buzz: s.buzz,
+      trend: s.trend,
+      sentiment: s.sentiment,
+      topTickers: s.topTickers,
+    })),
+    aggregate: adanosData.aggregate || {},
+    signals: adanosData.signals || [],
+  };
+
   // Fetch RSS
   const news = await fetchAllNews();
 
   const V2 = {
     meta: data.crucix, air, thermal, tSignals, chokepoints, nuke, nukeSignals,
+    airMeta: {
+      fallback: Boolean(airFallback),
+      liveTotal: sumAirHotspots(liveAirHotspots),
+      timestamp: airFallback?.timestamp || data.sources.OpenSky?.timestamp || data.crucix?.timestamp || null,
+      source: airFallback ? 'OpenSky fallback' : 'OpenSky',
+      ...(airFallback ? { fallbackFile: airFallback.file } : {}),
+      ...(data.sources.OpenSky?.error ? { error: data.sources.OpenSky.error } : {}),
+    },
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
     tg: { posts: tgData.totalPosts || 0, urgent: tgUrgent, topPosts: tgTop },
-    who, fred, energy, bls, treasury, gscpi, defense, noaa, acled, gdelt, space, health, news,
-    sentiment, // Adanos social sentiment data
+    who, fred, energy, metals, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, news,
+    sentiment,
     markets, // Live Yahoo Finance market data
     ideas: [], ideasSource: 'disabled',
     // newsFeed for ticker (merged RSS + GDELT + Telegram)
@@ -553,17 +719,65 @@ function buildNewsFeed(rssNews, gdeltData, tgUrgent, tgTop) {
     });
   }
 
-  // Sort by timestamp descending, limit to 50
-  feed.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
-  return feed.slice(0, 50);
+  // Filter to last 30 days, sort by timestamp descending, limit to 50
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const recent = feed.filter(item => !item.timestamp || new Date(item.timestamp) >= cutoff);
+  recent.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+
+  const selected = [];
+  const selectedKeys = new Set();
+  const keyFor = item => `${item.type}|${item.source}|${item.headline}|${item.timestamp}`;
+  const pushUnique = item => {
+    const key = keyFor(item);
+    if (selectedKeys.has(key)) return;
+    selected.push(item);
+    selectedKeys.add(key);
+  };
+
+  for (const source of REGIONAL_NEWS_SOURCES) {
+    recent.filter(item => item.source === source).slice(0, 2).forEach(pushUnique);
+  }
+  recent.forEach(pushUnique);
+  return selected.slice(0, 50);
 }
 
 // === CLI Mode: inject into HTML file ===
+function getCliArg(flag) {
+  const idx = process.argv.indexOf(flag);
+  return idx >= 0 ? process.argv[idx + 1] : null;
+}
+
 async function cliInject() {
   const data = JSON.parse(readFileSync(join(ROOT, 'runs/latest.json'), 'utf8'));
+  const htmlOverride = getCliArg('--html');
+  const shouldOpen = !process.argv.includes('--no-open');
 
   console.log('Fetching RSS news feeds...');
   const V2 = await synthesize(data);
+  const llmProvider = createLLMProvider(config.llm);
+
+  if (llmProvider?.isConfigured) {
+    try {
+      console.log(`[LLM] Generating ideas via ${llmProvider.name}...`);
+      const llmIdeas = await generateLLMIdeas(llmProvider, V2, null, []);
+      if (llmIdeas?.length) {
+        V2.ideas = llmIdeas;
+        V2.ideasSource = 'llm';
+        console.log(`[LLM] Generated ${llmIdeas.length} ideas`);
+      } else {
+        V2.ideas = [];
+        V2.ideasSource = 'llm-failed';
+        console.log('[LLM] No ideas returned');
+      }
+    } catch (err) {
+      V2.ideas = [];
+      V2.ideasSource = 'llm-failed';
+      console.log('[LLM] Idea generation failed:', err.message);
+    }
+  } else {
+    V2.ideas = [];
+    V2.ideasSource = 'disabled';
+  }
   console.log(`Generated ${V2.ideas.length} leverageable ideas`);
 
   const json = JSON.stringify(V2);
@@ -571,11 +785,14 @@ async function cliInject() {
   console.log('Size:', json.length, 'bytes | Air:', V2.air.length, '| Thermal:', V2.thermal.length,
     '| News:', V2.news.length, '| Ideas:', V2.ideas.length, '| Sources:', V2.health.length);
 
-  const htmlPath = join(ROOT, 'dashboard/public/jarvis.html');
+  const htmlPath = htmlOverride || join(ROOT, 'dashboard/public/jarvis.html');
   let html = readFileSync(htmlPath, 'utf8');
-  html = html.replace(/^(let|const) D = .*;\s*$/m, 'let D = ' + json + ';');
+  // Use a replacer function so JSON is inserted literally even if it contains `$`.
+  html = html.replace(/^(let|const) D = .*;\s*$/m, () => 'let D = ' + json + ';');
   writeFileSync(htmlPath, html);
   console.log('Data injected into jarvis.html!');
+
+  if (!shouldOpen) return;
 
   // Auto-open dashboard in default browser
   // NOTE: On Windows, `start` in PowerShell is an alias for Start-Service, not cmd's start.
@@ -590,7 +807,8 @@ async function cliInject() {
 }
 
 // Run CLI if invoked directly
-const isMain = process.argv[1] && fileURLToPath(import.meta.url).includes(process.argv[1].replace(/\\/g, '/'));
+const isMain = process.argv[1]
+  && fileURLToPath(import.meta.url).replace(/\\/g, '/') === process.argv[1].replace(/\\/g, '/');
 if (isMain) {
-  cliInject();
+  await cliInject();
 }

@@ -43,24 +43,37 @@ import { briefing as space } from './sources/space.mjs';
 // === Tier 5: Live Market Data ===
 import { briefing as yfinance } from './sources/yfinance.mjs';
 
-// === Tier 6: Social Sentiment ===
+// === Tier 6: Cyber & Infrastructure ===
+import { briefing as cisaKev } from './sources/cisa-kev.mjs';
+import { briefing as cloudflareRadar } from './sources/cloudflare-radar.mjs';
+
+// === Tier 7: Social Sentiment ===
 import { briefing as adanos } from './sources/adanos.mjs';
+
+const SOURCE_TIMEOUT_MS = 30_000; // 30s max per individual source
 
 export async function runSource(name, fn, ...args) {
   const start = Date.now();
+  let timer;
   try {
-    const data = await fn(...args);
+    const dataPromise = fn(...args);
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Source ${name} timed out after ${SOURCE_TIMEOUT_MS / 1000}s`)), SOURCE_TIMEOUT_MS);
+    });
+    const data = await Promise.race([dataPromise, timeoutPromise]);
     return { name, status: 'ok', durationMs: Date.now() - start, data };
   } catch (e) {
     return { name, status: 'error', durationMs: Date.now() - start, error: e.message };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
 export async function fullBriefing() {
-  console.error('[Crucix] Starting intelligence sweep — 28 sources...');
+  console.error('[Crucix] Starting intelligence sweep — 30 sources...');
   const start = Date.now();
 
-  const results = await Promise.allSettled([
+  const allPromises = [
     // Tier 1: Core OSINT & Geopolitical
     runSource('GDELT', gdelt),
     runSource('OpenSky', opensky),
@@ -98,9 +111,17 @@ export async function fullBriefing() {
     // Tier 5: Live Market Data
     runSource('YFinance', yfinance),
 
-    // Tier 6: Social Sentiment
+    // Tier 6: Cyber & Infrastructure
+    runSource('CISA-KEV', cisaKev),
+    runSource('Cloudflare-Radar', cloudflareRadar),
+
+    // Tier 7: Social Sentiment
     runSource('Adanos', adanos),
-  ]);
+  ];
+
+  // Each runSource has its own 30s timeout, so allSettled will resolve
+  // within ~30s even if APIs hang. Global timeout is a safety net.
+  const results = await Promise.allSettled(allPromises);
 
   const sources = results.map(r => r.status === 'fulfilled' ? r.value : { status: 'failed', error: r.reason?.message });
   const totalMs = Date.now() - start;

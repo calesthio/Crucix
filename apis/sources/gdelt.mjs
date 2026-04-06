@@ -104,11 +104,26 @@ export async function briefing() {
     keywords.some(k => a.title?.toLowerCase().includes(k))
   );
 
+  // Geo events — get mapped event locations (separate API, respects rate limit)
+  await delay(5500);
+  let geoPoints = [];
+  try {
+    const geo = await geoEvents('conflict OR military OR protest OR crisis', { maxPoints: 30, timespan: '24h' });
+    geoPoints = (geo?.features || []).filter(f => f.geometry?.coordinates).map(f => ({
+      lat: f.geometry.coordinates[1],
+      lon: f.geometry.coordinates[0],
+      name: f.properties?.name || f.properties?.html || '',
+      count: f.properties?.count || 1,
+      type: f.properties?.type || 'event',
+    }));
+  } catch (e) { /* geo endpoint optional — don't break briefing */ }
+
   return {
     source: 'GDELT',
     timestamp: new Date().toISOString(),
     totalArticles: articles.length,
     allArticles: articles,
+    geoPoints,
     conflicts: categorize(['military', 'conflict', 'war', 'strike', 'missile', 'attack', 'bomb', 'troops']),
     economy: categorize(['economy', 'recession', 'inflation', 'market', 'sanctions', 'tariff', 'trade', 'gdp']),
     health: categorize(['pandemic', 'outbreak', 'epidemic', 'disease', 'virus', 'health']),

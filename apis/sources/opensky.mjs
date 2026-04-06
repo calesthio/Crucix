@@ -57,6 +57,10 @@ const HOTSPOTS = {
   baltics: { lamin: 53, lomin: 19, lamax: 60, lomax: 29, label: 'Baltic Region' },
   southChinaSea: { lamin: 5, lomin: 105, lamax: 23, lomax: 122, label: 'South China Sea' },
   koreanPeninsula: { lamin: 33, lomin: 124, lamax: 43, lomax: 132, label: 'Korean Peninsula' },
+  caribbean: { lamin: 18, lomin: -90, lamax: 30, lomax: -72, label: 'Caribbean' },
+  gulfOfGuinea: { lamin: -2, lomin: -5, lamax: 8, lomax: 10, label: 'Gulf of Guinea' },
+  capeRoute: { lamin: -38, lomin: 12, lamax: -28, lomax: 24, label: 'Cape Route' },
+  hornOfAfrica: { lamin: 5, lomin: 40, lamax: 15, lomax: 55, label: 'Horn of Africa' },
 };
 
 // Briefing — check hotspot regions for flight activity
@@ -65,6 +69,7 @@ export async function briefing() {
   const results = await Promise.all(
     hotspotEntries.map(async ([key, box]) => {
       const data = await getFlightsInArea(box.lamin, box.lomin, box.lamax, box.lomax);
+      const error = data?.error || null;
       const states = data?.states || [];
       return {
         region: box.label,
@@ -79,14 +84,25 @@ export async function briefing() {
         // Flag potentially interesting (military often have no callsign or specific patterns)
         noCallsign: states.filter(s => !s[1]?.trim()).length,
         highAltitude: states.filter(s => s[7] && s[7] > 12000).length, // >12km altitude
+        ...(error ? { error } : {}),
       };
     })
   );
+
+  const hotspotErrors = results
+    .filter(r => r.error)
+    .map(r => ({ region: r.region, error: r.error }));
 
   return {
     source: 'OpenSky',
     timestamp: new Date().toISOString(),
     hotspots: results,
+    ...(hotspotErrors.length ? {
+      error: hotspotErrors.length === results.length
+        ? `OpenSky unavailable across all hotspots: ${hotspotErrors[0].error}`
+        : `OpenSky unavailable for ${hotspotErrors.length}/${results.length} hotspots`,
+      hotspotErrors,
+    } : {}),
   };
 }
 
