@@ -4,9 +4,9 @@ export async function safeFetch(url, opts = {}) {
   const { timeout = 15000, retries = 1, headers = {} } = opts;
   let lastError;
   for (let i = 0; i <= retries; i++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeout);
       const res = await fetch(url, {
         signal: controller.signal,
         headers: { 'User-Agent': 'Crucix/1.0', ...headers },
@@ -19,6 +19,7 @@ export async function safeFetch(url, opts = {}) {
       const text = await res.text();
       try { return JSON.parse(text); } catch { return { rawText: text.slice(0, 500) }; }
     } catch (e) {
+      clearTimeout(timer);
       lastError = e;
       // GDELT needs 5s between requests, others are fine with shorter delays
       if (i < retries) await new Promise(r => setTimeout(r, 2000 * (i + 1)));
