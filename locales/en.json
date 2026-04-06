@@ -7,7 +7,7 @@
   "dashboard": {
     "title": "CRUCIX — Intelligence Terminal",
     "bootTitle": "CRUCIX INTELLIGENCE ENGINE",
-    "bootSubtitle": "Local Palantir · 31 Sources",
+    "bootSubtitle": "Local Palantir · 28 Sources",
     "waitingForSweep": "Waiting for first sweep...",
     "sourcesOk": "Sources OK",
     "lastSweep": "Last sweep",
@@ -81,6 +81,8 @@
     "fatalities": "fatalities",
     "whoAlerts": "WHO alerts",
     "rssGeolocated": "RSS geolocated",
+    "earthquakes": "Earthquakes",
+    "significant": "significant",
     "earthquakes": "Earthquakes",
     "seismicEvents": "Seismic Events",
     "cyberVulns": "Cyber Vulnerabilities",

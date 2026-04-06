@@ -2,7 +2,7 @@
 
 # Crucix
 
-**Your own intelligence terminal. 27 sources. One command. Zero cloud.**
+**Your own intelligence terminal. 28 sources. One command. Zero cloud.**
 
 ## [Visit The Live Site: crucix.live](https://www.crucix.live/)
 
@@ -90,7 +90,7 @@ npm run dev
 > ```
 > This bypasses npm's script runner, which can swallow errors on some systems (particularly PowerShell on Windows). You can also run `node diag.mjs` to diagnose the exact issue — it checks your Node version, tests each module import individually, and verifies port availability. See [Troubleshooting](#troubleshooting) for more.
 
-The dashboard opens automatically at `http://localhost:3117` and immediately begins its first intelligence sweep. This initial sweep queries all 27 sources in parallel and typically takes 30–60 seconds — the dashboard will appear empty until the sweep completes and pushes the first data update. After that, it auto-refreshes every 15 minutes via SSE (Server-Sent Events). No manual page refresh needed.
+The dashboard opens automatically at `http://localhost:3117` and immediately begins its first intelligence sweep. This initial sweep queries all 28 sources in parallel and typically takes 30–60 seconds — the dashboard will appear empty until the sweep completes and pushes the first data update. After that, it auto-refreshes every 15 minutes via SSE (Server-Sent Events). No manual page refresh needed.
 
 **Requirements:** Node.js 22+ (uses native `fetch`, top-level `await`, ESM)
 
@@ -143,7 +143,7 @@ The preference is saved in browser local storage, so the UI will remember your l
 
 ### Auto-Refresh
 The server runs a sweep cycle every 15 minutes (configurable). Each cycle:
-1. Queries all 27 sources in parallel (~30s)
+1. Queries all 28 sources in parallel (~30s)
 2. Synthesizes raw data into dashboard format
 3. Computes delta from previous run (what changed, escalated, de-escalated) — visible in the **Sweep Delta** panel on the dashboard
 4. Generates LLM trade ideas (if configured)
@@ -283,7 +283,7 @@ crucix/
 ├── docs/                      # Screenshots for README
 │
 ├── apis/
-│   ├── briefing.mjs           # Master orchestrator — runs all 27 sources in parallel
+│   ├── briefing.mjs           # Master orchestrator — runs all 28 sources in parallel
 │   ├── save-briefing.mjs      # CLI: save timestamped + latest.json
 │   ├── BRIEFING_PROMPT.md     # Intelligence synthesis protocol
 │   ├── BRIEFING_TEMPLATE.md   # Briefing output structure
@@ -331,7 +331,7 @@ crucix/
 ### Design Principles
 - **Pure ESM** — every file is `.mjs` with explicit imports
 - **Minimal dependencies** — Express is the only runtime dependency. `discord.js` is optional (for Discord bot). LLM providers use raw `fetch()`, no SDKs.
-- **Parallel execution** — `Promise.allSettled()` fires all 27 sources simultaneously
+- **Parallel execution** — `Promise.allSettled()` fires all 28 sources simultaneously
 - **Graceful degradation** — missing keys produce errors, not crashes. LLM failures don't kill sweeps.
 - **Each source is standalone** — run `node apis/sources/gdelt.mjs` to test any source independently
 - **Self-contained dashboard** — the HTML file works with or without the server
@@ -368,12 +368,13 @@ crucix/
 | **USAspending** | Federal spending and defense contracts | None |
 | **UN Comtrade** | Strategic commodity trade flows between major powers | None |
 
-### Tier 3: Weather, Environment, Tech, Social, SIGINT (7)
+### Tier 3: Weather, Environment, Tech, Social, SIGINT (8)
 
 | Source | What It Tracks | Auth |
 |--------|---------------|------|
 | **NOAA/NWS** | Active US weather alerts | None |
 | **EPA RadNet** | US government radiation monitoring | None |
+| **USGS** | Significant earthquakes (M≥2.5) with tsunami warnings | None |
 | **USPTO Patents** | Patent filings in 7 strategic tech areas | None |
 | **Bluesky** | Social sentiment on geopolitical/market topics | None |
 | **Reddit** | Social sentiment from key subreddits | OAuth |
@@ -489,7 +490,7 @@ Crucix requires Node.js 22 or later. If you have an older version, download the 
 
 ### Dashboard shows empty panels after first start
 
-This is normal — the first sweep takes 30–60 seconds to query all 27 sources. The dashboard will populate automatically once the sweep completes. Check the terminal for sweep progress logs.
+This is normal — the first sweep takes 30–60 seconds to query all 28 sources. The dashboard will populate automatically once the sweep completes. Check the terminal for sweep progress logs.
 
 ### Some sources show errors
 
