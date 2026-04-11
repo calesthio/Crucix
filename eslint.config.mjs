@@ -1,0 +1,41 @@
+export default [
+  {
+    files: ['**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2025,
+      sourceType: 'module',
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+        globalThis: 'readonly',
+        fetch: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
+        AbortController: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        Headers: 'readonly',
+        Response: 'readonly',
+        TextDecoder: 'readonly',
+        Buffer: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'no-undef': 'error',
+      'no-constant-condition': 'warn',
+      'no-debugger': 'error',
+      'no-duplicate-case': 'error',
+      'no-empty': ['warn', { allowEmptyCatch: true }],
+      'no-unreachable': 'error',
+      'eqeqeq': ['warn', 'always'],
+      'no-var': 'error',
+      'prefer-const': 'warn',
+    },
+  },
+  {
+    ignores: ['node_modules/', 'coverage/', 'runs/', 'output/', 'dashboard/public/'],
+  },
+];

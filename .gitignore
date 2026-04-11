@@ -46,3 +46,8 @@ MAINTAINER_DECISIONS.local.md
 
 # Local deploy config
 dashboard/public/vercel.json
+
+# Coverage output
+coverage/
+.c8output/
+*.lcov
