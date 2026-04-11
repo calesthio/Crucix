@@ -2,6 +2,7 @@
 // No auth required. Real-time alerts.
 
 import { safeFetch } from '../utils/fetch.mjs';
+import { SourceError } from '../../lib/errors.mjs';
 
 const NWS_BASE = 'https://api.weather.gov';
 
@@ -32,6 +33,10 @@ export async function getSevereAlerts() {
 // Briefing — severe weather events that could impact markets/supply chains
 export async function briefing() {
   const alerts = await getSevereAlerts();
+  // Track source errors structurally without breaking the briefing flow
+  const fetchError = alerts?.error
+    ? new SourceError(`NOAA fetch failed: ${alerts.error}`, { source: 'NOAA/NWS', cause: alerts._sourceError })
+    : null;
   const features = alerts?.features || [];
 
   // Categorize by impact type
@@ -49,6 +54,7 @@ export async function briefing() {
     source: 'NOAA/NWS',
     timestamp: new Date().toISOString(),
     totalSevereAlerts: features.length,
+    ...(fetchError ? { _sourceError: fetchError } : {}),
     summary: {
       hurricanes: hurricanes.length,
       tornadoes: tornadoes.length,

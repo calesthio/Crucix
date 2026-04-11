@@ -1,5 +1,7 @@
 // Shared fetch utility with timeout, retries, and error handling
 
+import { SourceError } from '../../lib/errors.mjs';
+
 export async function safeFetch(url, opts = {}) {
   const { timeout = 15000, retries = 1, headers = {} } = opts;
   let lastError;
@@ -24,7 +26,13 @@ export async function safeFetch(url, opts = {}) {
       if (i < retries) await new Promise(r => setTimeout(r, 2000 * (i + 1)));
     }
   }
-  return { error: lastError?.message || 'Unknown error', source: url };
+  // Wrap in SourceError for structured handling while preserving the
+  // backwards-compatible { error, source } shape that callers expect.
+  const sourceErr = new SourceError(lastError?.message || 'Unknown error', {
+    source: url,
+    cause: lastError,
+  });
+  return { error: sourceErr.message, source: url, _sourceError: sourceErr };
 }
 
 export function ago(hours) {

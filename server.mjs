@@ -13,6 +13,8 @@ import { fullBriefing } from './apis/briefing.mjs';
 import { synthesize, generateIdeas } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider } from './lib/llm/index.mjs';
+import { CrucixError } from './lib/errors.mjs';
+import { logger } from './lib/logger.mjs';
 import { generateLLMIdeas } from './lib/llm/ideas.mjs';
 import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
@@ -299,6 +301,27 @@ app.get('/events', (req, res) => {
   res.write('data: {"type":"connected"}\n\n');
   sseClients.add(res);
   req.on('close', () => sseClients.delete(res));
+});
+
+// Express error-handling middleware (must be registered after all routes)
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, _next) => {
+  const statusCode = err instanceof CrucixError ? err.statusCode : 500;
+  const code = err instanceof CrucixError ? err.code : 'INTERNAL_ERROR';
+
+  logger.error('Unhandled request error', {
+    source: 'express',
+    error: err,
+    method: req.method,
+    url: req.url,
+  });
+
+  if (!res.headersSent) {
+    res.status(statusCode).json({
+      error: err.message || 'Internal server error',
+      code,
+    });
+  }
 });
 
 function broadcast(data) {

@@ -2,6 +2,7 @@
 // No auth required. Disease outbreak monitoring.
 
 import { safeFetch } from '../utils/fetch.mjs';
+import { SourceError } from '../../lib/errors.mjs';
 
 const GHO_BASE = 'https://ghoapi.azureedge.net/api';
 const DON_API = 'https://www.who.int/api/news/diseaseoutbreaknews';
@@ -65,7 +66,7 @@ export async function getOutbreakNews() {
       summary: (item.Summary || item.Overview || '').replace(/<[^>]*>/g, '').slice(0, 300) || null,
     }));
   } catch (e) {
-    return { error: e.message };
+    return { error: e.message, _sourceError: new SourceError(`WHO DON fetch failed: ${e.message}`, { source: 'WHO', cause: e }) };
   }
 }
 

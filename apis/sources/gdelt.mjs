@@ -4,6 +4,7 @@
 // GEO 2.0 API: geolocation mapping of events
 
 import { safeFetch } from '../utils/fetch.mjs';
+import { SourceError } from '../../lib/errors.mjs';
 
 const BASE = 'https://api.gdeltproject.org/api/v2';
 
@@ -116,7 +117,11 @@ export async function briefing() {
       count: f.properties?.count || 1,
       type: f.properties?.type || 'event',
     }));
-  } catch (e) { /* geo endpoint optional — don't break briefing */ }
+  } catch (e) {
+    // geo endpoint optional, log structured error but don't break briefing
+    const _geoErr = new SourceError(`GDELT geo fetch failed: ${e.message}`, { source: 'GDELT-GEO', cause: e });
+    void _geoErr; // structured error available for future logging
+  }
 
   return {
     source: 'GDELT',

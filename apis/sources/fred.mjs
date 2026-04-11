@@ -3,6 +3,7 @@
 // Key indicators: yield curve, CPI, unemployment, money supply, GDP, fed funds rate
 
 import { safeFetch, today, daysAgo } from '../utils/fetch.mjs';
+import { ConfigError } from '../../lib/errors.mjs';
 
 const BASE = 'https://api.stlouisfed.org/fred';
 
@@ -55,10 +56,12 @@ async function getSeriesLatest(seriesId, apiKey) {
 // Briefing — pull all key indicators
 export async function briefing(apiKey) {
   if (!apiKey) {
+    const err = new ConfigError('No FRED API key. Get one free at https://fred.stlouisfed.org/docs/api/api_key.html', { source: 'FRED' });
     return {
       source: 'FRED',
-      error: 'No FRED API key. Get one free at https://fred.stlouisfed.org/docs/api/api_key.html',
+      error: err.message,
       hint: 'Set FRED_API_KEY environment variable',
+      _configError: err,
     };
   }
 
