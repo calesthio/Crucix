@@ -51,3 +51,14 @@ dashboard/public/vercel.json
 coverage/
 .c8output/
 *.lcov
+
+# Sensitive files
+.env*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.*
+.npmrc
