@@ -94,7 +94,7 @@ export async function getChat(chatId) {
 // Compact a Bot API message for briefing output
 function compactBotMessage(msg) {
   return {
-    text: (msg.text || msg.caption || '').slice(0, 300),
+    text: msg.text || msg.caption || '',
     date: msg.date ? new Date(msg.date * 1000).toISOString() : null,
     chat: msg.chat?.title || msg.chat?.username || 'unknown',
     views: msg.views || 0,
@@ -169,10 +169,12 @@ function parseWebPreview(html, channelId) {
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>')
         .replace(/&quot;/g, '"')
-        .replace(/&#039;/g, "'")
+        .replace(/&#0*39;/g, "'")
+        .replace(/&#x0*27;/gi, "'")
+        .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+        .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
         .replace(/&nbsp;/g, ' ')
-        .trim()
-        .slice(0, 300);
+        .trim();
     }
 
     // Extract view count

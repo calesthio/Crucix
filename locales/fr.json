@@ -1,0 +1,359 @@
+{
+  "meta": {
+    "code": "fr",
+    "name": "French",
+    "nativeName": "Français"
+  },
+  "dashboard": {
+    "title": "CRUCIX — Terminal de Renseignement",
+    "bootTitle": "CRUCIX MOTEUR DE RENSEIGNEMENT",
+    "bootSubtitle": "Palantir Local · 31 Sources",
+    "waitingForSweep": "En attente du premier scan...",
+    "sourcesOk": "Sources OK",
+    "lastSweep": "Dernier scan",
+    "nextSweep": "Prochain scan",
+    "sweep": "SCAN",
+    "sources": "SOURCES",
+    "delta": "DELTA",
+    "highAlert": "ALERTE HAUTE",
+    "riskOff": "RISK-OFF",
+    "riskOn": "RISK-ON",
+    "mixed": "MIXTE",
+    "terminalActive": "TERMINAL ACTIF",
+    "perf": "PERF",
+    "perfLow": "BAS",
+    "perfHigh": "HAUT",
+    "guideBtn": "Signification des Signaux"
+  },
+  "boot": {
+    "initializing": "INITIALISATION MOTEUR CRUCIX v2.1.0",
+    "connecting": "CONNEXION À {count} SOURCES OSINT...",
+    "sourceGroup1": "OPENSKY · FIRMS · KIWISDR · MARITIME",
+    "sourceGroup2": "FRED · BLS · EIA · TREASURY · GSCPI",
+    "sourceGroup3": "TELEGRAM · SAFECAST · EPA · OMS · OFAC",
+    "sourceGroup4": "GDELT · NOAA · BREVETS · BLUESKY · REDDIT",
+    "sourceGroup5": "USGS · BCE · CVE · COPERNICUS · CELESTRAK",
+    "sweepComplete": "SCAN TERMINÉ — {ok}/{total} SOURCES",
+    "ok": "OK",
+    "acledLayer": "COUCHE CONFLIT ACLED",
+    "events": "ÉVÉNEMENTS",
+    "degraded": "DÉGRADÉ",
+    "flightCorridors": "CORRIDORS AÉRIENS",
+    "active": "ACTIF",
+    "dualProjection": "DOUBLE PROJECTION",
+    "ready": "PRÊT",
+    "intelligenceSynthesis": "SYNTHÈSE RENSEIGNEMENT"
+  },
+  "panels": {
+    "sensorGrid": "Grille de Capteurs",
+    "tradeIdeas": "Idées de Trade",
+    "osintFeed": "Flux OSINT",
+    "osintStream": "Flux OSINT",
+    "nuclearWatch": "Surveillance Nucléaire",
+    "newsTicker": "Fil d'Actualités",
+    "sweepDelta": "Changements",
+    "macroMarkets": "Macro + Marchés",
+    "healthAlerts": "Alertes Santé",
+    "riskGauges": "Indicateurs de Risque",
+    "crossSourceSignals": "Signaux Multi-Sources",
+    "signalCore": "Noyau de Signaux",
+    "seismicWatch": "Surveillance Sismique",
+    "cyberWatch": "Surveillance Cyber",
+    "spaceWatch": "Surveillance Spatiale",
+    "europeAlerts": "Alertes Europe",
+    "ecbIndicators": "Indicateurs BCE"
+  },
+  "layers": {
+    "airActivity": "Activité Aérienne",
+    "thermalSpikes": "Pics Thermiques",
+    "sdrCoverage": "Couverture SDR",
+    "maritimeWatch": "Surveillance Maritime",
+    "nuclearSites": "Sites Nucléaires",
+    "conflictEvents": "Événements Conflits",
+    "healthWatch": "Surveillance Santé",
+    "worldNews": "Actualités Mondiales",
+    "osintFeed": "Flux OSINT",
+    "theaters": "théâtres",
+    "nightDet": "dét. nocturnes",
+    "online": "en ligne",
+    "chokepoints": "points strat.",
+    "monitors": "moniteurs",
+    "fatalities": "victimes",
+    "whoAlerts": "alertes OMS",
+    "rssGeolocated": "RSS géolocalisé",
+    "earthquakes": "Séismes",
+    "seismicEvents": "Événements Sismiques",
+    "cyberVulns": "Vulnérabilités Cyber",
+    "spaceActivity": "Activité Spatiale",
+    "europeEmergency": "Urgences Europe"
+  },
+  "map": {
+    "worldNews": "Actualités",
+    "healthAlert": "Alerte Santé",
+    "chokepoint": "Point Stratégique",
+    "nuclearSite": "Site Nucléaire",
+    "osintEvent": "Événement OSINT",
+    "thermalDetection": "Détection Thermique",
+    "aircraft": "Aéronef",
+    "rssGeolocated": "RSS géolocalisé",
+    "airTraffic": "Trafic Aérien",
+    "thermalFire": "Thermique/Feu",
+    "conflict": "Conflit",
+    "sdrReceiver": "Récepteur SDR",
+    "scrollToZoom": "MOLETTE POUR ZOOMER · GLISSER POUR DÉPLACER",
+    "globeMode": "MODE GLOBE",
+    "flatMode": "MODE PLAT",
+    "earthquake": "Séisme",
+    "disaster": "Catastrophe",
+    "weatherAlert": "Alerte Météo",
+    "epaRadNet": "EPA RadNet",
+    "spaceStation": "Station Spatiale",
+    "gdeltEvent": "Événement GDELT"
+  },
+  "ideas": {
+    "confidence": "Confiance",
+    "horizon": "Horizon",
+    "risk": "Risque",
+    "signals": "Signaux",
+    "rationale": "Analyse",
+    "aiEnhanced": "IA AMÉLIORÉE",
+    "llmOff": "LLM OFF",
+    "pending": "EN ATTENTE",
+    "llmNotConfigured": "LLM NON CONFIGURÉ",
+    "llmHelp": "Définir LLM_PROVIDER + identifiants dans .env pour activer les idées de trade IA",
+    "disclosure": "À TITRE INFORMATIF UNIQUEMENT. Ceci ne constitue pas un conseil financier, une recommandation d'achat ou de vente de titre, ni une sollicitation quelconque. Toutes les observations basées sur les signaux sont dérivées de données OSINT publiques et ne doivent pas être utilisées pour prendre des décisions d'investissement. Consultez un conseiller financier agréé avant tout investissement. Les performances passées ne garantissent pas les résultats futurs."
+  },
+  "regions": {
+    "world": "Monde",
+    "americas": "Amériques",
+    "europe": "Europe",
+    "middleEast": "Moyen-Orient",
+    "asiaPacific": "Asie-Pacifique",
+    "africa": "Afrique"
+  },
+  "badges": {
+    "radiation": "RADIATION",
+    "live": "EN DIRECT",
+    "delayed": "DIFFÉRÉ",
+    "items": "ÉLÉMENTS",
+    "urgent": "URGENT",
+    "worldview": "VUE GLOBALE",
+    "hotMetrics": "MÉTRIQUES CLÉS",
+    "stress": "STRESS",
+    "sweeping": "SCAN EN COURS...",
+    "europe": "EUROPE",
+    "orbital": "ORBITAL"
+  },
+  "delta": {
+    "baseline": "RÉFÉRENCE",
+    "escalation": "ESCALADE",
+    "deescalation": "DÉSESCALADE",
+    "stable": "STABLE",
+    "newSignals": "Nouveaux Signaux",
+    "resolved": "Résolus",
+    "noChanges": "Aucun changement depuis le dernier scan",
+    "changes": "Changements",
+    "critical": "Critiques",
+    "new": "NOUVEAU"
+  },
+  "metrics": {
+    "wtiCrude": "Pétrole WTI",
+    "brent": "Brent",
+    "natGas": "Gaz Naturel",
+    "vix": "VIX",
+    "fedFunds": "Taux Fed",
+    "gscpi": "GSCPI",
+    "cpiMom": "IPC MoM",
+    "unemployment": "Chômage",
+    "hySpread": "Spread HY",
+    "usdIndex": "Indice USD",
+    "joblessClaims": "Inscriptions Chômage",
+    "mortgage30y": "Hypothèque 30A",
+    "m2Supply": "Masse M2",
+    "natDebt": "Dette Nat.",
+    "wti5day": "WTI 5 JOURS",
+    "indexes": "INDICES",
+    "crypto": "CRYPTO",
+    "energyMacro": "ÉNERGIE + MACRO",
+    "vsPrior": "vs précédent",
+    "ecbRate": "Taux BCE",
+    "eurusd": "EUR/USD",
+    "euM3": "M3 UE",
+    "euHicp": "IPCH UE",
+    "earthquakes7d": "Séismes (7j)",
+    "criticalCves": "CVE Critiques",
+    "spaceObjects": "Objets Spatiaux",
+    "starlink": "Starlink",
+    "europeAlerts": "Alertes UE"
+  },
+  "signalMetrics": {
+    "incidentTempo": "Tempo Incidents",
+    "airTheaters": "Théâtres Aériens",
+    "thermalSpikes": "Pics Thermiques",
+    "sdrNodes": "Nœuds SDR",
+    "chokepoints": "Points Strat.",
+    "whoAlerts": "Alertes OMS"
+  },
+  "nuclear": {
+    "allSitesNormal": "TOUS LES SITES NORMAUX",
+    "anomalyDetected": "ANOMALIE DÉTECTÉE",
+    "noData": "Pas de données"
+  },
+  "seismic": {
+    "noRecentQuakes": "PAS DE SÉISME SIGNIFICATIF",
+    "majorQuake": "SÉISME MAJEUR DÉTECTÉ",
+    "tsunamiRisk": "RISQUE TSUNAMI",
+    "mag": "M"
+  },
+  "cyber": {
+    "noAlerts": "PAS DE CVE CRITIQUE",
+    "criticalAlert": "VULNÉRABILITÉS CRITIQUES",
+    "cvss": "CVSS",
+    "critical": "CRITIQUE"
+  },
+  "space": {
+    "noActivity": "ACTIVITÉ NORMALE",
+    "launchDetected": "ACTIVITÉ DE LANCEMENT",
+    "objectsTracked": "objets suivis",
+    "newLast30d": "nouv. (30j)",
+    "satellites": "sats",
+    "recentLaunches": "Lancements Récents",
+    "totalTracked": "Total Suivi",
+    "byCountry": "PAR PAYS",
+    "constellations": "CONSTELLATIONS",
+    "launches": "lancements"
+  },
+  "europe": {
+    "noAlerts": "PAS D'ALERTES ACTIVES",
+    "activeAlerts": "ALERTES ACTIVES",
+    "fires": "Incendies",
+    "floods": "Inondations",
+    "types": "types"
+  },
+  "time": {
+    "justNow": "à l'instant",
+    "hoursAgo": "il y a {hours}h",
+    "daysAgo": "il y a {days}j"
+  },
+  "bot": {
+    "commands": {
+      "status": "État du système, dernier scan, statut des sources",
+      "sweep": "Déclencher un scan manuel",
+      "brief": "Résumé compact des derniers renseignements",
+      "portfolio": "Positions et P&L (si Alpaca connecté)",
+      "alerts": "Historique des alertes récentes",
+      "mute": "Couper les alertes 1h (ou /mute 2h, /mute 4h)",
+      "unmute": "Reprendre les alertes",
+      "help": "Afficher les commandes disponibles"
+    },
+    "messages": {
+      "alertsMuted": "🔇 Alertes coupées pour {hours}h — jusqu'à {time} UTC",
+      "useUnmute": "Utilisez /unmute pour reprendre.",
+      "alertsResumed": "🔔 Alertes reprises. Vous recevrez la prochaine évaluation de signal.",
+      "sweepTriggered": "🚀 Scan manuel déclenché. Vous recevrez des alertes si quelque chose de significatif est détecté.",
+      "sweepInProgress": "🔄 Scan déjà en cours. Veuillez patienter.",
+      "noDataYet": "⏳ Pas encore de données — en attente du premier scan.",
+      "noRecentAlerts": "Pas d'alertes récentes.",
+      "recentAlerts": "📋 Alertes Récentes (les {count} dernières)",
+      "commandsTip": "Astuce : Les commandes ne sont pas sensibles à la casse",
+      "commandFailed": "❌ Commande échouée : {error}",
+      "portfolioNotAvailable": "📊 L'intégration portfolio nécessite la connexion Alpaca MCP.\nUtilisez le dashboard Crucix ou l'agent Claude pour les requêtes portfolio."
+    },
+    "status": {
+      "title": "🖥️ STATUT CRUCIX",
+      "uptime": "Disponibilité",
+      "lastSweep": "Dernier scan",
+      "nextSweep": "Prochain scan",
+      "sweepInProgress": "Scan en cours",
+      "yes": "🔄 Oui",
+      "no": "⏸️ Non",
+      "sources": "Sources",
+      "failed": "échouées",
+      "llm": "LLM",
+      "enabled": "✅",
+      "disabled": "❌ Désactivé",
+      "sseClients": "Clients SSE",
+      "dashboard": "Dashboard",
+      "pending": "en attente",
+      "never": "jamais"
+    },
+    "brief": {
+      "title": "📋 BRIEF CRUCIX",
+      "direction": "Direction",
+      "changes": "changements",
+      "criticalChanges": "critiques",
+      "osint": "📡 OSINT",
+      "urgentSignals": "signaux urgents",
+      "totalPosts": "posts totaux",
+      "topIdeas": "💡 Meilleures Idées"
+    },
+    "alertTiers": {
+      "flash": "FLASH",
+      "priority": "PRIORITÉ",
+      "routine": "ROUTINE"
+    }
+  },
+  "alerts": {
+    "tiers": {
+      "flash": {
+        "label": "FLASH",
+        "description": "Action immédiate requise — impact marché, temps critique"
+      },
+      "priority": {
+        "label": "PRIORITÉ",
+        "description": "Cluster de signaux important — agir dans les heures"
+      },
+      "routine": {
+        "label": "ROUTINE",
+        "description": "Changement notable — informatif, pas d'urgence"
+      }
+    },
+    "confidence": {
+      "high": "HAUTE",
+      "medium": "MOYENNE",
+      "low": "BASSE"
+    },
+    "fields": {
+      "direction": "Direction",
+      "confidence": "Confiance",
+      "crossCorrelation": "Corrélation Croisée",
+      "action": "Action",
+      "signals": "Signaux",
+      "monitor": "Surveiller"
+    },
+    "messages": {
+      "alertsMuted": "Alertes Coupées",
+      "mutedUntil": "Alertes suspendues pour {hours}h — jusqu'à {time} UTC.",
+      "useUnmuteToResume": "Utilisez /unmute pour reprendre.",
+      "alertsResumed": "Alertes Reprises",
+      "willReceiveNext": "Vous recevrez la prochaine évaluation de signal."
+    },
+    "ruleBasedHeadlines": {
+      "nuclearAnomaly": "Anomalie Nucléaire Détectée",
+      "crossDomainSignals": "{count} Signaux Critiques Multi-Domaines",
+      "escalatingSignals": "{count} Signaux en Escalade",
+      "osintSurge": "Surge OSINT : {count} Nouveaux Posts Urgents",
+      "signalChangeDetected": "Changement de Signal Détecté"
+    }
+  },
+  "discord": {
+    "commands": {
+      "status": "Santé système, dernier scan, statut sources",
+      "sweep": "Déclencher un scan manuel",
+      "brief": "Résumé compact de renseignement",
+      "portfolio": "Statut portfolio (si Alpaca connecté)",
+      "alerts": "Historique des alertes récentes",
+      "mute": "Couper les alertes (par défaut 1h)",
+      "unmute": "Reprendre les alertes",
+      "muteHoursOption": "Heures de coupure (par défaut : 1)"
+    }
+  },
+  "llm": {
+    "systemPrompt": "Tu es un analyste quantitatif dans une firme de renseignement macro. Tu reçois des données OSINT + économiques structurées de 25 sources et tu produis 5-8 idées de trade actionnables.\n\nRègles:\n- Chaque idée doit citer des données spécifiques de l'input\n- Inclure le rationnel d'entrée, les facteurs de risque et l'horizon temporel\n- Croiser les signaux géopolitiques, économiques et de marché\n- Être spécifique: nommer les instruments (tickers, futures, ETFs), pas des secteurs vagues\n- Si le delta montre des changements significatifs, commencer par ceux-là\n- NE PAS répéter les idées de la liste \"previous ideas\" sauf si les conditions ont matériellement changé\n- Évaluer la confiance: HIGH (signaux multiples confirmants), MEDIUM (thèse supportée), LOW (spéculatif)\n\nOutput UNIQUEMENT un tableau JSON valide. Chaque objet:\n{\n  \"title\": \"Titre court en français (max 10 mots)\",\n  \"type\": \"LONG|SHORT|HEDGE|WATCH|AVOID\",\n  \"ticker\": \"Instrument principal\",\n  \"confidence\": \"HIGH|MEDIUM|LOW\",\n  \"rationale\": \"Explication 2-3 phrases en français citant les données spécifiques\",\n  \"risk\": \"Facteur de risque principal en français\",\n  \"horizon\": \"Intraday|Days|Weeks|Months\",\n  \"signals\": [\"signal1\", \"signal2\"]\n}"
+  },
+  "api": {
+    "errors": {
+      "noDataYet": "Pas encore de données — premier scan en cours"
+    }
+  }
+}

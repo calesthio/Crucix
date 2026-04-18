@@ -14,16 +14,16 @@ const RADNET_AUX = `${BASE}/RADNET_AUX`;
 
 // Key US cities with RadNet monitoring stations
 const MONITORING_STATIONS = {
-  washingtonDC:  { label: 'Washington, DC',   state: 'DC' },
-  newYork:       { label: 'New York, NY',      state: 'NY' },
-  losAngeles:    { label: 'Los Angeles, CA',   state: 'CA' },
-  chicago:       { label: 'Chicago, IL',       state: 'IL' },
-  seattle:       { label: 'Seattle, WA',       state: 'WA' },
-  denver:        { label: 'Denver, CO',        state: 'CO' },
-  honolulu:      { label: 'Honolulu, HI',      state: 'HI' },
-  anchorage:     { label: 'Anchorage, AK',     state: 'AK' },
-  miami:         { label: 'Miami, FL',         state: 'FL' },
-  sanFrancisco:  { label: 'San Francisco, CA', state: 'CA' },
+  washingtonDC:  { label: 'Washington, DC',   state: 'DC', lat: 38.9, lon: -77.0 },
+  newYork:       { label: 'New York, NY',      state: 'NY', lat: 40.7, lon: -74.0 },
+  losAngeles:    { label: 'Los Angeles, CA',   state: 'CA', lat: 34.1, lon: -118.2 },
+  chicago:       { label: 'Chicago, IL',       state: 'IL', lat: 41.9, lon: -87.6 },
+  seattle:       { label: 'Seattle, WA',       state: 'WA', lat: 47.6, lon: -122.3 },
+  denver:        { label: 'Denver, CO',        state: 'CO', lat: 39.7, lon: -105.0 },
+  honolulu:      { label: 'Honolulu, HI',      state: 'HI', lat: 21.3, lon: -157.9 },
+  anchorage:     { label: 'Anchorage, AK',     state: 'AK', lat: 61.2, lon: -149.9 },
+  miami:         { label: 'Miami, FL',         state: 'FL', lat: 25.8, lon: -80.2 },
+  sanFrancisco:  { label: 'San Francisco, CA', state: 'CA', lat: 37.8, lon: -122.4 },
 };
 
 // Analyte types that indicate concerning radiation
@@ -76,8 +76,15 @@ export async function getResultsByAnalyte(analyte, opts = {}) {
   );
 }
 
+// Lookup coords by city name or state
+const CITY_COORDS = Object.fromEntries(
+  Object.values(MONITORING_STATIONS).map(s => [s.label.split(',')[0].toUpperCase(), s])
+);
+
 // Compact a reading for briefing output
 function compactReading(r) {
+  const city = (r.ANA_CITY || r.LOCATION || '').toUpperCase().trim();
+  const station = CITY_COORDS[city];
   return {
     location: r.ANA_CITY || r.LOCATION || 'Unknown',
     state: r.ANA_STATE || r.STATE || null,
@@ -86,6 +93,8 @@ function compactReading(r) {
     unit: r.RESULT_UNIT || r.ANA_UNIT || null,
     collectDate: r.COLLECT_DATE || r.SAMPLE_DATE || null,
     medium: r.SAMPLE_TYPE || r.MEDIUM || null,
+    lat: station?.lat || null,
+    lon: station?.lon || null,
   };
 }
 
