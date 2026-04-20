@@ -4,6 +4,7 @@ import "./apis/utils/env.mjs"; // Load .env first
 
 export default {
   port: parseInt(process.env.PORT) || 3117,
+  publicUrl: process.env.PUBLIC_URL || null,
   refreshIntervalMinutes: parseInt(process.env.REFRESH_INTERVAL_MINUTES) || 15,
 
   llm: {
