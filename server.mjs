@@ -71,7 +71,7 @@ if (telegramAlerter.isConfigured) {
       `Sources: ${sourcesOk}/${sourcesTotal} OK${sourcesFailed > 0 ? ` (${sourcesFailed} failed)` : ''}`,
       `LLM: ${llmStatus}`,
       `SSE clients: ${sseClients.size}`,
-      `Dashboard: http://localhost:${config.port}`,
+      `Dashboard: ${config.publicUrl || `http://localhost:${config.port}`}`,
     ].join('\n');
   });
 
@@ -169,7 +169,7 @@ if (discordAlerter.isConfigured) {
       `Sources: ${sourcesOk}/${sourcesTotal} OK${sourcesFailed > 0 ? ` (${sourcesFailed} failed)` : ''}`,
       `LLM: ${llmStatus}`,
       `SSE clients: ${sseClients.size}`,
-      `Dashboard: http://localhost:${config.port}`,
+      `Dashboard: ${config.publicUrl || `http://localhost:${config.port}`}`,
     ].join('\n');
   });
 
@@ -374,6 +374,13 @@ async function runSweepCycle() {
           console.error('[Crucix] Discord alert error:', err.message);
         });
       }
+    }
+
+    // 7. Post actionable ideas to Discord (HIGH confidence, short horizon, Kalshi-style)
+    if (discordAlerter.isConfigured && synthesized.ideas?.length > 0) {
+      discordAlerter.sendActionableIdeas(synthesized.ideas).catch(err => {
+        console.error('[Crucix] Discord idea alert error:', err.message);
+      });
     }
 
     // Prune old alerted signals
