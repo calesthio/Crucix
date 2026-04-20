@@ -376,6 +376,13 @@ async function runSweepCycle() {
       }
     }
 
+    // 7. Post actionable ideas to Discord (HIGH confidence, short horizon, Kalshi-style)
+    if (discordAlerter.isConfigured && synthesized.ideas?.length > 0) {
+      discordAlerter.sendActionableIdeas(synthesized.ideas).catch(err => {
+        console.error('[Crucix] Discord idea alert error:', err.message);
+      });
+    }
+
     // Prune old alerted signals
     memory.pruneAlertedSignals();
 
