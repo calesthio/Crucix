@@ -71,7 +71,7 @@ if (telegramAlerter.isConfigured) {
       `Sources: ${sourcesOk}/${sourcesTotal} OK${sourcesFailed > 0 ? ` (${sourcesFailed} failed)` : ''}`,
       `LLM: ${llmStatus}`,
       `SSE clients: ${sseClients.size}`,
-      `Dashboard: http://localhost:${config.port}`,
+      `Dashboard: ${config.publicUrl || `http://localhost:${config.port}`}`,
     ].join('\n');
   });
 
@@ -169,7 +169,7 @@ if (discordAlerter.isConfigured) {
       `Sources: ${sourcesOk}/${sourcesTotal} OK${sourcesFailed > 0 ? ` (${sourcesFailed} failed)` : ''}`,
       `LLM: ${llmStatus}`,
       `SSE clients: ${sseClients.size}`,
-      `Dashboard: http://localhost:${config.port}`,
+      `Dashboard: ${config.publicUrl || `http://localhost:${config.port}`}`,
     ].join('\n');
   });
 
