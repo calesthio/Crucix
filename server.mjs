@@ -36,6 +36,19 @@ let sweepInProgress = false;
 const startTime = Date.now();
 const sseClients = new Set();
 
+function signalId(kind = 'signal', item = {}, index = 0) {
+  const raw = `${kind}:${item.signal || item.category || 'item'}:${index}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 96);
+  return raw || `${kind}-${index}`;
+}
+
+function attachSignalIds(kind = 'signal', list = []) {
+  return list.map((item, index) => ({ ...item, id: item.id || signalId(kind, item, index) }));
+}
+
 function formatSignalTrustLabel(item = {}) {
   const labels = [];
   if (item.sourceHealth) labels.push(item.sourceHealth);
@@ -49,15 +62,17 @@ function trustPhrase(item = {}) {
   return `${sourceHealth} via ${evidenceSource}`;
 }
 
-function getSignalSelection(snapshot = {}, kind = 'corroborated', index = 0) {
-  const list = kind === 'suspect'
-    ? (snapshot.suspectSignals || [])
-    : (snapshot.corroboratedSignals || []);
+function getSignalSelection(snapshot = {}, kind = 'corroborated', index = 0, id = null) {
+  const list = attachSignalIds(
+    kind,
+    kind === 'suspect' ? (snapshot.suspectSignals || []) : (snapshot.corroboratedSignals || [])
+  );
+  if (id) return list.find(item => item.id === id) || null;
   return list[index] || null;
 }
 
-function buildIMessengerDrilldown(snapshot = {}, { kind = 'corroborated', action = 'why', index = 0 } = {}) {
-  const item = getSignalSelection(snapshot, kind, index);
+function buildIMessengerDrilldown(snapshot = {}, { kind = 'corroborated', action = 'why', index = 0, id = null } = {}) {
+  const item = getSignalSelection(snapshot, kind, index, id);
   if (!item) return `No ${kind} signal available.`;
 
   if (action === 'sources') {
@@ -93,8 +108,10 @@ function buildIMessengerBrief(snapshot = {}) {
   const lines = [];
   const evidence = snapshot.evidenceSummary || {};
   const counts = evidence.counts || {};
-  const topCorroborated = (snapshot.corroboratedSignals || [])[0] || null;
-  const topSuspect = (snapshot.suspectSignals || [])[0] || null;
+  const corroborated = attachSignalIds('corroborated', snapshot.corroboratedSignals || []);
+  const suspects = attachSignalIds('suspect', snapshot.suspectSignals || []);
+  const topCorroborated = corroborated[0] || null;
+  const topSuspect = suspects[0] || null;
   const tgUrgent = snapshot.tg?.urgent || [];
 
   if (evidence.headline) {
@@ -103,11 +120,11 @@ function buildIMessengerBrief(snapshot = {}) {
   }
 
   if (topCorroborated) {
-    lines.push(`Top corroborated: ${topCorroborated.signal} (${topCorroborated.confidence}, ${trustPhrase(topCorroborated)})`);
+    lines.push(`Top corroborated [${topCorroborated.id}]: ${topCorroborated.signal} (${topCorroborated.confidence}, ${trustPhrase(topCorroborated)})`);
   }
 
   if (topSuspect) {
-    lines.push(`Top suspect: ${topSuspect.signal} (${topSuspect.confidence}, ${trustPhrase(topSuspect)})`);
+    lines.push(`Top suspect [${topSuspect.id}]: ${topSuspect.signal} (${topSuspect.confidence}, ${trustPhrase(topSuspect)})`);
   }
 
   if (tgUrgent.length) {
@@ -321,11 +338,15 @@ app.get('/api/data', (req, res) => {
 
 app.get('/api/brief/compact', (req, res) => {
   if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  const corroborated = attachSignalIds('corroborated', currentData.corroboratedSignals || []);
+  const suspects = attachSignalIds('suspect', currentData.suspectSignals || []);
   res.json({
     text: buildIMessengerBrief(currentData),
     evidenceSummary: currentData.evidenceSummary || null,
-    topCorroborated: (currentData.corroboratedSignals || [])[0] || null,
-    topSuspect: (currentData.suspectSignals || [])[0] || null,
+    topCorroborated: corroborated[0] || null,
+    topSuspect: suspects[0] || null,
+    corroboratedSignals: corroborated.slice(0, 5),
+    suspectSignals: suspects.slice(0, 5),
   });
 });
 
@@ -334,12 +355,14 @@ app.get('/api/brief/drilldown', (req, res) => {
   const kind = req.query.kind === 'suspect' ? 'suspect' : 'corroborated';
   const action = ['why', 'sources', 'expand'].includes(req.query.action) ? req.query.action : 'why';
   const index = Math.max(0, Number.parseInt(req.query.index, 10) || 0);
-  const item = getSignalSelection(currentData, kind, index);
+  const id = typeof req.query.id === 'string' && req.query.id.trim() ? req.query.id.trim() : null;
+  const item = getSignalSelection(currentData, kind, index, id);
   res.json({
     kind,
     action,
     index,
-    text: buildIMessengerDrilldown(currentData, { kind, action, index }),
+    id,
+    text: buildIMessengerDrilldown(currentData, { kind, action, index, id }),
     item,
   });
 });
