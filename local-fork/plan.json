@@ -35,7 +35,7 @@
           {
             "id": "effort-1.2",
             "title": "OpenSky degraded-state cooldown and fallback hardening",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -57,8 +57,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 1,
-    "activeCycleId": "2026-04-23-cycle-001",
-    "lastCompletedCycleId": "2026-04-23-cycle-001"
+    "sequence": 2,
+    "activeCycleId": "2026-04-23-cycle-002",
+    "lastCompletedCycleId": "2026-04-23-cycle-002"
   }
 }

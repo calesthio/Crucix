@@ -2,9 +2,50 @@
 // Free for research. 4,000 API credits/day (no auth), 8,000 with account.
 // Tracks all aircraft with ADS-B transponders including many military.
 
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { safeFetch } from '../utils/fetch.mjs';
 
 const BASE = 'https://opensky-network.org/api';
+const ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+const RUNS_DIR = join(ROOT, 'runs');
+const CACHE_DIR = join(RUNS_DIR, 'cache');
+const CACHE_FILE = join(CACHE_DIR, 'opensky-latest.json');
+const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+function ensureCacheDir() {
+  if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
+}
+
+function hotspotHasAirActivity(hotspots = []) {
+  return hotspots.some(h => (h?.totalAircraft || 0) > 0);
+}
+
+function readCachedSnapshot() {
+  try {
+    if (!existsSync(CACHE_FILE)) return null;
+    const parsed = JSON.parse(readFileSync(CACHE_FILE, 'utf8'));
+    const ts = parsed?.timestamp ? new Date(parsed.timestamp).getTime() : NaN;
+    if (!Array.isArray(parsed?.hotspots) || !Number.isFinite(ts)) return null;
+    return {
+      ...parsed,
+      ageMinutes: +((Date.now() - ts) / 60000).toFixed(1),
+      isExpired: Date.now() - ts > CACHE_MAX_AGE_MS,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedSnapshot(snapshot) {
+  try {
+    ensureCacheDir();
+    writeFileSync(CACHE_FILE, JSON.stringify(snapshot, null, 2));
+  } catch {
+    // Non-fatal. Continue without persistence.
+  }
+}
 
 // Get all current flights (global state vector)
 export async function getAllFlights() {
@@ -93,9 +134,36 @@ export async function briefing() {
     .filter(r => r.error)
     .map(r => ({ region: r.region, error: r.error }));
 
-  return {
+  const freshSnapshot = {
     source: 'OpenSky',
     timestamp: new Date().toISOString(),
+    hotspots: results,
+  };
+
+  if (hotspotHasAirActivity(results)) {
+    writeCachedSnapshot(freshSnapshot);
+  }
+
+  const cached = readCachedSnapshot();
+  if (hotspotErrors.length === results.length && cached && !cached.isExpired && hotspotHasAirActivity(cached.hotspots)) {
+    return {
+      source: 'OpenSky',
+      timestamp: cached.timestamp,
+      hotspots: cached.hotspots,
+      degraded: true,
+      stale: true,
+      servedFromCache: true,
+      cacheAgeMinutes: cached.ageMinutes,
+      cacheFile: CACHE_FILE,
+      error: `OpenSky live query failed, serving cached snapshot (${cached.ageMinutes}m old): ${hotspotErrors[0].error}`,
+      liveError: hotspotErrors[0].error,
+      hotspotErrors,
+    };
+  }
+
+  return {
+    source: 'OpenSky',
+    timestamp: freshSnapshot.timestamp,
     hotspots: results,
     ...(hotspotErrors.length ? {
       error: hotspotErrors.length === results.length

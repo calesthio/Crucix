@@ -937,10 +937,20 @@ export function generateIdeas(V2) {
 
 // === Synthesize raw sweep data into dashboard format ===
 export async function synthesize(data, llmProvider = createLLMProvider(config.llm)) {
-  const liveAirHotspots = data.sources.OpenSky?.hotspots || [];
-  const airFallback = sumAirHotspots(liveAirHotspots) > 0
+  const openSkySource = data.sources.OpenSky || {};
+  const liveAirHotspots = openSkySource.hotspots || [];
+  const sourceProvidedFallback = openSkySource.servedFromCache
+    ? {
+        file: openSkySource.cacheFile,
+        timestamp: openSkySource.timestamp,
+        hotspots: liveAirHotspots,
+        cacheAgeMinutes: openSkySource.cacheAgeMinutes,
+        providedBySource: true,
+      }
+    : null;
+  const airFallback = sourceProvidedFallback || (sumAirHotspots(liveAirHotspots) > 0
     ? null
-    : loadOpenSkyFallback(data.sources.OpenSky?.timestamp || data.crucix?.timestamp);
+    : loadOpenSkyFallback(openSkySource.timestamp || data.crucix?.timestamp));
   const effectiveAirHotspots = airFallback?.hotspots || liveAirHotspots;
   const air = summarizeAirHotspots(effectiveAirHotspots);
   const thermal = (data.sources.FIRMS?.hotspots || []).map(h => ({
@@ -1163,7 +1173,9 @@ export async function synthesize(data, llmProvider = createLLMProvider(config.ll
     airMeta: {
       fallback: Boolean(airFallback),
       source: airFallback ? 'OpenSky fallback' : 'OpenSky',
-      ...(data.sources.OpenSky?.error ? { error: data.sources.OpenSky.error } : {}),
+      ...(openSkySource.error ? { error: openSkySource.error } : {}),
+      ...(openSkySource.liveError ? { liveError: openSkySource.liveError } : {}),
+      ...(airFallback?.cacheAgeMinutes != null ? { cacheAgeMinutes: airFallback.cacheAgeMinutes } : {}),
     },
     nuke,
     nukeSignals,
@@ -1193,10 +1205,12 @@ export async function synthesize(data, llmProvider = createLLMProvider(config.ll
     airMeta: {
       fallback: Boolean(airFallback),
       liveTotal: sumAirHotspots(liveAirHotspots),
-      timestamp: airFallback?.timestamp || data.sources.OpenSky?.timestamp || data.crucix?.timestamp || null,
+      timestamp: airFallback?.timestamp || openSkySource.timestamp || data.crucix?.timestamp || null,
       source: airFallback ? 'OpenSky fallback' : 'OpenSky',
       ...(airFallback ? { fallbackFile: airFallback.file } : {}),
-      ...(data.sources.OpenSky?.error ? { error: data.sources.OpenSky.error } : {}),
+      ...(airFallback?.cacheAgeMinutes != null ? { cacheAgeMinutes: airFallback.cacheAgeMinutes } : {}),
+      ...(openSkySource.error ? { error: openSkySource.error } : {}),
+      ...(openSkySource.liveError ? { liveError: openSkySource.liveError } : {}),
     },
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
     tg: { posts: tgData.totalPosts || 0, urgent: tgUrgent, topPosts: tgTop },
