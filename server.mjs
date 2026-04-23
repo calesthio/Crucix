@@ -49,6 +49,46 @@ function trustPhrase(item = {}) {
   return `${sourceHealth} via ${evidenceSource}`;
 }
 
+function getSignalSelection(snapshot = {}, kind = 'corroborated', index = 0) {
+  const list = kind === 'suspect'
+    ? (snapshot.suspectSignals || [])
+    : (snapshot.corroboratedSignals || []);
+  return list[index] || null;
+}
+
+function buildIMessengerDrilldown(snapshot = {}, { kind = 'corroborated', action = 'why', index = 0 } = {}) {
+  const item = getSignalSelection(snapshot, kind, index);
+  if (!item) return `No ${kind} signal available.`;
+
+  if (action === 'sources') {
+    return [
+      `${item.signal}`,
+      `Sources: ${item.evidenceSource || 'mixed'}`,
+      `Trust: ${item.sourceHealth || 'unknown'}`,
+      item.freshestTs ? `Freshest evidence: ${item.freshestTs}` : null,
+    ].filter(Boolean).join('\n');
+  }
+
+  if (action === 'expand') {
+    return [
+      `${item.signal} (${item.confidence})`,
+      `Trust: ${trustPhrase(item)}`,
+      `Why it matters: ${item.reason || 'No explanation available.'}`,
+      item.region ? `Region: ${item.region}` : null,
+      item.urgentPosts != null ? `Urgent posts: ${item.urgentPosts}` : null,
+      item.airTotal != null ? `Air activity: ${item.airTotal}` : null,
+      item.cpm != null ? `CPM: ${item.cpm}` : null,
+      item.readings != null ? `Readings: ${item.readings}` : null,
+    ].filter(Boolean).join('\n');
+  }
+
+  return [
+    `${item.signal}`,
+    `Why: ${item.reason || 'No explanation available.'}`,
+    `Trust: ${trustPhrase(item)}`,
+  ].join('\n');
+}
+
 function buildIMessengerBrief(snapshot = {}) {
   const lines = [];
   const evidence = snapshot.evidenceSummary || {};
@@ -286,6 +326,21 @@ app.get('/api/brief/compact', (req, res) => {
     evidenceSummary: currentData.evidenceSummary || null,
     topCorroborated: (currentData.corroboratedSignals || [])[0] || null,
     topSuspect: (currentData.suspectSignals || [])[0] || null,
+  });
+});
+
+app.get('/api/brief/drilldown', (req, res) => {
+  if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  const kind = req.query.kind === 'suspect' ? 'suspect' : 'corroborated';
+  const action = ['why', 'sources', 'expand'].includes(req.query.action) ? req.query.action : 'why';
+  const index = Math.max(0, Number.parseInt(req.query.index, 10) || 0);
+  const item = getSignalSelection(currentData, kind, index);
+  res.json({
+    kind,
+    action,
+    index,
+    text: buildIMessengerDrilldown(currentData, { kind, action, index }),
+    item,
   });
 });
 

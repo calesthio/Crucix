@@ -80,14 +80,19 @@
             "id": "effort-4.1",
             "title": "Compact trust-aware iMessage brief surface",
             "status": "completed"
+          },
+          {
+            "id": "effort-4.2",
+            "title": "iMessage drill-down support for why, sources, and expand",
+            "status": "completed"
           }
         ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 7,
-    "activeCycleId": "2026-04-23-cycle-007",
-    "lastCompletedCycleId": "2026-04-23-cycle-007"
+    "sequence": 8,
+    "activeCycleId": "2026-04-23-cycle-008",
+    "lastCompletedCycleId": "2026-04-23-cycle-008"
   }
 }
