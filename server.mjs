@@ -16,6 +16,7 @@ import { createLLMProvider } from './lib/llm/index.mjs';
 import { generateLLMIdeas } from './lib/llm/ideas.mjs';
 import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
+import { buildSixHourBaseline } from './lib/baseline-sixhour.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -124,6 +125,22 @@ if (telegramAlerter.isConfigured) {
       sections.push('');
     }
 
+    if (currentData.corroboratedSignals?.length) {
+      sections.push(`✅ Corroborated signals:`);
+      for (const item of currentData.corroboratedSignals.slice(0, 3)) {
+        sections.push(`  • ${item.signal} [${item.confidence}] ${item.reason.substring(0, 90)}`);
+      }
+      sections.push('');
+    }
+
+    if (currentData.suspectSignals?.length) {
+      sections.push(`⚠️ Suspect signals:`);
+      for (const item of currentData.suspectSignals.slice(0, 3)) {
+        sections.push(`  • ${item.signal} [${item.confidence}] ${item.reason.substring(0, 90)}`);
+      }
+      sections.push('');
+    }
+
     // Top ideas
     if (ideas.length > 0) {
       sections.push(`💡 *Top Ideas:*`);
@@ -212,6 +229,22 @@ if (discordAlerter.isConfigured) {
       sections.push('');
     }
 
+    if (currentData.corroboratedSignals?.length) {
+      sections.push(`✅ Corroborated signals:`);
+      for (const item of currentData.corroboratedSignals.slice(0, 3)) {
+        sections.push(`  • ${item.signal} [${item.confidence}] ${item.reason.substring(0, 90)}`);
+      }
+      sections.push('');
+    }
+
+    if (currentData.suspectSignals?.length) {
+      sections.push(`⚠️ Suspect signals:`);
+      for (const item of currentData.suspectSignals.slice(0, 3)) {
+        sections.push(`  • ${item.signal} [${item.confidence}] ${item.reason.substring(0, 90)}`);
+      }
+      sections.push('');
+    }
+
     if (ideas.length > 0) {
       sections.push(`**💡 Top Ideas:**`);
       for (const idea of ideas) {
@@ -247,7 +280,8 @@ app.get('/', (req, res) => {
     // Inject locale data into the HTML
     const locale = getLocale();
     const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
-    html = html.replace('</head>', `${localeScript}\n</head>`);
+    const runtimeScript = `<script>window.__CRUCIX_RUNTIME__ = ${JSON.stringify({ refreshIntervalMinutes: config.refreshIntervalMinutes }).replace(/<\/script>/gi, '<\\/script>')};</script>`;
+    html = html.replace('</head>', `${localeScript}\n${runtimeScript}\n</head>`);
     
     res.type('html').send(html);
   }
@@ -272,6 +306,7 @@ app.get('/api/health', (req, res) => {
     sweepStartedAt,
     sourcesOk: currentData?.meta?.sourcesOk || 0,
     sourcesFailed: currentData?.meta?.sourcesFailed || 0,
+    sourceHealthSummary: currentData?.healthSummary || null,
     llmEnabled: !!config.llm.provider,
     llmProvider: config.llm.provider,
     telegramEnabled: !!(config.telegram.botToken && config.telegram.chatId),
@@ -308,6 +343,31 @@ function broadcast(data) {
   }
 }
 
+async function enrichIdeasAndPublish(synthesized, delta) {
+  if (!llmProvider?.isConfigured) {
+    synthesized.ideas = [];
+    synthesized.ideasSource = 'disabled';
+    return synthesized;
+  }
+
+  try {
+    console.log('[Crucix] Generating LLM trade ideas...');
+    const previousIdeas = memory.getLastRun()?.ideas || [];
+    const llmIdeas = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas);
+    synthesized.ideas = llmIdeas || [];
+    synthesized.ideasSource = llmIdeas ? 'llm' : 'llm-failed';
+    console.log(`[Crucix] LLM ideas ready: ${synthesized.ideas.length} (${synthesized.ideasSource})`);
+  } catch (llmErr) {
+    console.error('[Crucix] LLM ideas failed (non-fatal):', llmErr.message);
+    synthesized.ideas = [];
+    synthesized.ideasSource = 'llm-failed';
+  }
+
+  currentData = synthesized;
+  broadcast({ type: 'ideas_update', data: currentData });
+  return synthesized;
+}
+
 // === Sweep Cycle ===
 async function runSweepCycle() {
   if (sweepInProgress) {
@@ -338,39 +398,30 @@ async function runSweepCycle() {
     const delta = memory.addRun(synthesized);
     synthesized.delta = delta;
 
-    // 5. LLM-powered trade ideas (LLM-only feature) — isolated so failures don't kill sweep
-    if (llmProvider?.isConfigured) {
-      try {
-        console.log('[Crucix] Generating LLM trade ideas...');
-        const previousIdeas = memory.getLastRun()?.ideas || [];
-        const llmIdeas = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas);
-        if (llmIdeas) {
-          synthesized.ideas = llmIdeas;
-          synthesized.ideasSource = 'llm';
-          console.log(`[Crucix] LLM generated ${llmIdeas.length} ideas`);
-        } else {
-          synthesized.ideas = [];
-          synthesized.ideasSource = 'llm-failed';
-        }
-      } catch (llmErr) {
-        console.error('[Crucix] LLM ideas failed (non-fatal):', llmErr.message);
-        synthesized.ideas = [];
-        synthesized.ideasSource = 'llm-failed';
-      }
-    } else {
+    const sixHourBaselineRun = memory.getBaselineRun(6);
+    synthesized.baseline6h = buildSixHourBaseline(synthesized, sixHourBaselineRun);
+
+    // 5. Publish core data immediately so LLM idea generation never blocks /api/data
+    if (!llmProvider?.isConfigured) {
       synthesized.ideas = [];
       synthesized.ideasSource = 'disabled';
+    } else {
+      synthesized.ideas = [];
+      synthesized.ideasSource = 'pending';
     }
+
+    currentData = synthesized;
+    broadcast({ type: 'update', data: currentData });
 
     // 6. Alert evaluation — Telegram + Discord (LLM with rule-based fallback, multi-tier, semantic dedup)
     if (delta?.summary?.totalChanges > 0) {
       if (telegramAlerter.isConfigured) {
-        telegramAlerter.evaluateAndAlert(llmProvider, delta, memory).catch(err => {
+        telegramAlerter.evaluateAndAlert(llmProvider, delta, memory, synthesized).catch(err => {
           console.error('[Crucix] Telegram alert error:', err.message);
         });
       }
       if (discordAlerter.isConfigured) {
-        discordAlerter.evaluateAndAlert(llmProvider, delta, memory).catch(err => {
+        discordAlerter.evaluateAndAlert(llmProvider, delta, memory, synthesized).catch(err => {
           console.error('[Crucix] Discord alert error:', err.message);
         });
       }
@@ -379,15 +430,16 @@ async function runSweepCycle() {
     // Prune old alerted signals
     memory.pruneAlertedSignals();
 
-    currentData = synthesized;
-
-    // 6. Push to all connected browsers
-    broadcast({ type: 'update', data: currentData });
-
     console.log(`[Crucix] Sweep complete — ${currentData.meta.sourcesOk}/${currentData.meta.sourcesQueried} sources OK`);
     console.log(`[Crucix] ${currentData.ideas.length} ideas (${synthesized.ideasSource}) | ${currentData.news.length} news | ${currentData.newsFeed.length} feed items`);
     if (delta?.summary) console.log(`[Crucix] Delta: ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical, direction: ${delta.summary.direction}`);
     console.log(`[Crucix] Next sweep at ${new Date(Date.now() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()}`);
+
+    if (llmProvider?.isConfigured) {
+      enrichIdeasAndPublish(synthesized, delta).catch(err => {
+        console.error('[Crucix] Deferred ideas enrichment failed:', err.message);
+      });
+    }
 
   } catch (err) {
     console.error('[Crucix] Sweep failed:', err.message);

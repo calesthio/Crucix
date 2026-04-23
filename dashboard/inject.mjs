@@ -10,11 +10,13 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import config from '../crucix.config.mjs';
-import { createLLMProvider } from '../lib/llm/index.mjs';
+import { createLLMProvider, OllamaProvider } from '../lib/llm/index.mjs';
 import { generateLLMIdeas } from '../lib/llm/ideas.mjs';
+import { buildSourceHealth } from '../lib/source-health.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
+const NEWS_LLM_BASE_URL = config.llm?.baseUrl || 'http://192.168.68.111:11434';
 
 // === Helpers ===
 const cyrillic = /[\u0400-\u04FF]/;
@@ -82,14 +84,356 @@ const geoKeywords = {
   'IMF':[38.9,-77],'World Bank':[38.9,-77],'UN':[40.7,-74],
 };
 
-function geoTagText(text) {
+const NEWS_REGION_ALIASES = {
+  us: 'United States', 'u.s.': 'United States', 'u.s': 'United States', america: 'United States', american: 'United States',
+  eu: 'EU', 'e.u.': 'EU', uk: 'UK', 'u.k.': 'UK'
+};
+
+const NEWS_GENERIC_REGIONS = new Set(['UN', 'Congress', 'Fed', 'Senate', 'IMF', 'World Bank', 'Trump', 'White House', 'US', 'America', 'UK', 'Britain', 'EU', 'NATO']);
+
+function normalizeNewsRegionLabel(region = '') {
+  const cleaned = String(region || '').trim();
+  if (!cleaned) return '';
+  return NEWS_REGION_ALIASES[cleaned.toLowerCase()] || cleaned;
+}
+
+function findGeoKeyword(text) {
   if (!text) return null;
+  const lower = String(text).toLowerCase();
+  const matches = [];
   for (const [keyword, [lat, lon]] of Object.entries(geoKeywords)) {
-    if (text.includes(keyword)) {
-      return { lat, lon, region: keyword };
+    const idx = lower.indexOf(keyword.toLowerCase());
+    if (idx === -1) continue;
+    matches.push({ keyword, lat, lon, idx, len: keyword.length, generic: NEWS_GENERIC_REGIONS.has(keyword) });
+  }
+  if (!matches.length) return null;
+  const concreteMatches = matches.filter(m => !m.generic);
+  const pool = concreteMatches.length ? concreteMatches : matches;
+  pool.sort((a, b) => a.idx - b.idx || b.len - a.len);
+  const best = pool[0];
+  return { lat: best.lat, lon: best.lon, region: best.keyword, precision: best.len > 10 ? 'subregion' : 'country', basis: 'keyword' };
+}
+
+function geoTagText(text) {
+  return findGeoKeyword(text);
+}
+
+function resolveNewsPlacement(item = {}) {
+  const titleGeo = findGeoKeyword(item.title);
+  if (titleGeo && !NEWS_GENERIC_REGIONS.has(titleGeo.region)) return titleGeo;
+
+  const normalizedRegion = normalizeNewsRegionLabel(item.region);
+  const regionGeo = normalizedRegion ? findGeoKeyword(normalizedRegion) : null;
+  if (regionGeo && !NEWS_GENERIC_REGIONS.has(regionGeo.region)) {
+    return { ...regionGeo, precision: 'region', basis: 'region' };
+  }
+
+  const sourceGeo = RSS_SOURCE_FALLBACKS[item.source];
+  if (sourceGeo) return { ...sourceGeo, precision: 'source-fallback', basis: 'source' };
+  return null;
+}
+
+function quoteConfidence(q) {
+  return q?.validation?.confidence || 'high';
+}
+
+function quoteFlags(q) {
+  return q?.validation?.flags || [];
+}
+
+function normalizeRegion(text = '') {
+  const lower = text.toLowerCase();
+  if (/iran|tehran|hormuz|israel|lebanon|gaza|middle east|bab el-mandeb|red sea/.test(lower)) return 'middle_east';
+  if (/ukraine|melitopol|chernobyl|zaporizhzhia|russia|baltic/.test(lower)) return 'ukraine';
+  if (/taiwan|south china sea|china|beijing|taipei/.test(lower)) return 'taiwan';
+  if (/korea|seoul|pyongyang/.test(lower)) return 'korea';
+  if (/sudan|horn of africa|ethiopia|somalia|sahel/.test(lower)) return 'horn';
+  if (/panama/.test(lower)) return 'panama';
+  return 'global';
+}
+
+function groupUrgentByRegion(posts = []) {
+  return posts.reduce((acc, post) => {
+    const region = normalizeRegion(`${post.channel || ''} ${post.text || ''}`);
+    if (!acc[region]) acc[region] = [];
+    acc[region].push(post);
+    return acc;
+  }, {});
+}
+
+function regionWeight(region = 'global') {
+  return {
+    middle_east: 1.0,
+    taiwan: 0.95,
+    ukraine: 0.9,
+    korea: 0.8,
+    horn: 0.7,
+    panama: 0.65,
+    global: 0.5,
+  }[region] ?? 0.5;
+}
+
+function signalAgeHours(nowTs, candidateTs) {
+  const now = nowTs ? new Date(nowTs).getTime() : Date.now();
+  const ts = candidateTs ? new Date(candidateTs).getTime() : NaN;
+  if (!Number.isFinite(ts)) return 0;
+  return Math.max(0, (now - ts) / 3600000);
+}
+
+function suspectDecayMultiplier(ageHours) {
+  if (ageHours <= 2) return 1;
+  if (ageHours <= 6) return 0.75;
+  if (ageHours <= 12) return 0.5;
+  return 0.3;
+}
+
+function thermalByRegion(thermal = []) {
+  const map = {};
+  for (const region of thermal) {
+    map[normalizeRegion(region.region)] = region;
+  }
+  return map;
+}
+
+function airByRegion(air = []) {
+  const map = {};
+  for (const region of air) {
+    map[normalizeRegion(region.region)] = region;
+  }
+  return map;
+}
+
+function buildCorroboratedSignals({ tg = {}, thermal = [], air = [], maritime = {}, markets = {}, nuke = [], health = [], nowTs = null }) {
+  const corroborated = [];
+  const add = (category, signal, confidence, reason, details = {}) => corroborated.push({ category, signal, confidence, reason, ...details });
+
+  const urgentByRegion = groupUrgentByRegion(tg.urgent || []);
+  const thermalMap = thermalByRegion(thermal);
+  const airMap = airByRegion(air);
+
+  for (const [region, posts] of Object.entries(urgentByRegion)) {
+    if (region === 'global' || posts.length < 3) continue;
+    const t = thermalMap[region];
+    const a = airMap[region];
+    const thermalSupport = (t?.night || 0) >= 10 || (t?.fires?.length || 0) >= 3;
+    const airSupport = (a?.total || 0) > 0 || (a?.noCallsign || 0) > 0;
+    if (thermalSupport || airSupport) {
+      add('osint', `Regional corroboration: ${region}`, 'high', `${posts.length} urgent posts align with ${thermalSupport ? 'thermal' : 'air'} activity in the same region`, {
+        region,
+        regionalWeight: regionWeight(region),
+        urgentPosts: posts.length,
+        thermalNight: t?.night || 0,
+        airTotal: a?.total || 0,
+        evidenceSource: thermalSupport ? 'FIRMS' : 'OpenSky',
+        sourceHealth: thermalSupport ? 'hard-data' : 'degraded-air-ok',
+        freshestTs: posts.map(p => p.date).filter(Boolean).sort().pop() || nowTs,
+      });
     }
   }
-  return null;
+
+  const maritimeDisruptions = maritime?.disruptionChecks?.filter(check => check.disrupted) || [];
+  if (maritimeDisruptions.length) {
+    add('maritime', 'Shipping disruption reporting', 'medium', `${maritimeDisruptions.length} chokepoints have clustered shipping disruption headlines`, {
+      region: 'global',
+      regionalWeight: 0.75,
+      chokepoints: maritimeDisruptions.map(x => x.label),
+      evidenceSource: maritimeDisruptions[0]?.evidenceSource || 'news',
+      evidence: maritimeDisruptions.flatMap(x => (x.headlines || []).map(h => ({
+        title: h.title,
+        url: h.link,
+        source: h.source || x.evidenceSource || 'news',
+      }))).slice(0, 6),
+    });
+  }
+
+  if ((markets?.vix?.changePct || 0) > 0 && health.filter(h => h.err).length === 0) {
+    add('market', 'Market move with clean source health', 'medium', 'Live market inputs are available without current source degradation', {
+      vixChangePct: markets?.vix?.changePct || 0,
+      evidenceSource: 'YFinance',
+      sourceHealth: 'clean',
+    });
+  }
+
+  if (nuke.some(site => site.anom === false) && !nuke.some(site => site.anom)) {
+    add('nuclear', 'No multi-site nuclear confirmation', 'medium', 'Only isolated nuclear/radiation anomalies are present, with no multi-site corroboration', {
+      evidenceSource: 'Safecast',
+      sourceHealth: 'clean',
+    });
+  }
+
+  return corroborated;
+}
+
+function buildSuspectSignals({ yfQuotes = {}, health = [], airMeta = null, nuke = [], nukeSignals = [], energy = {}, metals = {}, markets = {}, tg = {}, thermal = [], air = [], chokepoints = [], maritime = {}, nowTs = null }) {
+  const suspects = [];
+
+  const add = (category, signal, confidence, reason, details = {}) => {
+    const ageHours = signalAgeHours(nowTs, details.freshestTs || details.timestamp || details.evidence?.[0]?.pubDate || null);
+    const decayMultiplier = suspectDecayMultiplier(ageHours);
+    suspects.push({ category, signal, confidence, reason, ageHours, decayMultiplier, ...details });
+  };
+
+  for (const symbol of ['BZ=F', 'CL=F', 'NG=F', 'GC=F', 'SI=F', '^VIX', 'TLT', 'HYG']) {
+    const q = yfQuotes[symbol];
+    if (!q) continue;
+    const confidence = quoteConfidence(q);
+    if (confidence !== 'high') {
+      add('market', q.name || symbol, confidence, quoteFlags(q).join('; '), {
+        symbol,
+        rawPrice: q.price,
+        effectivePrice: q.effectivePrice ?? q.price,
+        changePct: q.changePct,
+      });
+    }
+  }
+
+  if (airMeta?.error) {
+    add('source', 'OpenSky air activity', 'medium', airMeta.error, {
+      fallback: Boolean(airMeta.fallback),
+      source: airMeta.source,
+      evidenceSource: airMeta.source || 'OpenSky',
+      sourceHealth: 'degraded',
+    });
+  }
+
+  for (const site of nuke.filter(n => n.anom)) {
+    add('nuclear', site.site, 'low', `Radiation anomaly flagged at ${site.cpm} CPM and requires independent verification`, {
+      cpm: site.cpm,
+      readings: site.n,
+      evidenceSource: 'Safecast',
+      sourceHealth: 'single-source',
+    });
+  }
+
+  for (const signal of nukeSignals || []) {
+    if (/ELEVATED RADIATION|anomaly/i.test(signal)) {
+      add('nuclear', 'Safecast anomaly signal', 'low', signal);
+    }
+  }
+
+  const failedSources = health.filter(h => h.err).map(h => h.n);
+  if (failedSources.length >= 2) {
+    add('source', 'Multiple source degradations', 'medium', `${failedSources.length} sources degraded: ${failedSources.join(', ')}`);
+  }
+
+  if (energy?.signals?.length) {
+    for (const signal of energy.signals.filter(s => /downgraded|low confidence/i.test(s))) {
+      add('market', 'Energy signal downgrade', 'medium', signal);
+    }
+  }
+
+  if (metals?.goldChangePct != null && Math.abs(metals.goldChangePct) >= 4 && !suspects.some(s => s.signal === 'Gold')) {
+    add('market', 'Gold', 'medium', `Large gold move of ${metals.goldChangePct}% without explicit corroboration check result`);
+  }
+
+  if (markets?.vix?.changePct != null && Math.abs(markets.vix.changePct) >= 20 && !suspects.some(s => s.signal === 'VIX')) {
+    add('market', 'VIX', 'medium', `Large VIX move of ${markets.vix.changePct}% should be cross-checked against equities and credit`);
+  }
+
+  const urgentPosts = tg?.urgent || [];
+  const urgentCount = urgentPosts.length;
+  const thermalTotal = thermal.reduce((sum, t) => sum + (t.det || 0), 0);
+  const thermalNight = thermal.reduce((sum, t) => sum + (t.night || 0), 0);
+  const airTotal = air.reduce((sum, a) => sum + (a.total || 0), 0);
+  const chokepointCoverage = chokepoints.length;
+  const urgentByRegion = groupUrgentByRegion(urgentPosts);
+  const thermalMap = thermalByRegion(thermal);
+  const airMap = airByRegion(air);
+
+  if (urgentCount >= 8 && thermalTotal === 0 && airTotal === 0) {
+    add('osint', 'Telegram urgent cluster', 'medium', `Telegram shows ${urgentCount} urgent posts without thermal or air corroboration in the same sweep`, {
+      region: 'global',
+      regionalWeight: regionWeight('global'),
+      urgentPosts: urgentCount,
+      thermalTotal,
+      airTotal,
+      freshestTs: urgentPosts.map(p => p.date).filter(Boolean).sort().pop() || nowTs,
+    });
+  }
+
+  const blockadePosts = urgentPosts.filter(p => (p.urgentFlags || []).includes('blockade'));
+  const maritimeSupport = maritime?.disruptionChecks?.filter(check => check.disrupted).length || 0;
+  if (blockadePosts.length >= 2 && chokepointCoverage > 0 && airTotal === 0 && maritimeSupport === 0) {
+    add('osint', 'Blockade / chokepoint claims', 'medium', `${blockadePosts.length} Telegram blockade-related posts are present, but neither air nor maritime disruption checks confirm them`, {
+      region: 'middle_east',
+      regionalWeight: regionWeight('middle_east'),
+      urgentPosts: blockadePosts.length,
+      airTotal,
+      chokepoints: chokepointCoverage,
+      maritimeSupport,
+      evidenceSource: 'Telegram',
+      sourceHealth: 'osint-only',
+      freshestTs: blockadePosts.map(p => p.date).filter(Boolean).sort().pop() || nowTs,
+      evidence: (maritime?.disruptionChecks || []).flatMap(check => (check.headlines || []).map(h => ({
+        title: h.title,
+        url: h.link,
+        source: h.source || check.evidenceSource || 'news',
+      }))).slice(0, 4),
+    });
+  }
+
+  const conflictPosts = urgentPosts.filter(p => (p.urgentFlags || []).some(f => ['missile', 'strike', 'explosion', 'drone', 'bombardment'].includes(f)));
+  for (const [region, posts] of Object.entries(urgentByRegion)) {
+    if (region === 'global') continue;
+    const kineticRegionalPosts = posts.filter(p => (p.urgentFlags || []).some(f => ['missile', 'strike', 'explosion', 'drone', 'bombardment'].includes(f)));
+    const regionThermal = thermalMap[region];
+    const regionAir = airMap[region];
+    const regionThermalNight = regionThermal?.night || 0;
+    const regionThermalTotal = regionThermal?.det || 0;
+    const regionAirTotal = regionAir?.total || 0;
+
+    if (kineticRegionalPosts.length >= 3 && regionThermalNight < 10 && regionThermalTotal < 50 && regionAirTotal === 0) {
+      add('osint', `Kinetic conflict chatter: ${region}`, 'medium', `${kineticRegionalPosts.length} regional kinetic posts are not matched by regional thermal or air activity`, {
+        region,
+        regionalWeight: regionWeight(region),
+        urgentPosts: kineticRegionalPosts.length,
+        thermalTotal: regionThermalTotal,
+        thermalNight: regionThermalNight,
+        airTotal: regionAirTotal,
+        evidenceSource: 'Telegram',
+        sourceHealth: 'osint-only',
+        freshestTs: kineticRegionalPosts.map(p => p.date).filter(Boolean).sort().pop() || nowTs,
+      });
+    }
+  }
+
+  if (conflictPosts.length >= 5 && thermalNight < 10 && thermalTotal < 50) {
+    add('osint', 'Kinetic conflict chatter', 'medium', `${conflictPosts.length} kinetic Telegram posts are not matched by unusual thermal activity this sweep`, {
+      urgentPosts: conflictPosts.length,
+      thermalTotal,
+      thermalNight,
+    });
+  }
+
+  for (const region of thermal) {
+    const highIntensity = region.fires?.filter(f => (f.frp || 0) > 10).length || 0;
+    const normRegion = normalizeRegion(region.region);
+    const regionalUrgent = urgentByRegion[normRegion]?.length || 0;
+    const regionalAir = airMap[normRegion]?.total || 0;
+    if (highIntensity >= 8 && regionalUrgent === 0) {
+      add('thermal', region.region, 'medium', `${highIntensity} high-intensity thermal detections without supporting urgent Telegram chatter in the same region`, {
+        thermalDetections: region.det,
+        highIntensity,
+      });
+    }
+    if (region.night >= 100 && regionalAir === 0) {
+      add('thermal', `${region.region} night activity`, 'medium', `${region.night} night detections with no corroborating regional air activity available`, {
+        thermalNight: region.night,
+        airTotal: regionalAir,
+        evidenceSource: 'FIRMS',
+        sourceHealth: regionalAir === 0 ? 'air-missing' : 'clean',
+      });
+    }
+  }
+
+  if (airMeta?.fallback && urgentCount >= 4) {
+    add('air', 'Air corroboration degraded', 'medium', `Using fallback or degraded air picture while ${urgentCount} urgent Telegram posts are active`, {
+      urgentPosts: urgentCount,
+      fallback: true,
+    });
+  }
+
+  return suspects;
 }
 
 function sanitizeExternalUrl(raw) {
@@ -171,7 +515,10 @@ const RSS_SOURCE_FALLBACKS = {
   'SBS Australia': { lat: -35.2809, lon: 149.13, region: 'Australia' },
   'Indian Express': { lat: 28.6139, lon: 77.209, region: 'India' },
   'The Hindu': { lat: 13.0827, lon: 80.2707, region: 'India' },
-  'MercoPress': { lat: -34.9011, lon: -56.1645, region: 'South America' }
+  'MercoPress': { lat: -34.9011, lon: -56.1645, region: 'Uruguay' },
+  'Africa News': { lat: 9.082, lon: 8.6753, region: 'Africa' },
+  'RFI': { lat: 48.8566, lon: 2.3522, region: 'France' },
+  'Euronews': { lat: 50, lon: 4, region: 'EU' }
 };
 const REGIONAL_NEWS_SOURCES = ['MercoPress', 'Indian Express', 'The Hindu', 'SBS Australia'];
 
@@ -220,16 +567,18 @@ export async function fetchAllNews() {
     const key = item.title.substring(0, 40).toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    const geo = geoTagText(item.title) || RSS_SOURCE_FALLBACKS[item.source];
+    const geo = resolveNewsPlacement(item);
     if (geo) {
       geoNews.push({
         title: item.title.substring(0, 100),
         source: item.source,
         date: item.date,
         url: item.url,
-        lat: geo.lat + (Math.random() - 0.5) * 2,
-        lon: geo.lon + (Math.random() - 0.5) * 2,
-        region: geo.region
+        lat: geo.lat,
+        lon: geo.lon,
+        region: geo.region,
+        placementPrecision: geo.precision,
+        placementBasis: geo.basis,
       });
     }
   }
@@ -254,6 +603,195 @@ export async function fetchAllNews() {
   }
   filtered.forEach(pushUnique);
   return selected.slice(0, 50);
+}
+
+function stripHtmlEntities(text = '') {
+  return String(text || '')
+    .replace(/&#39;/g, "'")
+    .replace(/&#33;/g, '!')
+    .replace(/&amp;/g, '&')
+    .replace(/<[^>]+>/g, '');
+}
+
+function normalizeStoryKey(text = '') {
+  return stripHtmlEntities(String(text || '').toLowerCase())
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w && !['the','and','for','with','from','that','this','into','after','amid','over','under','will','have','has','had','says','say','news','latest','live','update','updates'].includes(w))
+    .slice(0, 6)
+    .join('_') || 'story';
+}
+
+function storySummaryFallback(title = '') {
+  return stripHtmlEntities(title).substring(0, 120);
+}
+
+function stableClusterOffset(key = '', count = 0) {
+  let hash = 0;
+  const s = `${key}:${count}`;
+  for (let i = 0; i < s.length; i++) hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0;
+  const angle = Math.abs(hash % 360) * (Math.PI / 180);
+  const radius = Math.min(2.2, 0.45 + Math.max(0, count - 1) * 0.18);
+  return { lat: +(Math.sin(angle) * radius).toFixed(3), lon: +(Math.cos(angle) * radius).toFixed(3) };
+}
+
+function significantStoryTokens(text = '') {
+  return normalizeStoryKey(text).split('_').filter(Boolean);
+}
+
+function titleSimilarity(a = '', b = '') {
+  const A = new Set(significantStoryTokens(a));
+  const B = new Set(significantStoryTokens(b));
+  if (!A.size || !B.size) return 0;
+  let overlap = 0;
+  for (const token of A) if (B.has(token)) overlap += 1;
+  return overlap / Math.max(Math.min(A.size, B.size), 1);
+}
+
+function heuristicStoryGroup(news = []) {
+  const assignments = [];
+  const groups = [];
+  news.forEach((item, idx) => {
+    const region = normalizeNewsRegionLabel(item.region || 'Global');
+    const match = groups.find(g => g.region === region && titleSimilarity(g.seedTitle, item.title) >= 0.5);
+    if (match) {
+      match.items.push(idx);
+      assignments.push({ idx, storyKey: match.storyKey, subject: match.subject, primaryRegion: region, confidence: 'heuristic' });
+      return;
+    }
+    const subject = storySummaryFallback(item.title).split(':')[0].substring(0, 90);
+    const storyKey = normalizeStoryKey(item.title);
+    groups.push({ region, seedTitle: item.title, storyKey, subject, items: [idx] });
+    assignments.push({ idx, storyKey, subject, primaryRegion: region, confidence: 'heuristic' });
+  });
+  return assignments;
+}
+
+function buildLlmCandidateSets(news = [], heuristic = []) {
+  const byRegion = new Map();
+  news.forEach((item, idx) => {
+    const region = normalizeNewsRegionLabel(item.region || heuristic[idx]?.primaryRegion || 'Global');
+    if (!byRegion.has(region)) byRegion.set(region, []);
+    byRegion.get(region).push({ idx, item, heuristic: heuristic[idx] });
+  });
+  const candidateSets = [];
+  for (const [region, items] of byRegion.entries()) {
+    const scored = [];
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        const score = titleSimilarity(items[i].item.title, items[j].item.title);
+        if (score >= 0.22) scored.push({ a: items[i], b: items[j], score });
+      }
+    }
+    if (scored.length) {
+      scored.sort((x, y) => y.score - x.score);
+      const deduped = Array.from(new Map(scored.flatMap(x => [[x.a.idx, x.a], [x.b.idx, x.b]])).values());
+      candidateSets.push({ region, items: deduped.slice(0, 12), score: scored[0].score });
+      continue;
+    }
+    if (items.length >= 2) {
+      const recent = [...items].sort((a, b) => new Date(b.item.date || 0) - new Date(a.item.date || 0)).slice(0, Math.min(6, items.length));
+      candidateSets.push({ region, items: recent, score: 0 });
+    }
+  }
+  return candidateSets.sort((a, b) => b.items.length - a.items.length || b.score - a.score).slice(0, 6);
+}
+
+function getNewsLLMProvider(existingProvider = null) {
+  if (existingProvider?.isConfigured && existingProvider.name === 'ollama') return existingProvider;
+  if (config.llm?.provider === 'ollama' && config.llm?.model) {
+    return new OllamaProvider({ model: config.llm.model, baseUrl: NEWS_LLM_BASE_URL });
+  }
+  return existingProvider;
+}
+
+async function consolidateNewsWithLLM(news = [], llmProvider = null) {
+  const heuristic = heuristicStoryGroup(news);
+  const provider = getNewsLLMProvider(llmProvider);
+  const debug = { provider: provider?.name || null, baseUrl: provider?.baseUrl || null, candidateSets: [] };
+  if (!provider?.isConfigured || !news.length) return { hints: heuristic, debug };
+  const candidateSets = buildLlmCandidateSets(news, heuristic);
+  debug.candidateSets = candidateSets.map(set => ({ region: set.region, idxs: set.items.map(x => x.idx) }));
+  let mergedHints = [...heuristic];
+  for (const set of candidateSets) {
+    const slice = set.items.map(({ idx, item, heuristic: h }) => ({ idx, title: item.title, source: item.source, region: item.region, heuristicStoryKey: h?.storyKey || null }));
+    const system = 'You consolidate nearby news headlines into repeated-story groups. Return strict JSON only, no prose.';
+    const user = `Region: ${set.region}. Group only these likely-near-duplicate headlines if they are about the same underlying event. Prefer the place impacted by the event, not the nationality of actors. Reuse the same storyKey for same-story items. Return one JSON array with exactly ${slice.length} objects, one per idx. Schema: {idx:number, storyKey:string, subject:string, primaryRegion:string, confidence:string}. Items: ${JSON.stringify(slice)}`;
+    try {
+      const res = await provider.complete(system, user, { maxTokens: 1400, timeout: 45000 });
+      const text = (res.text || '').trim();
+      const match = text.match(/```json\s*([\s\S]*?)```/) || text.match(/\[[\s\S]*\]/);
+      debug[`raw_${set.region}`] = text.substring(0, 3000);
+      if (!match) continue;
+      const parsed = JSON.parse(match[1] || match[0]);
+      if (!Array.isArray(parsed) || parsed.length !== slice.length) continue;
+      for (const x of parsed) {
+        if (!Number.isInteger(x?.idx) || !news[x.idx]) continue;
+        mergedHints[x.idx] = {
+          idx: x.idx,
+          storyKey: normalizeStoryKey(x.storyKey || heuristic[x.idx]?.storyKey || news[x.idx]?.title),
+          subject: storySummaryFallback(x.subject || heuristic[x.idx]?.subject || news[x.idx]?.title),
+          primaryRegion: normalizeNewsRegionLabel(x.primaryRegion || heuristic[x.idx]?.primaryRegion || news[x.idx]?.region || 'Global'),
+          confidence: x.confidence || 'llm'
+        };
+      }
+    } catch (err) {
+      debug[`error_${set.region}`] = err.message;
+    }
+  }
+  return { hints: mergedHints, debug };
+}
+
+export async function buildNewsClusters(news = [], llmProvider = null) {
+  const { hints: llmHints, debug: llmDebug } = await consolidateNewsWithLLM(news, llmProvider);
+  const hintMap = new Map(llmHints.filter(x => Number.isInteger(x?.idx)).map(x => [x.idx, x]));
+  const groups = new Map();
+  news.forEach((item, idx) => {
+    const hint = hintMap.get(idx);
+    const region = normalizeNewsRegionLabel(hint?.primaryRegion || item.region || 'Global');
+    const geo = resolveNewsPlacement({ ...item, region }) || item;
+    const storyKey = normalizeStoryKey(hint?.storyKey || hint?.subject || item.title);
+    const clusterKey = `${region}::${storyKey}`;
+    if (!groups.has(clusterKey)) {
+      groups.set(clusterKey, {
+        id: clusterKey,
+        lat: geo.lat,
+        lon: geo.lon,
+        region,
+        storyKey,
+        headline: hint?.subject || storySummaryFallback(item.title),
+        summary: hint?.subject || storySummaryFallback(item.title),
+        items: [],
+        sourceSet: new Set(),
+        placementPrecision: geo.placementPrecision || geo.precision || item.placementPrecision || 'country',
+        placementBasis: geo.placementBasis || geo.basis || item.placementBasis || 'keyword',
+        llmConfidence: hint?.confidence || null,
+      });
+    }
+    const cluster = groups.get(clusterKey);
+    cluster.items.push(item);
+    cluster.sourceSet.add(item.source);
+    if ((item.date || '') > (cluster.latestDate || '')) cluster.latestDate = item.date;
+  });
+  const clusters = Array.from(groups.values()).map(cluster => {
+    const offset = stableClusterOffset(cluster.id, cluster.items.length);
+    return {
+      id: cluster.id,
+      lat: +(cluster.lat + offset.lat).toFixed(3),
+      lon: +(cluster.lon + offset.lon).toFixed(3),
+      region: cluster.region,
+      headline: cluster.headline,
+      summary: cluster.summary,
+      storyCount: cluster.items.length,
+      sourceCount: cluster.sourceSet.size,
+      latestDate: cluster.latestDate || null,
+      placementPrecision: cluster.placementPrecision,
+      placementBasis: cluster.placementBasis,
+      llmConfidence: cluster.llmConfidence,
+      items: cluster.items.slice(0, 6),
+    };
+  }).sort((a, b) => b.storyCount - a.storyCount || new Date(b.latestDate || 0) - new Date(a.latestDate || 0));
+  return { clusters, llmDebug };
 }
 
 // === Leverageable Ideas from Signals ===
@@ -398,7 +936,7 @@ export function generateIdeas(V2) {
 }
 
 // === Synthesize raw sweep data into dashboard format ===
-export async function synthesize(data) {
+export async function synthesize(data, llmProvider = createLLMProvider(config.llm)) {
   const liveAirHotspots = data.sources.OpenSky?.hotspots || [];
   const airFallback = sumAirHotspots(liveAirHotspots) > 0
     ? null
@@ -411,11 +949,12 @@ export async function synthesize(data) {
     fires: (h.highIntensity || []).slice(0, 8).map(f => ({ lat: f.lat, lon: f.lon, frp: f.frp || 0 }))
   }));
   const tSignals = data.sources.FIRMS?.signals || [];
-  const chokepoints = Object.values(data.sources.Maritime?.chokepoints || {}).map(c => ({
+  const maritimeData = data.sources.Maritime || {};
+  const chokepoints = Object.values(maritimeData.chokepoints || {}).map(c => ({
     label: c.label || c.name, note: c.note || '', lat: c.lat || 0, lon: c.lon || 0
   }));
   const nuke = (data.sources.Safecast?.sites || []).map(s => ({
-    site: s.site, anom: s.anomaly || false, cpm: s.avgCPM, n: s.recentReadings || 0
+    site: s.site, key: s.key || '', anom: s.anomaly || false, cpm: s.avgCPM, n: s.recentReadings || 0
   }));
   const nukeSignals = (data.sources.Safecast?.signals || []).filter(s => s);
   const sdrData = data.sources.KiwiSDR || {};
@@ -539,34 +1078,36 @@ export async function synthesize(data) {
     }))
   };
 
-  const health = Object.entries(data.sources).map(([name, src]) => ({
-    n: name, err: Boolean(src.error), stale: Boolean(src.stale)
-  }));
+  const { entries: health, summary: healthSummary } = buildSourceHealth(data);
 
   // === Yahoo Finance live market data ===
   const yfData = data.sources.YFinance || {};
   const yfQuotes = yfData.quotes || {};
   const markets = {
     indexes: (yfData.indexes || []).map(q => ({
-      symbol: q.symbol, name: q.name, price: q.price,
-      change: q.change, changePct: q.changePct, history: q.history || []
+      symbol: q.symbol, name: q.name, price: q.effectivePrice ?? q.price,
+      rawPrice: q.price, change: q.change, changePct: q.changePct, history: q.history || [],
+      validation: q.validation || null
     })),
     rates: (yfData.rates || []).map(q => ({
-      symbol: q.symbol, name: q.name, price: q.price,
-      change: q.change, changePct: q.changePct
+      symbol: q.symbol, name: q.name, price: q.effectivePrice ?? q.price,
+      rawPrice: q.price, change: q.change, changePct: q.changePct, validation: q.validation || null
     })),
     commodities: (yfData.commodities || []).map(q => ({
-      symbol: q.symbol, name: q.name, price: q.price,
-      change: q.change, changePct: q.changePct, history: q.history || []
+      symbol: q.symbol, name: q.name, price: q.effectivePrice ?? q.price,
+      rawPrice: q.price, change: q.change, changePct: q.changePct, history: q.history || [],
+      validation: q.validation || null
     })),
     crypto: (yfData.crypto || []).map(q => ({
-      symbol: q.symbol, name: q.name, price: q.price,
-      change: q.change, changePct: q.changePct
+      symbol: q.symbol, name: q.name, price: q.effectivePrice ?? q.price,
+      rawPrice: q.price, change: q.change, changePct: q.changePct, validation: q.validation || null
     })),
     vix: yfQuotes['^VIX'] ? {
-      value: yfQuotes['^VIX'].price,
+      value: yfQuotes['^VIX'].effectivePrice ?? yfQuotes['^VIX'].price,
+      rawValue: yfQuotes['^VIX'].price,
       change: yfQuotes['^VIX'].change,
       changePct: yfQuotes['^VIX'].changePct,
+      validation: yfQuotes['^VIX'].validation || null,
     } : null,
     timestamp: yfData.summary?.timestamp || null,
   };
@@ -574,30 +1115,81 @@ export async function synthesize(data) {
   const yfGold = yfQuotes['GC=F'];
   const yfSilver = yfQuotes['SI=F'];
   const metals = {
-    gold: yfGold?.price,
+    gold: yfGold?.effectivePrice ?? yfGold?.price,
+    goldRaw: yfGold?.price,
     goldChange: yfGold?.change,
     goldChangePct: yfGold?.changePct,
     goldRecent: yfGold?.history?.map(h => h.close) || [],
-    silver: yfSilver?.price,
+    goldValidation: yfGold?.validation || null,
+    silver: yfSilver?.effectivePrice ?? yfSilver?.price,
+    silverRaw: yfSilver?.price,
     silverChange: yfSilver?.change,
     silverChangePct: yfSilver?.changePct,
     silverRecent: yfSilver?.history?.map(h => h.close) || [],
+    silverValidation: yfSilver?.validation || null,
   };
 
   // Override stale EIA prices with live Yahoo Finance data if available
   const yfWti = yfQuotes['CL=F'];
   const yfBrent = yfQuotes['BZ=F'];
   const yfNatgas = yfQuotes['NG=F'];
-  if (yfWti?.price) energy.wti = yfWti.price;
-  if (yfBrent?.price) energy.brent = yfBrent.price;
-  if (yfNatgas?.price) energy.natgas = yfNatgas.price;
+  if (yfWti?.effectivePrice ?? yfWti?.price) energy.wti = yfWti.effectivePrice ?? yfWti.price;
+  if (yfBrent?.effectivePrice ?? yfBrent?.price) energy.brent = yfBrent.effectivePrice ?? yfBrent.price;
+  if (yfNatgas?.effectivePrice ?? yfNatgas?.price) energy.natgas = yfNatgas.effectivePrice ?? yfNatgas.price;
   if (yfWti?.history?.length) energy.wtiRecent = yfWti.history.map(h => h.close);
+  if (yfBrent?.validation?.confidence === 'low') {
+    energy.signals = energy.signals || [];
+    energy.signals.push(`Brent live quote downgraded to low confidence, using prior close $${yfBrent.prevClose} instead of raw $${yfBrent.price}`);
+  }
 
   // Fetch RSS
   const news = await fetchAllNews();
+  const { clusters: newsClusters, llmDebug: newsLlmDebug } = await buildNewsClusters(news, llmProvider);
+
+  const corroboratedSignals = buildCorroboratedSignals({
+    tg: { urgent: tgUrgent, topPosts: tgTop, posts: tgData.totalPosts || 0 },
+    thermal,
+    air,
+    maritime: maritimeData,
+    markets,
+    nuke,
+    health,
+    nowTs: data.crucix?.timestamp || new Date().toISOString(),
+  }).sort((a, b) => (b.regionalWeight || 0) - (a.regionalWeight || 0));
+
+  const suspectSignals = buildSuspectSignals({
+    yfQuotes,
+    health,
+    airMeta: {
+      fallback: Boolean(airFallback),
+      source: airFallback ? 'OpenSky fallback' : 'OpenSky',
+      ...(data.sources.OpenSky?.error ? { error: data.sources.OpenSky.error } : {}),
+    },
+    nuke,
+    nukeSignals,
+    energy,
+    metals,
+    markets,
+    tg: { urgent: tgUrgent, topPosts: tgTop, posts: tgData.totalPosts || 0 },
+    thermal,
+    air,
+    chokepoints,
+    maritime: maritimeData,
+    nowTs: data.crucix?.timestamp || new Date().toISOString(),
+  }).sort((a, b) => ((b.regionalWeight || 0) * (b.decayMultiplier || 1)) - ((a.regionalWeight || 0) * (a.decayMultiplier || 1)));
+
+  const evidenceSummarySignals = [];
+  if (corroboratedSignals.length) {
+    const top = corroboratedSignals[0];
+    evidenceSummarySignals.push(`CORROBORATED: ${top.signal} (${top.confidence})`);
+  }
+  if (suspectSignals.length) {
+    const top = suspectSignals[0];
+    evidenceSummarySignals.push(`SUSPECT: ${top.signal} (${top.confidence})`);
+  }
 
   const V2 = {
-    meta: data.crucix, air, thermal, tSignals, chokepoints, nuke, nukeSignals,
+    meta: data.crucix, air, thermal, tSignals: [...evidenceSummarySignals, ...tSignals], chokepoints, nuke, nukeSignals,
     airMeta: {
       fallback: Boolean(airFallback),
       liveTotal: sumAirHotspots(liveAirHotspots),
@@ -608,8 +1200,14 @@ export async function synthesize(data) {
     },
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
     tg: { posts: tgData.totalPosts || 0, urgent: tgUrgent, topPosts: tgTop },
-    who, fred, energy, metals, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, news,
+    who, fred, energy, metals, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, healthSummary, news, newsClusters, newsLlmDebug,
     markets, // Live Yahoo Finance market data
+    maritime: {
+      disruptionChecks: maritimeData.disruptionChecks || [],
+      disruptionSignals: maritimeData.disruptionSignals || [],
+    },
+    corroboratedSignals,
+    suspectSignals,
     ideas: [], ideasSource: 'disabled',
     // newsFeed for ticker (merged RSS + GDELT + Telegram)
     newsFeed: buildNewsFeed(news, gdeltData, tgUrgent, tgTop),
@@ -693,8 +1291,8 @@ async function cliInject() {
   const shouldOpen = !process.argv.includes('--no-open');
 
   console.log('Fetching RSS news feeds...');
-  const V2 = await synthesize(data);
   const llmProvider = createLLMProvider(config.llm);
+  const V2 = await synthesize(data, llmProvider);
 
   if (llmProvider?.isConfigured) {
     try {

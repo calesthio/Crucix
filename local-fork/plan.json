@@ -1,0 +1,64 @@
+{
+  "fork": {
+    "name": "rightclaw-runtime-local-fork",
+    "upstreamRemote": "origin",
+    "upstreamBranch": "master",
+    "deployment": {
+      "runtime": "rightclaw-mac-mini",
+      "serviceUrl": "http://127.0.0.1:3117",
+      "healthEndpoint": "/api/health",
+      "dataEndpoint": "/api/data"
+    }
+  },
+  "workflow": {
+    "command": "execute next crucix dev cycle",
+    "expectations": [
+      "advance the next planned effort",
+      "update production on the local runtime",
+      "verify health and representative data output",
+      "record the cycle in local-fork/cycles",
+      "commit the repo so the fork is versioned"
+    ]
+  },
+  "roadmap": {
+    "epics": [
+      {
+        "id": "epic-1",
+        "title": "Source reliability and fallback hardening",
+        "status": "in_progress",
+        "efforts": [
+          {
+            "id": "effort-1.1",
+            "title": "Source trust and evidence normalization foundation",
+            "status": "completed"
+          },
+          {
+            "id": "effort-1.2",
+            "title": "OpenSky degraded-state cooldown and fallback hardening",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-2",
+        "title": "Evidence normalization and fusion trust model",
+        "status": "pending"
+      },
+      {
+        "id": "epic-3",
+        "title": "News clustering and LLM operationalization",
+        "status": "pending"
+      },
+      {
+        "id": "epic-4",
+        "title": "iMessage Crucix skill UX",
+        "status": "pending"
+      }
+    ]
+  },
+  "cycleState": {
+    "sequence": 1,
+    "activeCycleId": "2026-04-23-cycle-001",
+    "lastCompletedCycleId": "2026-04-23-cycle-001"
+  }
+}
