@@ -53,6 +53,11 @@
             "id": "effort-2.1",
             "title": "Operator-facing evidence freshness and provenance summary",
             "status": "completed"
+          },
+          {
+            "id": "effort-2.2",
+            "title": "Explicit evidence-mode labeling for cached, carried-forward, and degraded states",
+            "status": "completed"
           }
         ]
       },
@@ -69,8 +74,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 4,
-    "activeCycleId": "2026-04-23-cycle-004",
-    "lastCompletedCycleId": "2026-04-23-cycle-004"
+    "sequence": 5,
+    "activeCycleId": "2026-04-23-cycle-005",
+    "lastCompletedCycleId": "2026-04-23-cycle-005"
   }
 }
