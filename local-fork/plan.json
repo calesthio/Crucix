@@ -74,13 +74,20 @@
       {
         "id": "epic-4",
         "title": "iMessage Crucix skill UX",
-        "status": "pending"
+        "status": "in_progress",
+        "efforts": [
+          {
+            "id": "effort-4.1",
+            "title": "Compact trust-aware iMessage brief surface",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 6,
-    "activeCycleId": "2026-04-23-cycle-006",
-    "lastCompletedCycleId": "2026-04-23-cycle-006"
+    "sequence": 7,
+    "activeCycleId": "2026-04-23-cycle-007",
+    "lastCompletedCycleId": "2026-04-23-cycle-007"
   }
 }

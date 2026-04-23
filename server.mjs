@@ -43,6 +43,40 @@ function formatSignalTrustLabel(item = {}) {
   return labels.length ? ` {${labels.join(' · ')}}` : '';
 }
 
+function trustPhrase(item = {}) {
+  const sourceHealth = item.sourceHealth || 'unknown';
+  const evidenceSource = item.evidenceSource || 'mixed';
+  return `${sourceHealth} via ${evidenceSource}`;
+}
+
+function buildIMessengerBrief(snapshot = {}) {
+  const lines = [];
+  const evidence = snapshot.evidenceSummary || {};
+  const counts = evidence.counts || {};
+  const topCorroborated = (snapshot.corroboratedSignals || [])[0] || null;
+  const topSuspect = (snapshot.suspectSignals || [])[0] || null;
+  const tgUrgent = snapshot.tg?.urgent || [];
+
+  if (evidence.headline) {
+    lines.push(`Evidence: ${evidence.headline}`);
+    lines.push(`Fresh ${counts.fresh || 0}, aging ${counts.aging || 0}, stale ${counts.stale || 0}, carried ${counts.carriedForward || 0}, failed ${counts.failedSources || 0}`);
+  }
+
+  if (topCorroborated) {
+    lines.push(`Top corroborated: ${topCorroborated.signal} (${topCorroborated.confidence}, ${trustPhrase(topCorroborated)})`);
+  }
+
+  if (topSuspect) {
+    lines.push(`Top suspect: ${topSuspect.signal} (${topSuspect.confidence}, ${trustPhrase(topSuspect)})`);
+  }
+
+  if (tgUrgent.length) {
+    lines.push(`OSINT urgent: ${tgUrgent.length} items`);
+  }
+
+  return lines.join('\n');
+}
+
 function buildBriefSections(snapshot = {}, { markdown = false } = {}) {
   const tg = snapshot.tg || {};
   const energy = snapshot.energy || {};
@@ -243,6 +277,16 @@ app.get('/', (req, res) => {
 app.get('/api/data', (req, res) => {
   if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
   res.json(currentData);
+});
+
+app.get('/api/brief/compact', (req, res) => {
+  if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  res.json({
+    text: buildIMessengerBrief(currentData),
+    evidenceSummary: currentData.evidenceSummary || null,
+    topCorroborated: (currentData.corroboratedSignals || [])[0] || null,
+    topSuspect: (currentData.suspectSignals || [])[0] || null,
+  });
 });
 
 // API: health check

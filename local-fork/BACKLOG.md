@@ -10,3 +10,4 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 - Add a runtime maintenance pass that prunes stale OpenSky cache/state artifacts and records cache-hit rate.
 - Add explicit map precision classes for geocoded news items so inferred coordinates are visually distinct from source-native coordinates.
 - Split operator-facing source failures into categories like credential-missing, quota-limited, transport-failed, and degraded-live so briefings can distinguish setup debt from active outages.
+- Add a follow-up iMessage interaction layer for `why`, `sources`, and `expand` actions so compact chat briefs can drill into one signal without dumping the whole report.
