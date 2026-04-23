@@ -47,7 +47,14 @@
       {
         "id": "epic-2",
         "title": "Evidence normalization and fusion trust model",
-        "status": "pending"
+        "status": "in_progress",
+        "efforts": [
+          {
+            "id": "effort-2.1",
+            "title": "Operator-facing evidence freshness and provenance summary",
+            "status": "completed"
+          }
+        ]
       },
       {
         "id": "epic-3",
@@ -62,8 +69,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 3,
-    "activeCycleId": "2026-04-23-cycle-003",
-    "lastCompletedCycleId": "2026-04-23-cycle-003"
+    "sequence": 4,
+    "activeCycleId": "2026-04-23-cycle-004",
+    "lastCompletedCycleId": "2026-04-23-cycle-004"
   }
 }

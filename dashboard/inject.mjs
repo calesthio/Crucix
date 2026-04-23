@@ -13,6 +13,7 @@ import config from '../crucix.config.mjs';
 import { createLLMProvider, OllamaProvider } from '../lib/llm/index.mjs';
 import { generateLLMIdeas } from '../lib/llm/ideas.mjs';
 import { buildSourceHealth } from '../lib/source-health.mjs';
+import { buildEvidenceSummary } from '../lib/evidence-summary.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -1089,6 +1090,7 @@ export async function synthesize(data, llmProvider = createLLMProvider(config.ll
   };
 
   const { entries: health, summary: healthSummary } = buildSourceHealth(data);
+  const openSkyHealth = health.find(entry => entry.name === 'OpenSky') || null;
 
   // === Yahoo Finance live market data ===
   const yfData = data.sources.YFinance || {};
@@ -1190,7 +1192,24 @@ export async function synthesize(data, llmProvider = createLLMProvider(config.ll
     nowTs: data.crucix?.timestamp || new Date().toISOString(),
   }).sort((a, b) => ((b.regionalWeight || 0) * (b.decayMultiplier || 1)) - ((a.regionalWeight || 0) * (a.decayMultiplier || 1)));
 
-  const evidenceSummarySignals = [];
+  const evidenceSummary = buildEvidenceSummary({
+    nowTs: data.crucix?.timestamp || new Date().toISOString(),
+    airMeta: {
+      fallback: Boolean(airFallback),
+      timestamp: airFallback?.timestamp || openSkySource.timestamp || data.crucix?.timestamp || null,
+      source: airFallback ? 'OpenSky fallback' : 'OpenSky',
+      ...(airFallback?.cacheAgeMinutes != null ? { cacheAgeMinutes: airFallback.cacheAgeMinutes } : {}),
+      ...(openSkySource.error ? { error: openSkySource.error } : {}),
+      ...(openSkySource.liveError ? { liveError: openSkySource.liveError } : {}),
+    },
+    markets,
+    tg: { urgent: tgUrgent, topPosts: tgTop, posts: tgData.totalPosts || 0 },
+    news,
+    healthSummary,
+    openSkyHealth,
+  });
+
+  const evidenceSummarySignals = [evidenceSummary.headline];
   if (corroboratedSignals.length) {
     const top = corroboratedSignals[0];
     evidenceSummarySignals.push(`CORROBORATED: ${top.signal} (${top.confidence})`);
@@ -1214,7 +1233,7 @@ export async function synthesize(data, llmProvider = createLLMProvider(config.ll
     },
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
     tg: { posts: tgData.totalPosts || 0, urgent: tgUrgent, topPosts: tgTop },
-    who, fred, energy, metals, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, healthSummary, news, newsClusters, newsLlmDebug,
+    who, fred, energy, metals, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, healthSummary, evidenceSummary, news, newsClusters, newsLlmDebug,
     markets, // Live Yahoo Finance market data
     maritime: {
       disruptionChecks: maritimeData.disruptionChecks || [],
