@@ -83,6 +83,23 @@ function recallSelection(contextKey = '') {
   return remembered;
 }
 
+function clearSelection(contextKey = '') {
+  if (!contextKey) return false;
+  return selectionMemory.delete(contextKey);
+}
+
+function selectionMeta(contextKey = '') {
+  const remembered = recallSelection(contextKey);
+  if (!remembered) return null;
+  return {
+    kind: remembered.kind,
+    index: remembered.index,
+    id: remembered.id,
+    expiresAt: new Date(remembered.expiresAt).toISOString(),
+    ttlMs: Math.max(0, remembered.expiresAt - Date.now()),
+  };
+}
+
 function getSignalList(snapshot = {}, kind = 'corroborated') {
   return attachSignalIds(
     kind,
@@ -418,11 +435,13 @@ app.get('/api/brief/drilldown', (req, res) => {
   const id = typeof req.query.id === 'string' && req.query.id.trim() ? req.query.id.trim() : null;
   const ref = typeof req.query.ref === 'string' && req.query.ref.trim() ? req.query.ref.trim() : null;
   const contextKey = typeof req.query.context === 'string' && req.query.context.trim() ? req.query.context.trim() : '';
+  const memoryBefore = contextKey ? selectionMeta(contextKey) : null;
   const resolved = ref ? resolveSignalRef(currentData, ref, requestedKind, contextKey) : { kind: requestedKind, index, id };
   const finalKind = resolved.kind || requestedKind;
   const finalIndex = resolved.index ?? index;
   const finalId = resolved.id ?? id;
   const item = getSignalSelection(currentData, finalKind, finalIndex, finalId);
+  const usedRememberedSelection = Boolean(ref && contextKey && memoryBefore?.id && item?.id === memoryBefore.id && ['that-one', 'top-one'].includes(String(ref).trim().toLowerCase()));
   if (item && contextKey) rememberSelection(contextKey, { kind: finalKind, index: finalIndex, id: item.id });
   res.json({
     kind: finalKind,
@@ -431,8 +450,33 @@ app.get('/api/brief/drilldown', (req, res) => {
     id: item?.id || finalId,
     ref,
     context: contextKey || null,
+    contextMemory: contextKey ? {
+      usedRememberedSelection,
+      before: memoryBefore,
+      after: selectionMeta(contextKey),
+    } : null,
     text: buildIMessengerDrilldown(currentData, { kind: finalKind, action, index: finalIndex, id: item?.id || finalId }),
     item,
+  });
+});
+
+app.get('/api/brief/context', (req, res) => {
+  const contextKey = typeof req.query.context === 'string' && req.query.context.trim() ? req.query.context.trim() : '';
+  if (!contextKey) return res.status(400).json({ error: 'context query parameter is required' });
+  res.json({
+    context: contextKey,
+    selection: selectionMeta(contextKey),
+  });
+});
+
+app.delete('/api/brief/context', (req, res) => {
+  const contextKey = typeof req.query.context === 'string' && req.query.context.trim() ? req.query.context.trim() : '';
+  if (!contextKey) return res.status(400).json({ error: 'context query parameter is required' });
+  const existed = clearSelection(contextKey);
+  res.json({
+    context: contextKey,
+    cleared: existed,
+    selection: selectionMeta(contextKey),
   });
 });
 

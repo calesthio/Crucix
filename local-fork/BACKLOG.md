@@ -14,3 +14,4 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 - Add stable signal IDs in compact/drill-down responses so chat clients can reference exact items without relying on list order like “top suspect” or “item 2”.
 - Add short-lived conversational selection memory so chat references like `that one` can bind to the user’s last resolved signal across turns instead of only within one request.
 - Add optional persisted conversation state for selected signals if the iMessage layer needs continuity across runtime restarts, not just in-memory follow-up handling.
+- Add selection-memory size limits and opportunistic pruning so context-state helpers do not accumulate unbounded stale entries under high chat volume.

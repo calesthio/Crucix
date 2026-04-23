@@ -100,14 +100,19 @@
             "id": "effort-4.5",
             "title": "Short-lived conversational selection memory for follow-up references",
             "status": "completed"
+          },
+          {
+            "id": "effort-4.6",
+            "title": "Context-state inspection and reset contract for chat follow-ups",
+            "status": "completed"
           }
         ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 11,
-    "activeCycleId": "2026-04-23-cycle-011",
-    "lastCompletedCycleId": "2026-04-23-cycle-011"
+    "sequence": 12,
+    "activeCycleId": "2026-04-23-cycle-012",
+    "lastCompletedCycleId": "2026-04-23-cycle-012"
   }
 }
