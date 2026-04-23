@@ -62,11 +62,48 @@ function trustPhrase(item = {}) {
   return `${sourceHealth} via ${evidenceSource}`;
 }
 
-function getSignalSelection(snapshot = {}, kind = 'corroborated', index = 0, id = null) {
-  const list = attachSignalIds(
+function getSignalList(snapshot = {}, kind = 'corroborated') {
+  return attachSignalIds(
     kind,
     kind === 'suspect' ? (snapshot.suspectSignals || []) : (snapshot.corroboratedSignals || [])
   );
+}
+
+function resolveSignalRef(snapshot = {}, ref = '', preferredKind = 'corroborated') {
+  const normalized = String(ref || '').trim().toLowerCase();
+  const corroborated = getSignalList(snapshot, 'corroborated');
+  const suspects = getSignalList(snapshot, 'suspect');
+  const combined = [...corroborated, ...suspects];
+
+  if (!normalized) return { kind: preferredKind, index: 0, id: null };
+  if (normalized === 'top-suspect' || normalized === 'suspect-one' || normalized === 'the-suspect-one') {
+    return { kind: 'suspect', index: 0, id: suspects[0]?.id || null };
+  }
+  if (normalized === 'top-corroborated' || normalized === 'corroborated-one' || normalized === 'the-corroborated-one') {
+    return { kind: 'corroborated', index: 0, id: corroborated[0]?.id || null };
+  }
+  if (normalized === 'that-one' || normalized === 'top-one') {
+    return { kind: preferredKind, index: 0, id: getSignalList(snapshot, preferredKind)[0]?.id || null };
+  }
+  const itemMatch = normalized.match(/^item-(\d+)$/);
+  if (itemMatch) {
+    const n = Math.max(0, Number.parseInt(itemMatch[1], 10) - 1);
+    const list = getSignalList(snapshot, preferredKind);
+    return { kind: preferredKind, index: n, id: list[n]?.id || null };
+  }
+  const direct = combined.find(item => item.id === normalized);
+  if (direct) {
+    return {
+      kind: suspects.some(item => item.id === normalized) ? 'suspect' : 'corroborated',
+      index: 0,
+      id: direct.id,
+    };
+  }
+  return { kind: preferredKind, index: 0, id: null };
+}
+
+function getSignalSelection(snapshot = {}, kind = 'corroborated', index = 0, id = null) {
+  const list = getSignalList(snapshot, kind);
   if (id) return list.find(item => item.id === id) || null;
   return list[index] || null;
 }
@@ -352,17 +389,23 @@ app.get('/api/brief/compact', (req, res) => {
 
 app.get('/api/brief/drilldown', (req, res) => {
   if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
-  const kind = req.query.kind === 'suspect' ? 'suspect' : 'corroborated';
+  const requestedKind = req.query.kind === 'suspect' ? 'suspect' : 'corroborated';
   const action = ['why', 'sources', 'expand'].includes(req.query.action) ? req.query.action : 'why';
   const index = Math.max(0, Number.parseInt(req.query.index, 10) || 0);
   const id = typeof req.query.id === 'string' && req.query.id.trim() ? req.query.id.trim() : null;
-  const item = getSignalSelection(currentData, kind, index, id);
+  const ref = typeof req.query.ref === 'string' && req.query.ref.trim() ? req.query.ref.trim() : null;
+  const resolved = ref ? resolveSignalRef(currentData, ref, requestedKind) : { kind: requestedKind, index, id };
+  const finalKind = resolved.kind || requestedKind;
+  const finalIndex = resolved.index ?? index;
+  const finalId = resolved.id ?? id;
+  const item = getSignalSelection(currentData, finalKind, finalIndex, finalId);
   res.json({
-    kind,
+    kind: finalKind,
     action,
-    index,
-    id,
-    text: buildIMessengerDrilldown(currentData, { kind, action, index, id }),
+    index: finalIndex,
+    id: finalId,
+    ref,
+    text: buildIMessengerDrilldown(currentData, { kind: finalKind, action, index: finalIndex, id: finalId }),
     item,
   });
 });

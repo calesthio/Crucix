@@ -12,3 +12,4 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 - Split operator-facing source failures into categories like credential-missing, quota-limited, transport-failed, and degraded-live so briefings can distinguish setup debt from active outages.
 - Add a follow-up iMessage interaction layer for `why`, `sources`, and `expand` actions so compact chat briefs can drill into one signal without dumping the whole report.
 - Add stable signal IDs in compact/drill-down responses so chat clients can reference exact items without relying on list order like “top suspect” or “item 2”.
+- Add short-lived conversational selection memory so chat references like `that one` can bind to the user’s last resolved signal across turns instead of only within one request.

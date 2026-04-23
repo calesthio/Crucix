@@ -90,14 +90,19 @@
             "id": "effort-4.3",
             "title": "Stable signal IDs and ID-based drill-down selection",
             "status": "completed"
+          },
+          {
+            "id": "effort-4.4",
+            "title": "Alias resolution for natural iMessage follow-ups",
+            "status": "completed"
           }
         ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 9,
-    "activeCycleId": "2026-04-23-cycle-009",
-    "lastCompletedCycleId": "2026-04-23-cycle-009"
+    "sequence": 10,
+    "activeCycleId": "2026-04-23-cycle-010",
+    "lastCompletedCycleId": "2026-04-23-cycle-010"
   }
 }
