@@ -36,6 +36,76 @@ let sweepInProgress = false;
 const startTime = Date.now();
 const sseClients = new Set();
 
+function formatSignalTrustLabel(item = {}) {
+  const labels = [];
+  if (item.sourceHealth) labels.push(item.sourceHealth);
+  if (item.evidenceSource) labels.push(item.evidenceSource);
+  return labels.length ? ` {${labels.join(' · ')}}` : '';
+}
+
+function buildBriefSections(snapshot = {}, { markdown = false } = {}) {
+  const tg = snapshot.tg || {};
+  const energy = snapshot.energy || {};
+  const metals = snapshot.metals || {};
+  const delta = memory.getLastDelta();
+  const ideas = (snapshot.ideas || []).slice(0, 3);
+  const sections = [
+    markdown ? `**📋 CRUCIX BRIEF**\n_${new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC_\n`
+             : `📋 *CRUCIX BRIEF*\n_${new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC_\n`
+  ];
+
+  if (snapshot.evidenceSummary?.headline) {
+    const counts = snapshot.evidenceSummary.counts || {};
+    sections.push(`🧾 Evidence: ${snapshot.evidenceSummary.headline}`);
+    sections.push(`   Fresh: ${counts.fresh || 0} | Aging: ${counts.aging || 0} | Stale: ${counts.stale || 0} | Carried: ${counts.carriedForward || 0} | Failed sources: ${counts.failedSources || 0}`);
+    sections.push('');
+  }
+
+  if (delta?.summary) {
+    const dirEmoji = { 'risk-off': '📉', 'risk-on': '📈', 'mixed': '↔️' }[delta.summary.direction] || '↔️';
+    sections.push(`${dirEmoji} Direction: ${markdown ? `**${delta.summary.direction.toUpperCase()}**` : `*${delta.summary.direction.toUpperCase()}*`} | ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical`);
+    sections.push('');
+  }
+
+  const vix = snapshot.fred?.find(f => f.id === 'VIXCLS');
+  const hy = snapshot.fred?.find(f => f.id === 'BAMLH0A0HYM2');
+  if (vix || energy.wti || metals.gold || metals.silver) {
+    sections.push(`📊 VIX: ${vix?.value || '--'} | WTI: $${energy.wti || '--'} | Brent: $${energy.brent || '--'}`);
+    sections.push(`   Gold: $${metals.gold || '--'} | Silver: $${metals.silver || '--'}${hy ? ` | HY Spread: ${hy.value}` : ''}`);
+    sections.push(`   NatGas: $${energy.natgas || '--'}`);
+    sections.push('');
+  }
+
+  if (tg.urgent?.length > 0) {
+    sections.push(`📡 OSINT: ${tg.urgent.length} urgent signals, ${tg.posts || 0} total posts`);
+    for (const p of tg.urgent.slice(0, 2)) sections.push(`  • ${(p.text || '').substring(0, 80)}`);
+    sections.push('');
+  }
+
+  if (snapshot.corroboratedSignals?.length) {
+    sections.push(`✅ Corroborated signals:`);
+    for (const item of snapshot.corroboratedSignals.slice(0, 3)) {
+      sections.push(`  • ${item.signal} [${item.confidence}]${formatSignalTrustLabel(item)} ${item.reason.substring(0, 90)}`);
+    }
+    sections.push('');
+  }
+
+  if (snapshot.suspectSignals?.length) {
+    sections.push(`⚠️ Suspect signals:`);
+    for (const item of snapshot.suspectSignals.slice(0, 3)) {
+      sections.push(`  • ${item.signal} [${item.confidence}]${formatSignalTrustLabel(item)} ${item.reason.substring(0, 90)}`);
+    }
+    sections.push('');
+  }
+
+  if (ideas.length > 0) {
+    sections.push(markdown ? `**💡 Top Ideas:**` : `💡 *Top Ideas:*`);
+    for (const idea of ideas) sections.push(`  ${idea.type === 'long' ? '📈' : idea.type === 'hedge' ? '🛡️' : '👁️'} ${idea.title}`);
+  }
+
+  return sections.join('\n');
+}
+
 // === Delta/Memory ===
 const memory = new MemoryManager(RUNS_DIR);
 
@@ -85,71 +155,7 @@ if (telegramAlerter.isConfigured) {
 
   telegramAlerter.onCommand('/brief', async () => {
     if (!currentData) return '⏳ No data yet — waiting for first sweep to complete.';
-
-    const tg = currentData.tg || {};
-    const energy = currentData.energy || {};
-    const metals = currentData.metals || {};
-    const delta = memory.getLastDelta();
-    const ideas = (currentData.ideas || []).slice(0, 3);
-
-    const sections = [
-      `📋 *CRUCIX BRIEF*`,
-      `_${new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC_`,
-      ``,
-    ];
-
-    // Delta direction
-    if (delta?.summary) {
-      const dirEmoji = { 'risk-off': '📉', 'risk-on': '📈', 'mixed': '↔️' }[delta.summary.direction] || '↔️';
-      sections.push(`${dirEmoji} Direction: *${delta.summary.direction.toUpperCase()}* | ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical`);
-      sections.push('');
-    }
-
-    // Key metrics
-    const vix = currentData.fred?.find(f => f.id === 'VIXCLS');
-    const hy = currentData.fred?.find(f => f.id === 'BAMLH0A0HYM2');
-    if (vix || energy.wti || metals.gold || metals.silver) {
-      sections.push(`📊 VIX: ${vix?.value || '--'} | WTI: $${energy.wti || '--'} | Brent: $${energy.brent || '--'}`);
-      sections.push(`   Gold: $${metals.gold || '--'} | Silver: $${metals.silver || '--'}${hy ? ` | HY Spread: ${hy.value}` : ''}`);
-      sections.push(`   NatGas: $${energy.natgas || '--'}`);
-      sections.push('');
-    }
-
-    // OSINT
-    if (tg.urgent?.length > 0) {
-      sections.push(`📡 OSINT: ${tg.urgent.length} urgent signals, ${tg.posts || 0} total posts`);
-      // Top 2 urgent
-      for (const p of tg.urgent.slice(0, 2)) {
-        sections.push(`  • ${(p.text || '').substring(0, 80)}`);
-      }
-      sections.push('');
-    }
-
-    if (currentData.corroboratedSignals?.length) {
-      sections.push(`✅ Corroborated signals:`);
-      for (const item of currentData.corroboratedSignals.slice(0, 3)) {
-        sections.push(`  • ${item.signal} [${item.confidence}] ${item.reason.substring(0, 90)}`);
-      }
-      sections.push('');
-    }
-
-    if (currentData.suspectSignals?.length) {
-      sections.push(`⚠️ Suspect signals:`);
-      for (const item of currentData.suspectSignals.slice(0, 3)) {
-        sections.push(`  • ${item.signal} [${item.confidence}] ${item.reason.substring(0, 90)}`);
-      }
-      sections.push('');
-    }
-
-    // Top ideas
-    if (ideas.length > 0) {
-      sections.push(`💡 *Top Ideas:*`);
-      for (const idea of ideas) {
-        sections.push(`  ${idea.type === 'long' ? '📈' : idea.type === 'hedge' ? '🛡️' : '👁️'} ${idea.title}`);
-      }
-    }
-
-    return sections.join('\n');
+    return buildBriefSections(currentData, { markdown: false });
   });
 
   telegramAlerter.onCommand('/portfolio', async () => {
@@ -198,61 +204,7 @@ if (discordAlerter.isConfigured) {
 
   discordAlerter.onCommand('brief', async () => {
     if (!currentData) return '⏳ No data yet — waiting for first sweep to complete.';
-
-    const tg = currentData.tg || {};
-    const energy = currentData.energy || {};
-    const metals = currentData.metals || {};
-    const delta = memory.getLastDelta();
-    const ideas = (currentData.ideas || []).slice(0, 3);
-
-    const sections = [`**📋 CRUCIX BRIEF**\n_${new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC_\n`];
-
-    if (delta?.summary) {
-      const dirEmoji = { 'risk-off': '📉', 'risk-on': '📈', 'mixed': '↔️' }[delta.summary.direction] || '↔️';
-      sections.push(`${dirEmoji} Direction: **${delta.summary.direction.toUpperCase()}** | ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical\n`);
-    }
-
-    const vix = currentData.fred?.find(f => f.id === 'VIXCLS');
-    const hy = currentData.fred?.find(f => f.id === 'BAMLH0A0HYM2');
-    if (vix || energy.wti || metals.gold || metals.silver) {
-      sections.push(`📊 VIX: ${vix?.value || '--'} | WTI: $${energy.wti || '--'} | Brent: $${energy.brent || '--'}`);
-      sections.push(`   Gold: $${metals.gold || '--'} | Silver: $${metals.silver || '--'}${hy ? ` | HY Spread: ${hy.value}` : ''}`);
-      sections.push(`   NatGas: $${energy.natgas || '--'}`);
-      sections.push('');
-    }
-
-    if (tg.urgent?.length > 0) {
-      sections.push(`📡 OSINT: ${tg.urgent.length} urgent signals, ${tg.posts || 0} total posts`);
-      for (const p of tg.urgent.slice(0, 2)) {
-        sections.push(`  • ${(p.text || '').substring(0, 80)}`);
-      }
-      sections.push('');
-    }
-
-    if (currentData.corroboratedSignals?.length) {
-      sections.push(`✅ Corroborated signals:`);
-      for (const item of currentData.corroboratedSignals.slice(0, 3)) {
-        sections.push(`  • ${item.signal} [${item.confidence}] ${item.reason.substring(0, 90)}`);
-      }
-      sections.push('');
-    }
-
-    if (currentData.suspectSignals?.length) {
-      sections.push(`⚠️ Suspect signals:`);
-      for (const item of currentData.suspectSignals.slice(0, 3)) {
-        sections.push(`  • ${item.signal} [${item.confidence}] ${item.reason.substring(0, 90)}`);
-      }
-      sections.push('');
-    }
-
-    if (ideas.length > 0) {
-      sections.push(`**💡 Top Ideas:**`);
-      for (const idea of ideas) {
-        sections.push(`  ${idea.type === 'long' ? '📈' : idea.type === 'hedge' ? '🛡️' : '👁️'} ${idea.title}`);
-      }
-    }
-
-    return sections.join('\n');
+    return buildBriefSections(currentData, { markdown: true });
   });
 
   discordAlerter.onCommand('portfolio', async () => {
