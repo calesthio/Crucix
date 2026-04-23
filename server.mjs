@@ -35,6 +35,8 @@ let sweepStartedAt = null; // Timestamp when current/last sweep started
 let sweepInProgress = false;
 const startTime = Date.now();
 const sseClients = new Set();
+const selectionMemory = new Map();
+const SELECTION_MEMORY_TTL_MS = 10 * 60 * 1000;
 
 function signalId(kind = 'signal', item = {}, index = 0) {
   const raw = `${kind}:${item.signal || item.category || 'item'}:${index}`
@@ -62,6 +64,25 @@ function trustPhrase(item = {}) {
   return `${sourceHealth} via ${evidenceSource}`;
 }
 
+function rememberSelection(contextKey = '', selection = null) {
+  if (!contextKey || !selection?.id) return;
+  selectionMemory.set(contextKey, {
+    ...selection,
+    expiresAt: Date.now() + SELECTION_MEMORY_TTL_MS,
+  });
+}
+
+function recallSelection(contextKey = '') {
+  if (!contextKey) return null;
+  const remembered = selectionMemory.get(contextKey);
+  if (!remembered) return null;
+  if (remembered.expiresAt <= Date.now()) {
+    selectionMemory.delete(contextKey);
+    return null;
+  }
+  return remembered;
+}
+
 function getSignalList(snapshot = {}, kind = 'corroborated') {
   return attachSignalIds(
     kind,
@@ -69,7 +90,7 @@ function getSignalList(snapshot = {}, kind = 'corroborated') {
   );
 }
 
-function resolveSignalRef(snapshot = {}, ref = '', preferredKind = 'corroborated') {
+function resolveSignalRef(snapshot = {}, ref = '', preferredKind = 'corroborated', contextKey = '') {
   const normalized = String(ref || '').trim().toLowerCase();
   const corroborated = getSignalList(snapshot, 'corroborated');
   const suspects = getSignalList(snapshot, 'suspect');
@@ -83,6 +104,8 @@ function resolveSignalRef(snapshot = {}, ref = '', preferredKind = 'corroborated
     return { kind: 'corroborated', index: 0, id: corroborated[0]?.id || null };
   }
   if (normalized === 'that-one' || normalized === 'top-one') {
+    const remembered = recallSelection(contextKey);
+    if (remembered?.id) return { kind: remembered.kind || preferredKind, index: remembered.index || 0, id: remembered.id };
     return { kind: preferredKind, index: 0, id: getSignalList(snapshot, preferredKind)[0]?.id || null };
   }
   const itemMatch = normalized.match(/^item-(\d+)$/);
@@ -394,18 +417,21 @@ app.get('/api/brief/drilldown', (req, res) => {
   const index = Math.max(0, Number.parseInt(req.query.index, 10) || 0);
   const id = typeof req.query.id === 'string' && req.query.id.trim() ? req.query.id.trim() : null;
   const ref = typeof req.query.ref === 'string' && req.query.ref.trim() ? req.query.ref.trim() : null;
-  const resolved = ref ? resolveSignalRef(currentData, ref, requestedKind) : { kind: requestedKind, index, id };
+  const contextKey = typeof req.query.context === 'string' && req.query.context.trim() ? req.query.context.trim() : '';
+  const resolved = ref ? resolveSignalRef(currentData, ref, requestedKind, contextKey) : { kind: requestedKind, index, id };
   const finalKind = resolved.kind || requestedKind;
   const finalIndex = resolved.index ?? index;
   const finalId = resolved.id ?? id;
   const item = getSignalSelection(currentData, finalKind, finalIndex, finalId);
+  if (item && contextKey) rememberSelection(contextKey, { kind: finalKind, index: finalIndex, id: item.id });
   res.json({
     kind: finalKind,
     action,
     index: finalIndex,
-    id: finalId,
+    id: item?.id || finalId,
     ref,
-    text: buildIMessengerDrilldown(currentData, { kind: finalKind, action, index: finalIndex, id: finalId }),
+    context: contextKey || null,
+    text: buildIMessengerDrilldown(currentData, { kind: finalKind, action, index: finalIndex, id: item?.id || finalId }),
     item,
   });
 });

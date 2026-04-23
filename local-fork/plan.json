@@ -95,14 +95,19 @@
             "id": "effort-4.4",
             "title": "Alias resolution for natural iMessage follow-ups",
             "status": "completed"
+          },
+          {
+            "id": "effort-4.5",
+            "title": "Short-lived conversational selection memory for follow-up references",
+            "status": "completed"
           }
         ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 10,
-    "activeCycleId": "2026-04-23-cycle-010",
-    "lastCompletedCycleId": "2026-04-23-cycle-010"
+    "sequence": 11,
+    "activeCycleId": "2026-04-23-cycle-011",
+    "lastCompletedCycleId": "2026-04-23-cycle-011"
   }
 }
