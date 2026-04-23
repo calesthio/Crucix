@@ -12,7 +12,10 @@ const ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const RUNS_DIR = join(ROOT, 'runs');
 const CACHE_DIR = join(RUNS_DIR, 'cache');
 const CACHE_FILE = join(CACHE_DIR, 'opensky-latest.json');
+const STATE_FILE = join(CACHE_DIR, 'opensky-state.json');
 const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const ROTATION_BATCH_SIZE = 4;
+const COOLDOWN_MS = 30 * 60 * 1000;
 
 function ensureCacheDir() {
   if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
@@ -45,6 +48,39 @@ function writeCachedSnapshot(snapshot) {
   } catch {
     // Non-fatal. Continue without persistence.
   }
+}
+
+function readRuntimeState() {
+  try {
+    if (!existsSync(STATE_FILE)) return { cursor: 0, cooldownUntil: null, last429At: null };
+    const parsed = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+    return {
+      cursor: Number.isInteger(parsed?.cursor) ? parsed.cursor : 0,
+      cooldownUntil: parsed?.cooldownUntil || null,
+      last429At: parsed?.last429At || null,
+    };
+  } catch {
+    return { cursor: 0, cooldownUntil: null, last429At: null };
+  }
+}
+
+function writeRuntimeState(state) {
+  try {
+    ensureCacheDir();
+    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  } catch {
+    // Non-fatal. Continue without persistence.
+  }
+}
+
+function selectHotspotBatch(hotspotEntries, cursor = 0, batchSize = ROTATION_BATCH_SIZE) {
+  if (hotspotEntries.length <= batchSize) return { batch: hotspotEntries, nextCursor: 0 };
+  const start = ((cursor % hotspotEntries.length) + hotspotEntries.length) % hotspotEntries.length;
+  const batch = [];
+  for (let i = 0; i < Math.min(batchSize, hotspotEntries.length); i++) {
+    batch.push(hotspotEntries[(start + i) % hotspotEntries.length]);
+  }
+  return { batch, nextCursor: (start + batch.length) % hotspotEntries.length };
 }
 
 // Get all current flights (global state vector)
@@ -107,45 +143,12 @@ const HOTSPOTS = {
 // Briefing — check hotspot regions for flight activity
 export async function briefing() {
   const hotspotEntries = Object.entries(HOTSPOTS);
-  const results = await Promise.all(
-    hotspotEntries.map(async ([key, box]) => {
-      const data = await getFlightsInArea(box.lamin, box.lomin, box.lamax, box.lomax);
-      const error = data?.error || null;
-      const states = data?.states || [];
-      return {
-        region: box.label,
-        key,
-        totalAircraft: states.length,
-        // states format: [icao24, callsign, origin_country, ...]
-        byCountry: states.reduce((acc, s) => {
-          const country = s[2] || 'Unknown';
-          acc[country] = (acc[country] || 0) + 1;
-          return acc;
-        }, {}),
-        // Flag potentially interesting (military often have no callsign or specific patterns)
-        noCallsign: states.filter(s => !s[1]?.trim()).length,
-        highAltitude: states.filter(s => s[7] && s[7] > 12000).length, // >12km altitude
-        ...(error ? { error } : {}),
-      };
-    })
-  );
-
-  const hotspotErrors = results
-    .filter(r => r.error)
-    .map(r => ({ region: r.region, error: r.error }));
-
-  const freshSnapshot = {
-    source: 'OpenSky',
-    timestamp: new Date().toISOString(),
-    hotspots: results,
-  };
-
-  if (hotspotHasAirActivity(results)) {
-    writeCachedSnapshot(freshSnapshot);
-  }
-
+  const state = readRuntimeState();
   const cached = readCachedSnapshot();
-  if (hotspotErrors.length === results.length && cached && !cached.isExpired && hotspotHasAirActivity(cached.hotspots)) {
+  const cooldownUntilMs = state.cooldownUntil ? new Date(state.cooldownUntil).getTime() : NaN;
+  const inCooldown = Number.isFinite(cooldownUntilMs) && cooldownUntilMs > Date.now();
+
+  if (inCooldown && cached && !cached.isExpired && hotspotHasAirActivity(cached.hotspots)) {
     return {
       source: 'OpenSky',
       timestamp: cached.timestamp,
@@ -155,22 +158,106 @@ export async function briefing() {
       servedFromCache: true,
       cacheAgeMinutes: cached.ageMinutes,
       cacheFile: CACHE_FILE,
-      error: `OpenSky live query failed, serving cached snapshot (${cached.ageMinutes}m old): ${hotspotErrors[0].error}`,
+      cooldownUntil: state.cooldownUntil,
+      error: `OpenSky cooldown active, serving cached snapshot (${cached.ageMinutes}m old)`,
+      liveError: 'cooldown-active',
+      queryMode: 'cooldown-cache',
+    };
+  }
+
+  const { batch: selectedHotspots, nextCursor } = selectHotspotBatch(hotspotEntries, state.cursor);
+  const batchResults = await Promise.all(
+    selectedHotspots.map(async ([key, box]) => {
+      const data = await getFlightsInArea(box.lamin, box.lomin, box.lamax, box.lomax);
+      const error = data?.error || null;
+      const states = data?.states || [];
+      return {
+        region: box.label,
+        key,
+        totalAircraft: states.length,
+        byCountry: states.reduce((acc, s) => {
+          const country = s[2] || 'Unknown';
+          acc[country] = (acc[country] || 0) + 1;
+          return acc;
+        }, {}),
+        noCallsign: states.filter(s => !s[1]?.trim()).length,
+        highAltitude: states.filter(s => s[7] && s[7] > 12000).length,
+        ...(error ? { error } : {}),
+      };
+    })
+  );
+
+  const batchMap = new Map(batchResults.map(result => [result.key, result]));
+  const cachedHotspotMap = new Map((cached?.hotspots || []).map(result => [result.key, result]));
+  const mergedResults = hotspotEntries.map(([key, box]) => {
+    if (batchMap.has(key)) return batchMap.get(key);
+    if (cachedHotspotMap.has(key)) return { ...cachedHotspotMap.get(key), carriedForward: true };
+    return {
+      region: box.label,
+      key,
+      totalAircraft: 0,
+      byCountry: {},
+      noCallsign: 0,
+      highAltitude: 0,
+      stale: true,
+      error: 'Not queried in this rotation and no cached snapshot available',
+    };
+  });
+
+  const hotspotErrors = batchResults
+    .filter(r => r.error)
+    .map(r => ({ region: r.region, error: r.error }));
+
+  const saw429 = hotspotErrors.some(r => String(r.error).includes('HTTP 429'));
+  const nextState = {
+    cursor: nextCursor,
+    cooldownUntil: saw429 ? new Date(Date.now() + COOLDOWN_MS).toISOString() : null,
+    last429At: saw429 ? new Date().toISOString() : state.last429At,
+  };
+  writeRuntimeState(nextState);
+
+  const freshSnapshot = {
+    source: 'OpenSky',
+    timestamp: new Date().toISOString(),
+    hotspots: mergedResults,
+  };
+
+  if (hotspotHasAirActivity(mergedResults)) {
+    writeCachedSnapshot(freshSnapshot);
+  }
+
+  if (hotspotErrors.length === batchResults.length && cached && !cached.isExpired && hotspotHasAirActivity(cached.hotspots)) {
+    return {
+      source: 'OpenSky',
+      timestamp: cached.timestamp,
+      hotspots: cached.hotspots,
+      degraded: true,
+      stale: true,
+      servedFromCache: true,
+      cacheAgeMinutes: cached.ageMinutes,
+      cacheFile: CACHE_FILE,
+      cooldownUntil: nextState.cooldownUntil,
+      error: `OpenSky live batch failed, serving cached snapshot (${cached.ageMinutes}m old): ${hotspotErrors[0].error}`,
       liveError: hotspotErrors[0].error,
       hotspotErrors,
+      queryMode: 'rotating-batch-fallback',
+      queriedRegions: selectedHotspots.map(([, box]) => box.label),
     };
   }
 
   return {
     source: 'OpenSky',
     timestamp: freshSnapshot.timestamp,
-    hotspots: results,
+    hotspots: mergedResults,
     ...(hotspotErrors.length ? {
-      error: hotspotErrors.length === results.length
-        ? `OpenSky unavailable across all hotspots: ${hotspotErrors[0].error}`
-        : `OpenSky unavailable for ${hotspotErrors.length}/${results.length} hotspots`,
+      error: hotspotErrors.length === batchResults.length
+        ? `OpenSky batch unavailable for ${hotspotErrors.length}/${batchResults.length} queried hotspots`
+        : `OpenSky partial batch issues for ${hotspotErrors.length}/${batchResults.length} queried hotspots`,
       hotspotErrors,
     } : {}),
+    ...(saw429 ? { degraded: true, cooldownUntil: nextState.cooldownUntil, liveError: hotspotErrors.find(r => String(r.error).includes('HTTP 429'))?.error || 'HTTP 429' } : {}),
+    queryMode: 'rotating-batch',
+    queriedRegions: selectedHotspots.map(([, box]) => box.label),
   };
 }
 
