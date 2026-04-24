@@ -337,15 +337,15 @@
           {
             "id": "effort-12.1",
             "title": "Compact-history backfill or migration for older cold runs so trend summaries stop zeroing newly added fields",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 46,
-    "activeCycleId": "2026-04-24-cycle-046",
-    "lastCompletedCycleId": "2026-04-24-cycle-046"
+    "sequence": 47,
+    "activeCycleId": "2026-04-24-cycle-047",
+    "lastCompletedCycleId": "2026-04-24-cycle-047"
   }
 }
