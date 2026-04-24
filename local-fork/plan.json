@@ -254,7 +254,7 @@
           {
             "id": "effort-8.3",
             "title": "Operator-facing source failure classification for setup debt versus live outages",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-8.4",
@@ -344,8 +344,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 35,
-    "activeCycleId": "2026-04-24-cycle-035",
-    "lastCompletedCycleId": "2026-04-24-cycle-035"
+    "sequence": 36,
+    "activeCycleId": "2026-04-24-cycle-036",
+    "lastCompletedCycleId": "2026-04-24-cycle-036"
   }
 }

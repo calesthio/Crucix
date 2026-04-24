@@ -1619,6 +1619,7 @@ app.get('/api/health', (req, res) => {
     sourcesFailed: currentData?.meta?.sourcesFailed || 0,
     sourceHealthSummary: currentData?.healthSummary || null,
     sourceCounters: currentData?.healthSummary?.counters || null,
+    sourceFailureClassification: currentData?.healthSummary?.failureClassification || null,
     freshnessPolicy: {
       configured: getFreshnessPolicy(),
       activeSourceHealthPolicy: currentData?.healthSummary?.policy || null,
