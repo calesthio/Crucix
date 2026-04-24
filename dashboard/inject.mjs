@@ -706,13 +706,45 @@ function getNewsLLMProvider(existingProvider = null) {
   return existingProvider;
 }
 
-async function consolidateNewsWithLLM(news = [], llmProvider = null) {
+async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {}) {
   const heuristic = heuristicStoryGroup(news);
-  const provider = getNewsLLMProvider(llmProvider);
-  const debug = { provider: provider?.name || null, baseUrl: provider?.baseUrl || null, candidateSets: [] };
-  if (!provider?.isConfigured || !news.length) return { hints: heuristic, debug };
+  const mode = options.mode === 'off' ? 'off' : options.mode === 'force' ? 'force' : 'auto';
+  const provider = mode === 'off' ? null : getNewsLLMProvider(llmProvider);
+  const debug = {
+    requestedMode: mode,
+    provider: provider?.name || null,
+    baseUrl: provider?.baseUrl || null,
+    providerConfigured: Boolean(provider?.isConfigured),
+    attempted: false,
+    used: false,
+    fallbackReason: null,
+    candidateSets: [],
+    candidateSetCount: 0,
+    llmSuccessCount: 0,
+    llmErrorCount: 0,
+    heuristicFallbackCount: 0,
+    perRegion: [],
+  };
+  if (!news.length) {
+    debug.fallbackReason = 'no-news';
+    return { hints: heuristic, debug };
+  }
+  if (mode === 'off') {
+    debug.fallbackReason = 'operator-disabled';
+    return { hints: heuristic, debug };
+  }
+  if (!provider?.isConfigured) {
+    debug.fallbackReason = mode === 'force' ? 'llm-unavailable-forced' : 'llm-unavailable';
+    return { hints: heuristic, debug };
+  }
   const candidateSets = buildLlmCandidateSets(news, heuristic);
+  debug.attempted = candidateSets.length > 0;
+  debug.candidateSetCount = candidateSets.length;
   debug.candidateSets = candidateSets.map(set => ({ region: set.region, idxs: set.items.map(x => x.idx) }));
+  if (!candidateSets.length) {
+    debug.fallbackReason = 'no-candidate-sets';
+    return { hints: heuristic, debug };
+  }
   let mergedHints = [...heuristic];
   for (const set of candidateSets) {
     const slice = set.items.map(({ idx, item, heuristic: h }) => ({ idx, title: item.title, source: item.source, region: item.region, heuristicStoryKey: h?.storyKey || null }));
@@ -723,9 +755,20 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null) {
       const text = (res.text || '').trim();
       const match = text.match(/```json\s*([\s\S]*?)```/) || text.match(/\[[\s\S]*\]/);
       debug[`raw_${set.region}`] = text.substring(0, 3000);
-      if (!match) continue;
+      if (!match) {
+        debug.heuristicFallbackCount += 1;
+        debug.perRegion.push({ region: set.region, status: 'heuristic-fallback', reason: 'no-json-match', itemCount: slice.length });
+        continue;
+      }
       const parsed = JSON.parse(match[1] || match[0]);
-      if (!Array.isArray(parsed) || parsed.length !== slice.length) continue;
+      if (!Array.isArray(parsed) || parsed.length !== slice.length) {
+        debug.heuristicFallbackCount += 1;
+        debug.perRegion.push({ region: set.region, status: 'heuristic-fallback', reason: 'shape-mismatch', itemCount: slice.length });
+        continue;
+      }
+      debug.used = true;
+      debug.llmSuccessCount += 1;
+      debug.perRegion.push({ region: set.region, status: 'llm-used', reason: null, itemCount: slice.length });
       for (const x of parsed) {
         if (!Number.isInteger(x?.idx) || !news[x.idx]) continue;
         mergedHints[x.idx] = {
@@ -737,9 +780,14 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null) {
         };
       }
     } catch (err) {
+      debug.llmErrorCount += 1;
+      debug.heuristicFallbackCount += 1;
       debug[`error_${set.region}`] = err.message;
+      debug.perRegion.push({ region: set.region, status: 'heuristic-fallback', reason: err.message, itemCount: slice.length });
     }
   }
+  if (!debug.used && !debug.fallbackReason) debug.fallbackReason = debug.attempted ? 'all-candidate-sets-fell-back' : 'no-candidate-sets';
+  if (debug.used && !debug.fallbackReason && debug.heuristicFallbackCount > 0) debug.fallbackReason = 'partial-fallback';
   return { hints: mergedHints, debug };
 }
 
@@ -773,8 +821,8 @@ function classifyClusterQuality(cluster = {}) {
   return { quality, confidenceLabel, qualityFlags: Array.from(new Set(flags)) };
 }
 
-export async function buildNewsClusters(news = [], llmProvider = null) {
-  const { hints: llmHints, debug: llmDebug } = await consolidateNewsWithLLM(news, llmProvider);
+export async function buildNewsClusters(news = [], llmProvider = null, options = {}) {
+  const { hints: llmHints, debug: llmDebug } = await consolidateNewsWithLLM(news, llmProvider, options);
   const hintMap = new Map(llmHints.filter(x => Number.isInteger(x?.idx)).map(x => [x.idx, x]));
   const groups = new Map();
   news.forEach((item, idx) => {

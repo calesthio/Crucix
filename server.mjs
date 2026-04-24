@@ -10,7 +10,7 @@ import { exec } from 'child_process';
 import config from './crucix.config.mjs';
 import { getLocale, currentLanguage, getSupportedLocales } from './lib/i18n.mjs';
 import { fullBriefing } from './apis/briefing.mjs';
-import { synthesize, generateIdeas } from './dashboard/inject.mjs';
+import { synthesize, generateIdeas, buildNewsClusters } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider } from './lib/llm/index.mjs';
 import { generateLLMIdeas } from './lib/llm/ideas.mjs';
@@ -319,8 +319,17 @@ function buildNewsClusterSummary(snapshot = {}) {
       placementBasis: cluster.placementBasis || null,
     })),
     llm: snapshot.newsLlmDebug ? {
+      requestedMode: snapshot.newsLlmDebug.requestedMode || 'auto',
       provider: snapshot.newsLlmDebug.provider || null,
-      candidateSetCount: Array.isArray(snapshot.newsLlmDebug.candidateSets) ? snapshot.newsLlmDebug.candidateSets.length : 0,
+      providerConfigured: Boolean(snapshot.newsLlmDebug.providerConfigured),
+      attempted: Boolean(snapshot.newsLlmDebug.attempted),
+      used: Boolean(snapshot.newsLlmDebug.used),
+      fallbackReason: snapshot.newsLlmDebug.fallbackReason || null,
+      candidateSetCount: snapshot.newsLlmDebug.candidateSetCount || (Array.isArray(snapshot.newsLlmDebug.candidateSets) ? snapshot.newsLlmDebug.candidateSets.length : 0),
+      llmSuccessCount: snapshot.newsLlmDebug.llmSuccessCount || 0,
+      llmErrorCount: snapshot.newsLlmDebug.llmErrorCount || 0,
+      heuristicFallbackCount: snapshot.newsLlmDebug.heuristicFallbackCount || 0,
+      perRegion: Array.isArray(snapshot.newsLlmDebug.perRegion) ? snapshot.newsLlmDebug.perRegion.slice(0, 8) : [],
     } : null,
   };
 }
@@ -358,6 +367,9 @@ function buildIMessengerBrief(snapshot = {}) {
     lines.push(`Top news cluster: ${top.headline} (${top.region}, ${top.storyCount} stories/${top.sourceCount} sources, ${top.confidenceLabel || 'unknown'})`);
     if (newsSummary.quality) {
       lines.push(`News cluster quality: ${newsSummary.quality.high || 0} strong, ${newsSummary.quality.medium || 0} moderate, ${newsSummary.quality.low || 0} weak`);
+    }
+    if (newsSummary.llm) {
+      lines.push(`News LLM: mode ${newsSummary.llm.requestedMode || 'auto'}, ${newsSummary.llm.used ? 'used' : 'heuristic fallback'}${newsSummary.llm.candidateSetCount != null ? `, candidates ${newsSummary.llm.candidateSetCount}` : ''}${newsSummary.llm.heuristicFallbackCount != null ? `, fallbacks ${newsSummary.llm.heuristicFallbackCount}` : ''}`);
     }
   }
 
@@ -560,20 +572,26 @@ app.get('/', (req, res) => {
   }
 });
 
+async function ensureCurrentData() {
+  return currentData;
+}
+
 // API: current data
-app.get('/api/data', (req, res) => {
-  if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
-  res.json(currentData);
+app.get('/api/data', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  res.json(snapshot);
 });
 
-app.get('/api/brief/compact', (req, res) => {
-  if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
-  const corroborated = attachSignalIds('corroborated', currentData.corroboratedSignals || []);
-  const suspects = attachSignalIds('suspect', currentData.suspectSignals || []);
+app.get('/api/brief/compact', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  const corroborated = attachSignalIds('corroborated', snapshot.corroboratedSignals || []);
+  const suspects = attachSignalIds('suspect', snapshot.suspectSignals || []);
   res.json({
-    text: buildIMessengerBrief(currentData),
-    evidenceSummary: currentData.evidenceSummary || null,
-    newsSummary: buildNewsClusterSummary(currentData),
+    text: buildIMessengerBrief(snapshot),
+    evidenceSummary: snapshot.evidenceSummary || null,
+    newsSummary: buildNewsClusterSummary(snapshot),
     topCorroborated: corroborated[0] || null,
     topSuspect: suspects[0] || null,
     corroboratedSignals: corroborated.slice(0, 5),
@@ -581,18 +599,39 @@ app.get('/api/brief/compact', (req, res) => {
   });
 });
 
-app.get('/api/brief/news', (req, res) => {
-  if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
-  res.json(buildNewsClusterSummary(currentData) || {
-    totalClusters: 0,
-    topCluster: null,
-    clusters: [],
-    llm: null,
-  });
+app.get('/api/brief/news', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  const requestedMode = typeof req.query.llm === 'string' ? req.query.llm.trim().toLowerCase() : 'auto';
+  const llmMode = ['auto', 'off', 'force'].includes(requestedMode) ? requestedMode : 'auto';
+  if (llmMode === 'auto') {
+    return res.json(buildNewsClusterSummary(snapshot) || {
+      totalClusters: 0,
+      topCluster: null,
+      clusters: [],
+      llm: null,
+    });
+  }
+  try {
+    const { clusters, llmDebug, qualitySummary } = await buildNewsClusters(snapshot.news || [], llmProvider, { mode: llmMode });
+    return res.json(buildNewsClusterSummary({
+      newsClusters: clusters,
+      newsLlmDebug: llmDebug,
+      newsClusterQuality: qualitySummary,
+    }) || {
+      totalClusters: 0,
+      topCluster: null,
+      clusters: [],
+      llm: null,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message, llmMode });
+  }
 });
 
-app.get('/api/brief/drilldown', (req, res) => {
-  if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+app.get('/api/brief/drilldown', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
   const requestedKind = req.query.kind === 'suspect' ? 'suspect' : 'corroborated';
   const action = ['why', 'sources', 'expand'].includes(req.query.action) ? req.query.action : 'why';
   const index = Math.max(0, Number.parseInt(req.query.index, 10) || 0);
@@ -600,11 +639,11 @@ app.get('/api/brief/drilldown', (req, res) => {
   const ref = typeof req.query.ref === 'string' && req.query.ref.trim() ? req.query.ref.trim() : null;
   const contextKey = typeof req.query.context === 'string' && req.query.context.trim() ? req.query.context.trim() : '';
   const memoryBefore = contextKey ? selectionMeta(contextKey) : null;
-  const resolved = ref ? resolveSignalRef(currentData, ref, requestedKind, contextKey) : { kind: requestedKind, index, id };
+  const resolved = ref ? resolveSignalRef(snapshot, ref, requestedKind, contextKey) : { kind: requestedKind, index, id };
   const finalKind = resolved.kind || requestedKind;
   const finalIndex = resolved.index ?? index;
   const finalId = resolved.id ?? id;
-  const item = getSignalSelection(currentData, finalKind, finalIndex, finalId);
+  const item = getSignalSelection(snapshot, finalKind, finalIndex, finalId);
   const usedRememberedSelection = Boolean(ref && contextKey && memoryBefore?.id && item?.id === memoryBefore.id && ['that-one', 'top-one'].includes(String(ref).trim().toLowerCase()));
   if (item && contextKey) rememberSelection(contextKey, { kind: finalKind, index: finalIndex, id: item.id });
   res.json({
@@ -871,13 +910,16 @@ async function start() {
       if (err) console.log('[Crucix] Could not auto-open browser:', err.message);
     });
 
-    // Try to load existing data first for instant display (await so dashboard shows immediately)
+    // Try to load existing data first for instant display, but do not block initial sweep startup on it.
     try {
       const existing = JSON.parse(readFileSync(join(RUNS_DIR, 'latest.json'), 'utf8'));
-      const data = await synthesize(existing);
-      currentData = data;
-      console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');
-      broadcast({ type: 'update', data: currentData });
+      synthesize(existing).then(data => {
+        currentData = data;
+        console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');
+        broadcast({ type: 'update', data: currentData });
+      }).catch(() => {
+        console.log('[Crucix] Existing snapshot synth failed — waiting for fresh sweep');
+      });
     } catch {
       console.log('[Crucix] No existing data found — first sweep required');
     }
