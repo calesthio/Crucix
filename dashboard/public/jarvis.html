@@ -402,6 +402,8 @@ let globe = null;
 let globeInitialized = false;
 let globeFailed = false;
 let globeFailureReason = null;
+let softwareGlobeMode = false;
+let worldAtlasData = null;
 let flightsVisible = true;
 let lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true';
 let isFlat = shouldStartFlat();
@@ -578,33 +580,42 @@ function canUse3D(){
   return !globeFailed && typeof Globe === 'function' && typeof THREE !== 'undefined';
 }
 
+async function loadWorldAtlas(){
+  if(worldAtlasData) return worldAtlasData;
+  const response = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+  worldAtlasData = await response.json();
+  return worldAtlasData;
+}
+
 function updateMapModeControls(){
   const btn = document.getElementById('projToggle');
   const hint = document.getElementById('mapHint');
   if(!btn || !hint) return;
-  const unavailable = !canUse3D();
-  btn.classList.toggle('disabled', unavailable);
-  btn.disabled = unavailable;
-  if(unavailable){
-    btn.textContent = '3D UNAVAILABLE';
-    hint.textContent = globeFailureReason || '3D UNAVAILABLE · FLAT MODE';
+  btn.classList.remove('disabled');
+  btn.disabled = false;
+  if(isFlat){
+    btn.textContent = 'GLOBE MODE';
+    hint.textContent = 'SCROLL TO ZOOM · DRAG TO PAN';
     return;
   }
-  btn.textContent = isFlat ? 'GLOBE MODE' : 'FLAT MODE';
-  hint.textContent = isFlat ? 'SCROLL TO ZOOM · DRAG TO PAN' : 'DRAG TO ROTATE · SCROLL TO ZOOM';
+  btn.textContent = 'FLAT MODE';
+  hint.textContent = softwareGlobeMode
+    ? `SOFTWARE GLOBE · ${globeFailureReason || 'WEBGL UNAVAILABLE'}`
+    : 'DRAG TO ROTATE · SCROLL TO ZOOM';
 }
 
 function markGlobeUnavailable(reason='3D LOAD FAILED · FLAT MODE'){
   globeFailed = true;
   globeFailureReason = reason;
-  isFlat = true;
+  softwareGlobeMode = true;
+  isFlat = false;
   const globeEl = document.getElementById('globeViz');
   const flatEl = document.getElementById('flatMapSvg');
   if(globeEl) globeEl.style.display = 'none';
   if(flatEl) flatEl.style.display = 'block';
   updateMapModeControls();
-  if(!flatSvg) initFlatMap();
-  else if(flatG){ flatG.selectAll('*').remove(); drawFlatMap(); }
+  if(!flatSvg) initFlatMap('globe');
+  else if(flatG){ flatG.selectAll('*').remove(); drawFlatMap('globe'); }
   setMapLoading(false);
 }
 
@@ -763,10 +774,12 @@ function initMap(){
   updateMapModeControls();
   if(isFlat || !canUse3D()){
     if(globe && typeof globe.pauseAnimation === 'function') globe.pauseAnimation();
+    softwareGlobeMode = !isFlat;
     document.getElementById('globeViz').style.display = 'none';
     document.getElementById('flatMapSvg').style.display = 'block';
-    if(!flatSvg) initFlatMap();
-    else { flatG.selectAll('*').remove(); drawFlatMap(); }
+    if(!flatSvg) initFlatMap(softwareGlobeMode ? 'globe' : 'flat');
+    else { flatG.selectAll('*').remove(); drawFlatMap(softwareGlobeMode ? 'globe' : 'flat'); }
+    updateMapModeControls();
     setMapLoading(false);
     return;
   }
@@ -1028,13 +1041,8 @@ const flatRegionBounds = {
 };
 
 function toggleMapMode(){
-  if(!canUse3D()){
-    markGlobeUnavailable(globeFailureReason || '3D UNAVAILABLE · FLAT MODE');
-    return;
-  }
   isFlat = !isFlat;
-  const btn = document.getElementById('projToggle');
-  const hint = document.getElementById('mapHint');
+  softwareGlobeMode = !isFlat && !canUse3D();
   updateMapModeControls();
   const globeEl = document.getElementById('globeViz');
   const flatEl = document.getElementById('flatMapSvg');
@@ -1043,8 +1051,17 @@ function toggleMapMode(){
     globeEl.style.display = 'none';
     flatEl.style.display = 'block';
     setMapLoading(false);
-    if(!flatSvg) initFlatMap();
-    else { flatG.selectAll('*').remove(); drawFlatMap(); }
+    if(!flatSvg) initFlatMap('flat');
+    else { flatG.selectAll('*').remove(); drawFlatMap('flat'); }
+  } else if(softwareGlobeMode) {
+    globeEl.style.display = 'none';
+    flatEl.style.display = 'block';
+    setMapLoading(true, 'Initializing Software Globe');
+    requestAnimationFrame(() => {
+      if(!flatSvg) initFlatMap('globe');
+      else { flatG.selectAll('*').remove(); drawFlatMap('globe'); }
+      setMapLoading(false);
+    });
   } else {
     flatEl.style.display = 'none';
     setMapLoading(true, 'Initializing 3D Globe');
@@ -1055,39 +1072,60 @@ function toggleMapMode(){
         globeEl.style.display = 'block';
         setMapLoading(false);
       } catch {
-        markGlobeUnavailable('3D INIT FAILED · FLAT MODE');
+        markGlobeUnavailable('WEBGL UNAVAILABLE · SOFTWARE GLOBE ACTIVE');
       }
     });
   }
 }
 
-function initFlatMap(){
+function initFlatMap(mode='flat'){
   const container = document.getElementById('mapContainer');
   flatW = container.clientWidth; flatH = container.clientHeight || 560;
   flatSvg = d3.select('#flatMapSvg').attr('viewBox',`0 0 ${flatW} ${flatH}`).attr('preserveAspectRatio','xMidYMid meet');
-  flatProjection = d3.geoNaturalEarth1().fitSize([flatW-20,flatH-20],{type:'Sphere'}).translate([flatW/2,flatH/2]);
+  flatSvg.on('.zoom', null).on('.drag', null);
+  if(mode === 'globe'){
+    flatProjection = d3.geoOrthographic().fitExtent([[20,20],[flatW-20,flatH-20]], {type:'Sphere'}).translate([flatW/2,flatH/2]).clipAngle(90);
+  } else {
+    flatProjection = d3.geoNaturalEarth1().fitSize([flatW-20,flatH-20],{type:'Sphere'}).translate([flatW/2,flatH/2]);
+  }
   flatPath = d3.geoPath(flatProjection);
   flatG = flatSvg.append('g');
-  flatZoom = d3.zoom().scaleExtent([1,12]).on('zoom',(event)=>{
-    flatG.attr('transform',event.transform);
-    const k=event.transform.k;
-    flatG.selectAll('.marker-circle').attr('r',function(){return +this.dataset.baseR/Math.sqrt(k)});
-    flatG.selectAll('.marker-label').style('font-size',Math.max(7,9/Math.sqrt(k))+'px')
-      .style('display',k>=2.5?'block':'none');
-  });
-  flatSvg.call(flatZoom);
-  drawFlatMap();
+  if(mode === 'globe'){
+    flatZoom = null;
+    flatSvg.call(d3.drag().on('drag',(event)=>{
+      const rotate = flatProjection.rotate();
+      const scale = flatProjection.scale();
+      flatProjection.rotate([rotate[0] + event.dx * 0.35, rotate[1] - event.dy * 0.35, rotate[2]]);
+      flatProjection.scale(scale);
+      flatG.selectAll('*').remove();
+      drawFlatMap('globe');
+    }));
+  } else {
+    flatZoom = d3.zoom().scaleExtent([1,12]).on('zoom',(event)=>{
+      flatG.attr('transform',event.transform);
+      const k=event.transform.k;
+      flatG.selectAll('.marker-circle').attr('r',function(){return +this.dataset.baseR/Math.sqrt(k)});
+      flatG.selectAll('.marker-label').style('font-size',Math.max(7,9/Math.sqrt(k))+'px')
+        .style('display',k>=2.5?'block':'none');
+    });
+    flatSvg.call(flatZoom);
+  }
+  drawFlatMap(mode);
 }
 
-function drawFlatMap(){
+function drawFlatMap(mode = (softwareGlobeMode ? 'globe' : 'flat')){
+  if(mode === 'globe'){
+    flatG.append('path').datum({type:'Sphere'}).attr('fill','rgba(8,18,28,0.92)').attr('stroke','rgba(68,204,255,0.18)').attr('stroke-width',1.2).attr('d',flatPath);
+  }
   flatG.append('path').datum(d3.geoGraticule()()).attr('class','graticule').attr('d',flatPath);
-  fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
-    .then(r=>r.json()).then(world=>{
-      const countries=topojson.feature(world,world.objects.countries);
-      flatG.selectAll('path.land').data(countries.features).enter().append('path').attr('class','land').attr('d',flatPath);
-      flatG.append('path').datum(topojson.mesh(world,world.objects.countries,(a,b)=>a!==b)).attr('class','border').attr('d',flatPath);
-      plotFlatMarkers();
-    });
+  loadWorldAtlas().then(world=>{
+    const countries=topojson.feature(world,world.objects.countries);
+    flatG.selectAll('path.land').data(countries.features).enter().append('path').attr('class','land').attr('d',flatPath);
+    flatG.append('path').datum(topojson.mesh(world,world.objects.countries,(a,b)=>a!==b)).attr('class','border').attr('d',flatPath);
+    plotFlatMarkers();
+  }).catch(() => {
+    plotFlatMarkers();
+  });
 }
 
 function plotFlatMarkers(){
@@ -1175,7 +1213,14 @@ function setRegion(r){
   currentRegion = r;
   document.querySelectorAll('.region-btn').forEach(b=>b.classList.toggle('active',b.dataset.region===r));
   closePopup();
-  if(isFlat && flatSvg && flatZoom){
+  if((isFlat || softwareGlobeMode) && flatSvg && flatProjection){
+    if(softwareGlobeMode){
+      const pov = regionPOV[r] || regionPOV.world;
+      flatProjection.rotate([-pov.lng, -pov.lat]);
+      flatG.selectAll('*').remove();
+      drawFlatMap('globe');
+      return;
+    }
     if(r==='world'){flatSvg.transition().duration(750).call(flatZoom.transform,d3.zoomIdentity);return;}
     const bounds=flatRegionBounds[r];
     const p0=flatProjection(bounds[0]),p1=flatProjection(bounds[1]);if(!p0||!p1)return;
@@ -1183,14 +1228,19 @@ function setRegion(r){
     const cx=(p0[0]+p1[0])/2,cy=(p0[1]+p1[1])/2;
     const scale=Math.min(flatW/dx,flatH/dy)*0.85;
     flatSvg.transition().duration(750).call(flatZoom.transform,d3.zoomIdentity.translate(flatW/2-scale*cx,flatH/2-scale*cy).scale(scale));
-  } else {
+  } else if(globe) {
     const pov=regionPOV[r]||regionPOV.world;
     globe.pointOfView(pov,1000);
   }
 }
 
 function mapZoom(factor){
-  if(isFlat && flatSvg && flatZoom){
+  if(softwareGlobeMode && flatProjection && flatG){
+    const nextScale = Math.max(120, Math.min(420, flatProjection.scale() * factor));
+    flatProjection.scale(nextScale);
+    flatG.selectAll('*').remove();
+    drawFlatMap('globe');
+  } else if(isFlat && flatSvg && flatZoom){
     flatSvg.transition().duration(300).call(flatZoom.scaleBy,factor);
   } else if(globe){
     const pov=globe.pointOfView();
