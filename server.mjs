@@ -658,12 +658,44 @@ function buildNewsClusterSummary(snapshot = {}) {
   };
 }
 
+const ANALYSIS_STALE_CURRENT_MS = 6 * 60 * 60 * 1000;
+
 function clampText(value = '', limit = 220) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
 }
 
 function normalizeEnum(value, allowed = [], fallback = null) {
   return allowed.includes(value) ? value : fallback;
+}
+
+function parseIsoMs(value = null) {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function isCurrentSnapshotStale(snapshot = {}, nowMs = Date.now()) {
+  const snapshotMs = parseIsoMs(snapshot?.meta?.timestamp || lastSweepTime || null);
+  if (!snapshotMs) return false;
+  return nowMs - snapshotMs > ANALYSIS_STALE_CURRENT_MS;
+}
+
+function reconcileTippingPointLifecycle(analysis = {}, nowMs = Date.now()) {
+  const normalized = normalizeAgentAnalysis(analysis);
+  return {
+    ...normalized,
+    tippingPoints: normalized.tippingPoints.map(item => {
+      const windowEndMs = parseIsoMs(item.windowEnd);
+      if (item.status === 'active' && windowEndMs && windowEndMs < nowMs) {
+        return {
+          ...item,
+          status: 'expired',
+          resolutionNote: item.resolutionNote || 'Automatically expired after window end passed without a newer superseding update.',
+        };
+      }
+      return item;
+    }),
+  };
 }
 
 function normalizeEvidenceRefs(refs = []) {
@@ -751,6 +783,7 @@ function buildDeterministicAgentAnalysis(snapshot = {}) {
   const topCorroborated = (snapshot.corroboratedSignals || [])[0] || null;
   const health = snapshot.healthSummary || {};
   const activeHighTippingPoints = [];
+  const staleCurrent = isCurrentSnapshotStale(snapshot);
 
   if (topSuspect) evidenceRefs.push({ type: 'signal', id: topSuspect.signal, label: topSuspect.signal });
   if (topCorroborated) evidenceRefs.push({ type: 'signal', id: topCorroborated.signal, label: topCorroborated.signal });
@@ -831,12 +864,13 @@ function buildDeterministicAgentAnalysis(snapshot = {}) {
 
   const caveats = [];
   if (primary.status !== 'ready') caveats.push({ text: 'Trend history is still thin, so outlook confidence is constrained.', level: 'warning' });
+  if (staleCurrent) caveats.push({ text: 'Current snapshot is stale relative to retained trend memory, so current-picture conclusions are degraded.', level: 'critical' });
   if ((health.failed || 0) > 0) caveats.push({ text: `${health.failed} failed sources are reducing current-picture completeness.`, level: 'warning' });
   if (topSuspect && !topCorroborated) caveats.push({ text: 'Current risk picture leans on suspect or OSINT-only signals more than corroborated evidence.', level: 'warning' });
   if ((snapshot.newsLlmDebug?.review?.failedRegionCount || 0) > 0) caveats.push({ text: 'News clustering still has active failed-review regions, so topic grouping is not fully clean.', level: 'info' });
 
-  const confidenceLabel = topCorroborated && (health.failed || 0) < 3 ? 'medium' : 'low';
-  const status = !llmProvider?.isConfigured ? 'llm-unavailable' : primary.status === 'ready' ? ((health.failed || 0) >= 5 ? 'degraded' : 'ready') : 'thin-history';
+  const confidenceLabel = staleCurrent ? 'low' : (topCorroborated && (health.failed || 0) < 3 ? 'medium' : 'low');
+  const status = !llmProvider?.isConfigured ? 'llm-unavailable' : primary.status === 'ready' ? ((health.failed || 0) >= 5 || staleCurrent ? 'degraded' : 'ready') : 'thin-history';
 
   const schema = {
     status,
@@ -885,7 +919,7 @@ function buildDeterministicAgentAnalysis(snapshot = {}) {
 }
 
 function buildPublishedAgentAnalysis(analysis = {}) {
-  const normalized = normalizeAgentAnalysis(analysis);
+  const normalized = reconcileTippingPointLifecycle(analysis);
   return {
     ...normalized,
     tippingPoints: normalized.tippingPoints.filter(item => item.status === 'active' && item.probability === 'HIGH').slice(0, 5),
