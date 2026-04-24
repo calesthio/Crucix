@@ -180,7 +180,7 @@
           {
             "id": "effort-6.2",
             "title": "Persist rolling per-region cluster failure stats across restarts",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-6.3",
@@ -188,12 +188,44 @@
             "status": "pending"
           }
         ]
+      },
+      {
+        "id": "epic-7",
+        "title": "Agent analysis, outlook, and accountable tipping points",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-7.1",
+            "title": "Trend-memory foundation for multi-day and multi-week operator analysis",
+            "status": "pending"
+          },
+          {
+            "id": "effort-7.2",
+            "title": "Structured agent-analysis schema for outlook, risks, accountable tipping points, and iMessage summaries",
+            "status": "pending"
+          },
+          {
+            "id": "effort-7.3",
+            "title": "LLM and rule-assisted agent analysis generation with confidence, caveat, and probability gating controls",
+            "status": "pending"
+          },
+          {
+            "id": "effort-7.4",
+            "title": "Dashboard agent-analysis panel plus concise iMessage rendering and review surface",
+            "status": "pending"
+          },
+          {
+            "id": "effort-7.5",
+            "title": "Validation harness for outlook drift and tipping-point lifecycle accountability",
+            "status": "pending"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 23,
-    "activeCycleId": "2026-04-24-cycle-023",
-    "lastCompletedCycleId": "2026-04-24-cycle-023"
+    "sequence": 24,
+    "activeCycleId": "2026-04-24-cycle-024",
+    "lastCompletedCycleId": "2026-04-24-cycle-024"
   }
 }

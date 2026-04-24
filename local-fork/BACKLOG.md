@@ -25,3 +25,9 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 - Capture sampled raw cluster-repair failures with truncation and hashes so prompt regressions can be compared across runs without keeping full model output.
 - Persist rolling per-region cluster prompt stats across restarts if operators need to distinguish one bad sweep from chronic regional failure patterns.
 - Add ack history counters and recent-dismissal visibility so operators can distinguish a genuinely quiet review surface from one muted by repeated acknowledgements.
+- Add configurable outlook horizons, for example next 24h, 72h, and 2 weeks, so agent analysis can distinguish tactical drift from slower regime risk.
+- Add operator-visible citations or evidence anchors for each outlook and tipping-point bullet so analysis can be audited back to trends, deltas, and current signals.
+- Add explicit tipping-point lifecycle tracking so previously published items can be marked hit, cleared, expired, or superseded instead of silently disappearing.
+- Add probability-gating controls so main surfaces default to HIGH-only tipping points while optional review/debug surfaces may expose MEDIUM items.
+- Add concise iMessage rendering rules so the same agent-analysis payload can collapse into a reliable 5-line operator summary without losing caveat discipline.
+- Add rolling or decayed per-region failure-rate windows so long-ago failures do not make a recovering region look chronically weak forever.

@@ -48,6 +48,8 @@ const SELECTION_MEMORY_TTL_MS = 10 * 60 * 1000;
 const SELECTION_MEMORY_MAX_ENTRIES = 100;
 const REVIEW_ACK_TTL_MS = Math.max(1, Number(config.review?.ackTtlHours || 72)) * 60 * 60 * 1000;
 const REVIEW_ACK_MAX_ENTRIES = Math.max(1, Number(config.review?.ackMaxEntries || 100));
+const CLUSTER_REVIEW_STATE_KEY = 'cluster-review:regions';
+const CLUSTER_REVIEW_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 const reviewAcks = loadReviewAcks();
 
 function loadJsonFile(path, fallback) {
@@ -185,6 +187,121 @@ function annotateReview(review = {}) {
     dismissedCount: dismissedItems.length,
     activeCount: activeItems.length,
     ackSummary: reviewAckStats(),
+  };
+}
+
+function getClusterReviewStatsState() {
+  const state = memory.getSignalState(CLUSTER_REVIEW_STATE_KEY);
+  return state && typeof state === 'object' ? state : { regions: {}, updatedAt: null };
+}
+
+function pruneClusterReviewRegions(regions = {}, now = Date.now()) {
+  const pruned = {};
+  for (const [region, stats] of Object.entries(regions || {})) {
+    const lastSeenAt = new Date(stats?.lastSeenAt || stats?.lastFailureAt || stats?.lastSuccessAt || 0).getTime();
+    if (!lastSeenAt || (now - lastSeenAt) > CLUSTER_REVIEW_RETENTION_MS) continue;
+    pruned[region] = stats;
+  }
+  return pruned;
+}
+
+function summarizeClusterReviewStats(state = getClusterReviewStatsState()) {
+  const now = Date.now();
+  const regions = pruneClusterReviewRegions(state?.regions || {}, now);
+  const entries = Object.entries(regions).map(([region, stats]) => ({ region, ...stats }));
+  const recentFailureCutoff = now - (24 * 60 * 60 * 1000);
+  const topRegions = entries
+    .filter(entry => entry.failureCount || entry.consecutiveFailures || entry.lastFailureAt)
+    .sort((a, b) => (b.consecutiveFailures || 0) - (a.consecutiveFailures || 0) || (b.failureCount || 0) - (a.failureCount || 0) || String(a.region).localeCompare(String(b.region)))
+    .slice(0, 8)
+    .map(entry => ({
+      region: entry.region,
+      totalSeen: entry.totalSeen || 0,
+      failureCount: entry.failureCount || 0,
+      successCount: entry.successCount || 0,
+      consecutiveFailures: entry.consecutiveFailures || 0,
+      lastStatus: entry.lastStatus || null,
+      lastReason: entry.lastReason || null,
+      lastSeenAt: entry.lastSeenAt || null,
+      lastFailureAt: entry.lastFailureAt || null,
+      lastSuccessAt: entry.lastSuccessAt || null,
+      maxItemCount: entry.maxItemCount || 0,
+      reasons: entry.reasons || {},
+      chronic: (entry.consecutiveFailures || 0) >= 2 || (entry.failureCount || 0) >= 3,
+      recentlyFailing: entry.lastFailureAt ? new Date(entry.lastFailureAt).getTime() >= recentFailureCutoff : false,
+    }));
+  return {
+    trackedRegionCount: entries.length,
+    chronicFailureCount: topRegions.filter(entry => entry.chronic).length,
+    recentFailureCount: topRegions.filter(entry => entry.recentlyFailing).length,
+    retentionDays: CLUSTER_REVIEW_RETENTION_MS / (24 * 60 * 60 * 1000),
+    updatedAt: state?.updatedAt || null,
+    topRegions,
+  };
+}
+
+function recordClusterReviewStats(snapshot = {}) {
+  const perRegion = Array.isArray(snapshot.newsLlmDebug?.perRegion) ? snapshot.newsLlmDebug.perRegion : [];
+  if (!perRegion.length) return summarizeClusterReviewStats();
+  const nowIso = new Date().toISOString();
+  const current = getClusterReviewStatsState();
+  const regions = pruneClusterReviewRegions({ ...(current.regions || {}) });
+  for (const entry of perRegion) {
+    const region = String(entry?.region || '').trim();
+    if (!region) continue;
+    const stats = regions[region] && typeof regions[region] === 'object' ? { ...regions[region] } : {
+      firstSeenAt: nowIso,
+      lastSeenAt: null,
+      lastFailureAt: null,
+      lastSuccessAt: null,
+      lastStatus: null,
+      lastReason: null,
+      totalSeen: 0,
+      failureCount: 0,
+      successCount: 0,
+      consecutiveFailures: 0,
+      maxItemCount: 0,
+      reasons: {},
+    };
+    stats.lastSeenAt = nowIso;
+    stats.lastStatus = entry.status || null;
+    stats.lastReason = entry.reason || null;
+    stats.totalSeen = (stats.totalSeen || 0) + 1;
+    stats.maxItemCount = Math.max(stats.maxItemCount || 0, entry.itemCount || 0);
+    if (entry.status === 'heuristic-fallback') {
+      stats.failureCount = (stats.failureCount || 0) + 1;
+      stats.consecutiveFailures = (stats.consecutiveFailures || 0) + 1;
+      stats.lastFailureAt = nowIso;
+      const reason = entry.reason || 'unknown';
+      stats.reasons = stats.reasons && typeof stats.reasons === 'object' ? stats.reasons : {};
+      stats.reasons[reason] = (stats.reasons[reason] || 0) + 1;
+    } else {
+      stats.successCount = (stats.successCount || 0) + 1;
+      stats.consecutiveFailures = 0;
+      stats.lastSuccessAt = nowIso;
+    }
+    regions[region] = stats;
+  }
+  const nextState = {
+    updatedAt: nowIso,
+    regions: pruneClusterReviewRegions(regions, Date.now()),
+  };
+  memory.setSignalState(CLUSTER_REVIEW_STATE_KEY, nextState);
+  return summarizeClusterReviewStats(nextState);
+}
+
+function attachClusterReviewStats(review = {}) {
+  const statsSummary = summarizeClusterReviewStats();
+  const byRegion = new Map((statsSummary.topRegions || []).map(entry => [entry.region, entry]));
+  const decorate = item => ({
+    ...item,
+    persistent: byRegion.get(item.region) || null,
+  });
+  return {
+    ...review,
+    reviewItems: Array.isArray(review.reviewItems) ? review.reviewItems.map(decorate) : [],
+    dismissedItems: Array.isArray(review.dismissedItems) ? review.dismissedItems.map(decorate) : [],
+    stats: statsSummary,
   };
 }
 
@@ -476,11 +593,11 @@ function buildNewsClusterSummary(snapshot = {}) {
       retryCount: snapshot.newsLlmDebug.retryCount || 0,
       backoffCount: snapshot.newsLlmDebug.backoffCount || 0,
       tunedRegionCount: snapshot.newsLlmDebug.tunedRegionCount || 0,
-      review: snapshot.newsLlmDebug.review ? annotateReview({
+      review: snapshot.newsLlmDebug.review ? attachClusterReviewStats(annotateReview({
         failedRegionCount: snapshot.newsLlmDebug.review.failedRegionCount || 0,
         topReasons: Array.isArray(snapshot.newsLlmDebug.review.topReasons) ? snapshot.newsLlmDebug.review.topReasons.slice(0, 4) : [],
         reviewItems: Array.isArray(snapshot.newsLlmDebug.review.reviewItems) ? snapshot.newsLlmDebug.review.reviewItems.slice(0, 6) : [],
-      }) : null,
+      })) : null,
       perRegion: Array.isArray(snapshot.newsLlmDebug.perRegion) ? snapshot.newsLlmDebug.perRegion.slice(0, 8) : [],
     } : null,
   };
@@ -772,7 +889,13 @@ app.get('/api/brief/news/review', async (req, res) => {
   res.json({
     totalClusters: baseSummary.totalClusters,
     llm: baseSummary.llm,
-    review: annotateReview(baseSummary.llm.review || { failedRegionCount: 0, topReasons: [], reviewItems: [] }),
+    review: attachClusterReviewStats(annotateReview(baseSummary.llm.review || { failedRegionCount: 0, topReasons: [], reviewItems: [] })),
+  });
+});
+
+app.get('/api/brief/news/review/stats', (req, res) => {
+  res.json({
+    stats: summarizeClusterReviewStats(),
   });
 });
 
@@ -943,6 +1066,7 @@ app.get('/api/health', (req, res) => {
     language: currentLanguage,
     selectionMemory: selectionMemoryStats(),
     reviewAcks: reviewAckStats(),
+    clusterReviewStats: summarizeClusterReviewStats(),
   });
 });
 
@@ -1024,6 +1148,11 @@ async function runSweepCycle() {
     // 3. Synthesize into dashboard format
     console.log('[Crucix] Synthesizing dashboard data...');
     const synthesized = await synthesize(rawData);
+    const clusterReviewStats = recordClusterReviewStats(synthesized);
+    if (synthesized.newsLlmDebug?.review) {
+      synthesized.newsLlmDebug.review = attachClusterReviewStats(annotateReview(synthesized.newsLlmDebug.review));
+    }
+    synthesized.clusterReviewStats = clusterReviewStats;
 
     // 4. Delta computation + memory
     const delta = memory.addRun(synthesized);
