@@ -115,14 +115,19 @@
             "id": "effort-4.8",
             "title": "Access-aware LRU eviction for active chat contexts",
             "status": "completed"
+          },
+          {
+            "id": "effort-4.9",
+            "title": "Selection-memory eviction and prune telemetry",
+            "status": "completed"
           }
         ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 14,
-    "activeCycleId": "2026-04-23-cycle-014",
-    "lastCompletedCycleId": "2026-04-23-cycle-014"
+    "sequence": 15,
+    "activeCycleId": "2026-04-23-cycle-015",
+    "lastCompletedCycleId": "2026-04-23-cycle-015"
   }
 }

@@ -36,6 +36,13 @@ let sweepInProgress = false;
 const startTime = Date.now();
 const sseClients = new Set();
 const selectionMemory = new Map();
+const selectionMemoryTelemetry = {
+  ttlExpired: 0,
+  capacityEvicted: 0,
+  manualCleared: 0,
+  touchHits: 0,
+  misses: 0,
+};
 const SELECTION_MEMORY_TTL_MS = 10 * 60 * 1000;
 const SELECTION_MEMORY_MAX_ENTRIES = 100;
 
@@ -73,6 +80,7 @@ function touchSelection(contextKey = '', remembered = null) {
   };
   selectionMemory.delete(contextKey);
   selectionMemory.set(contextKey, touched);
+  selectionMemoryTelemetry.touchHits += 1;
   return touched;
 }
 
@@ -82,6 +90,7 @@ function pruneSelectionMemory() {
   for (const [key, value] of selectionMemory.entries()) {
     if (!value || value.expiresAt <= now) {
       selectionMemory.delete(key);
+      selectionMemoryTelemetry.ttlExpired += 1;
       pruned += 1;
     }
   }
@@ -89,6 +98,7 @@ function pruneSelectionMemory() {
     const lruKey = selectionMemory.keys().next().value;
     if (!lruKey) break;
     selectionMemory.delete(lruKey);
+    selectionMemoryTelemetry.capacityEvicted += 1;
     pruned += 1;
   }
   return pruned;
@@ -109,6 +119,7 @@ function selectionMemoryStats() {
     nextExpiry: nextExpiry ? new Date(nextExpiry).toISOString() : null,
     oldestContext: oldestKey,
     newestContext: newestKey,
+    telemetry: { ...selectionMemoryTelemetry },
   };
 }
 
@@ -127,9 +138,14 @@ function rememberSelection(contextKey = '', selection = null) {
 function recallSelection(contextKey = '') {
   if (!contextKey) return null;
   const remembered = selectionMemory.get(contextKey);
-  if (!remembered) return null;
+  if (!remembered) {
+    selectionMemoryTelemetry.misses += 1;
+    return null;
+  }
   if (remembered.expiresAt <= Date.now()) {
     selectionMemory.delete(contextKey);
+    selectionMemoryTelemetry.ttlExpired += 1;
+    selectionMemoryTelemetry.misses += 1;
     return null;
   }
   return touchSelection(contextKey, remembered);
@@ -138,7 +154,9 @@ function recallSelection(contextKey = '') {
 function clearSelection(contextKey = '') {
   if (!contextKey) return false;
   pruneSelectionMemory();
-  return selectionMemory.delete(contextKey);
+  const cleared = selectionMemory.delete(contextKey);
+  if (cleared) selectionMemoryTelemetry.manualCleared += 1;
+  return cleared;
 }
 
 function selectionMeta(contextKey = '') {

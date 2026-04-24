@@ -17,3 +17,4 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 - Add selection-memory size limits and opportunistic pruning so context-state helpers do not accumulate unbounded stale entries under high chat volume.
 - Add per-context last-access timestamps and optional LRU-style eviction if chat traffic shows repeated churn beyond a simple max-entry cap.
 - Add lightweight counters for selection-memory evictions and prune causes so operator health views can distinguish TTL expiry from capacity pressure.
+- Add resettable/debug-only selection-memory telemetry controls so long-lived operator sessions can zero counters after investigations without restarting the runtime.
