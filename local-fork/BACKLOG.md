@@ -4,6 +4,4 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 
 ## Candidate backlog items
 
-All backlog items were integrated into `local-fork/plan.json` on 2026-04-24.
-
-New items can be added here when they do not yet belong in the active roadmap.
+- Add timeout, cancellation, and completion telemetry for deferred agent-analysis LLM jobs so deterministic fallback does not mask silently hung background refinement attempts.

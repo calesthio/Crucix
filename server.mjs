@@ -884,8 +884,101 @@ function buildDeterministicAgentAnalysis(snapshot = {}) {
   return normalizeAgentAnalysis(schema);
 }
 
-function buildAgentAnalysis(snapshot = {}, candidate = null) {
-  return normalizeAgentAnalysis(candidate || buildDeterministicAgentAnalysis(snapshot));
+function buildPublishedAgentAnalysis(analysis = {}) {
+  const normalized = normalizeAgentAnalysis(analysis);
+  return {
+    ...normalized,
+    tippingPoints: normalized.tippingPoints.filter(item => item.status === 'active' && item.probability === 'HIGH').slice(0, 5),
+  };
+}
+
+function compactAgentAnalysisContext(snapshot = {}, fallback = null) {
+  const trend = snapshot.trendSummary || {};
+  const primary = Array.isArray(trend.windows) ? trend.windows[0] || null : null;
+  const sections = [];
+  const suspects = (snapshot.suspectSignals || []).slice(0, 4).map(item => `${item.signal} [${item.confidence}] ${clampText(item.reason || '', 140)}`);
+  const corroborated = (snapshot.corroboratedSignals || []).slice(0, 3).map(item => `${item.signal} [${item.confidence}] ${clampText(item.reason || '', 140)}`);
+  const risks = (fallback?.risks || []).slice(0, 3).map(item => `${item.title} (${item.severity}/${item.confidence}): ${item.summary}`);
+  const outlook = (fallback?.outlook || []).slice(0, 3).map(item => `${item.horizonId}: ${item.text}`);
+  const news = buildNewsClusterSummary(snapshot);
+
+  sections.push(`META: sweep=${snapshot.meta?.timestamp || 'unknown'}, llmConfigured=${Boolean(llmProvider?.isConfigured)}`);
+  if (snapshot.evidenceSummary?.headline) sections.push(`EVIDENCE: ${snapshot.evidenceSummary.headline}`);
+  if (suspects.length) sections.push(`SUSPECTS:\n- ${suspects.join('\n- ')}`);
+  if (corroborated.length) sections.push(`CORROBORATED:\n- ${corroborated.join('\n- ')}`);
+  if (news?.topCluster) sections.push(`TOP_NEWS: ${news.topCluster.headline} | ${news.topCluster.region} | ${news.topCluster.storyCount} stories | ${news.topCluster.sourceCount} sources | quality=${news.topCluster.confidenceLabel || news.topCluster.quality || 'unknown'}`);
+  if (primary) sections.push(`TREND_${primary.hours}H: urgent=${primary.urgentTempo?.current || 0}, suspect=${primary.signals?.suspectCurrent || 0}, corroborated=${primary.signals?.corroboratedCurrent || 0}, failedSources=${primary.sourceHealth?.currentFailed || 0}, vix=${primary.marketRegime?.vix?.current ?? 'n/a'}, brent=${primary.commodityDrift?.energy?.brentCurrent ?? 'n/a'}`);
+  if (snapshot.delta?.summary) sections.push(`DELTA: direction=${snapshot.delta.summary.direction}, changes=${snapshot.delta.summary.totalChanges}, critical=${snapshot.delta.summary.criticalChanges}`);
+  if (snapshot.baseline6h?.summary?.headline) sections.push(`BASELINE6H: ${snapshot.baseline6h.summary.headline}`);
+  if (risks.length) sections.push(`FALLBACK_RISKS:\n- ${risks.join('\n- ')}`);
+  if (outlook.length) sections.push(`FALLBACK_OUTLOOK:\n- ${outlook.join('\n- ')}`);
+  return sections.join('\n');
+}
+
+function parseAgentAnalysisResponse(text = '') {
+  const cleaned = String(text || '').trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+  const candidates = [cleaned];
+  const objMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (objMatch) candidates.push(objMatch[0]);
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object') return parsed.agentAnalysis && typeof parsed.agentAnalysis === 'object' ? parsed.agentAnalysis : parsed;
+    } catch {}
+  }
+  return null;
+}
+
+async function generateLLMAgentAnalysis(provider, snapshot = {}) {
+  if (!provider?.isConfigured) return { analysis: null, meta: { source: 'deterministic', used: false, error: 'llm-unavailable' } };
+  const fallback = buildDeterministicAgentAnalysis(snapshot);
+  const systemPrompt = `You are an intelligence analyst producing structured operator-facing analysis from current signals, trend memory, and source-health context.
+
+Rules:
+- Return ONLY valid JSON.
+- Do not overstate OSINT chatter as confirmed fact.
+- Keep confidence conservative when corroboration is weak or source health is degraded.
+- Main-surface tipping points must be HIGH probability and ACTIVE only.
+- Every outlook, risk, and tipping point should cite concrete evidenceRefs from the input context.
+- Prefer the provided fallback draft when uncertain, but improve specificity if the evidence supports it.
+
+Return this object shape:
+{
+  "agentAnalysis": {
+    "status": "ready|thin-history|llm-unavailable|degraded",
+    "generatedAt": "ISO timestamp",
+    "freshness": {"generatedAt": "ISO", "lastSweep": "ISO|null", "sweepInProgress": true, "trendUpdatedAt": "ISO|null"},
+    "confidenceLabel": "high|medium|low",
+    "horizons": [{"id":"short","label":"Next 24h","windowHours":24,"status":"ready|thin-history|empty","summary":"..."}],
+    "outlook": [{"horizonId":"short","text":"...","confidence":"high|medium|low","evidenceRefs":[{"type":"signal|trend|news-cluster|source-health|delta|baseline","id":"...","label":"..."}]}],
+    "risks": [{"title":"...","severity":"high|medium|low","confidence":"high|medium|low","summary":"...","evidenceRefs":[]}],
+    "tippingPoints": [{"title":"...","windowStart":"ISO|null","windowEnd":"ISO|null","validFor":"...","probability":"HIGH|MEDIUM|LOW","condition":"...","expectedImpact":"...","whyItMatters":"...","evidenceRefs":[],"status":"active|hit|cleared|expired|superseded","resolutionNote":null,"invalidationOrClearSignal":"..."}],
+    "evidenceSummary": [{"text":"...","kind":"current|trend|health|delta","evidenceRefs":[]}],
+    "caveats": [{"text":"...","level":"info|warning|critical"}],
+    "trendWindowSummary": {"updatedAt":"ISO","availableWindows":[24,72,168],"primaryWindowHours":24,"primaryStatus":"ready|thin-history|empty"},
+    "iMessageSummary": ["line1","line2","line3","line4","line5"]
+  }
+}`;
+
+  const userPrompt = `${compactAgentAnalysisContext(snapshot, fallback)}
+
+FALLBACK_DRAFT:
+${JSON.stringify(fallback, null, 2)}`;
+
+  try {
+    const result = await provider.complete(systemPrompt, userPrompt, { maxTokens: 4096, timeout: 90000 });
+    const parsed = parseAgentAnalysisResponse(result.text);
+    if (!parsed) return { analysis: null, meta: { source: 'llm-failed', used: false, error: 'parse-failed', model: result.model || provider.model || null } };
+    return { analysis: parsed, meta: { source: 'llm', used: true, error: null, model: result.model || provider.model || null } };
+  } catch (err) {
+    return { analysis: null, meta: { source: 'llm-failed', used: false, error: err.message, model: provider.model || null } };
+  }
+}
+
+function buildAgentAnalysis(snapshot = {}, candidate = null, options = {}) {
+  const published = options.published !== false;
+  const normalized = normalizeAgentAnalysis(candidate || buildDeterministicAgentAnalysis(snapshot));
+  return published ? buildPublishedAgentAnalysis(normalized) : normalized;
 }
 
 function buildAgentAnalysisSummary(snapshot = {}) {
@@ -893,9 +986,10 @@ function buildAgentAnalysisSummary(snapshot = {}) {
   return {
     status: analysis.status,
     confidenceLabel: analysis.confidenceLabel,
+    source: snapshot.agentAnalysisMeta?.source || 'deterministic',
     outlook: analysis.outlook.slice(0, 2),
     risks: analysis.risks.slice(0, 3),
-    tippingPoints: analysis.tippingPoints.filter(item => item.status === 'active' && item.probability === 'HIGH').slice(0, 3),
+    tippingPoints: analysis.tippingPoints.slice(0, 3),
     caveats: analysis.caveats.slice(0, 3),
     iMessageSummary: analysis.iMessageSummary.slice(0, 5),
   };
@@ -1214,7 +1308,8 @@ app.get('/api/analysis', async (req, res) => {
   const snapshot = await ensureCurrentData();
   if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
   res.json({
-    agentAnalysis: buildAgentAnalysis(snapshot),
+    agentAnalysis: snapshot.agentAnalysis || buildAgentAnalysis(snapshot),
+    meta: snapshot.agentAnalysisMeta || { source: 'deterministic', used: false, error: null, model: llmProvider?.model || null },
   });
 });
 
@@ -1392,6 +1487,7 @@ app.get('/api/health', (req, res) => {
       status: currentData.agentAnalysis.status,
       confidenceLabel: currentData.agentAnalysis.confidenceLabel,
       tippingPointCount: Array.isArray(currentData.agentAnalysis.tippingPoints) ? currentData.agentAnalysis.tippingPoints.length : 0,
+      source: currentData.agentAnalysisMeta?.source || 'deterministic',
     } : null,
   });
 });
@@ -1449,6 +1545,35 @@ async function enrichIdeasAndPublish(synthesized, delta) {
   return synthesized;
 }
 
+async function enrichAgentAnalysisAndPublish(synthesized) {
+  if (!llmProvider?.isConfigured) {
+    synthesized.agentAnalysis = buildAgentAnalysis(synthesized, synthesized.agentAnalysis);
+    synthesized.agentAnalysisMeta = { source: 'deterministic', used: false, error: 'llm-unavailable', model: null };
+    return synthesized;
+  }
+
+  try {
+    console.log('[Crucix] Generating LLM agent analysis...');
+    const { analysis, meta } = await generateLLMAgentAnalysis(llmProvider, synthesized);
+    if (analysis) {
+      synthesized.agentAnalysis = buildAgentAnalysis(synthesized, analysis);
+      synthesized.agentAnalysisMeta = meta;
+    } else {
+      synthesized.agentAnalysis = buildAgentAnalysis(synthesized);
+      synthesized.agentAnalysisMeta = meta;
+    }
+    console.log(`[Crucix] Agent analysis ready: ${synthesized.agentAnalysis.status} (${synthesized.agentAnalysisMeta?.source || 'deterministic'})`);
+  } catch (err) {
+    console.error('[Crucix] LLM agent analysis failed (non-fatal):', err.message);
+    synthesized.agentAnalysis = buildAgentAnalysis(synthesized);
+    synthesized.agentAnalysisMeta = { source: 'llm-failed', used: false, error: err.message, model: llmProvider.model || null };
+  }
+
+  currentData = synthesized;
+  broadcast({ type: 'analysis_update', data: currentData });
+  return synthesized;
+}
+
 // === Sweep Cycle ===
 async function runSweepCycle() {
   if (sweepInProgress) {
@@ -1490,6 +1615,7 @@ async function runSweepCycle() {
     synthesized.baseline6h = buildSixHourBaseline(synthesized, sixHourBaselineRun);
     synthesized.trendSummary = memory.getTrendSummary();
     synthesized.agentAnalysis = buildAgentAnalysis(synthesized);
+    synthesized.agentAnalysisMeta = { source: 'deterministic', used: false, error: llmProvider?.isConfigured ? null : 'llm-unavailable', model: llmProvider?.model || null };
 
     // 5. Publish core data immediately so LLM idea generation never blocks /api/data
     if (!llmProvider?.isConfigured) {
@@ -1528,6 +1654,9 @@ async function runSweepCycle() {
     if (llmProvider?.isConfigured) {
       enrichIdeasAndPublish(synthesized, delta).catch(err => {
         console.error('[Crucix] Deferred ideas enrichment failed:', err.message);
+      });
+      enrichAgentAnalysisAndPublish(synthesized).catch(err => {
+        console.error('[Crucix] Deferred agent analysis enrichment failed:', err.message);
       });
     }
 
@@ -1590,9 +1719,15 @@ async function start() {
       synthesize(existing, llmProvider, { newsLlmMode: 'off' }).then(data => {
         data.trendSummary = memory.getTrendSummary();
         data.agentAnalysis = buildAgentAnalysis(data);
+        data.agentAnalysisMeta = { source: 'deterministic', used: false, error: llmProvider?.isConfigured ? null : 'llm-unavailable', model: llmProvider?.model || null };
         currentData = data;
         console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');
         broadcast({ type: 'update', data: currentData });
+        if (llmProvider?.isConfigured) {
+          enrichAgentAnalysisAndPublish(data).catch(err => {
+            console.error('[Crucix] Startup agent analysis enrichment failed:', err.message);
+          });
+        }
       }).catch(() => {
         console.log('[Crucix] Existing snapshot synth failed — waiting for fresh sweep');
       });
