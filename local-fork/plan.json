@@ -340,12 +340,24 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-13",
+        "title": "Freshness policy deployment validation",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-13.1",
+            "title": "Runtime override-validation check that boots Crucix with custom freshness env vars and verifies /api/health reflects them",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 47,
-    "activeCycleId": "2026-04-24-cycle-047",
-    "lastCompletedCycleId": "2026-04-24-cycle-047"
+    "sequence": 48,
+    "activeCycleId": "2026-04-24-cycle-048",
+    "lastCompletedCycleId": "2026-04-24-cycle-048"
   }
 }

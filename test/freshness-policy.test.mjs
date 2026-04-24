@@ -20,6 +20,7 @@ test('source health exposes effective freshness policy metadata', () => {
 
   assert.equal(openSky.freshnessTargetMinutes, getFreshnessPolicy().sources.OpenSky.freshnessTargetMinutes);
   assert.equal(summary.policy.defaultFreshnessMinutes, getFreshnessPolicy().defaultFreshnessMinutes);
+  assert.equal(summary.policy.sources.OpenSky.freshnessTargetMinutes, getFreshnessPolicy().sources.OpenSky.freshnessTargetMinutes);
   assert.equal(policy.sources.YFinance.freshnessTargetMinutes, getFreshnessPolicy().sources.YFinance.freshnessTargetMinutes);
 });
 
