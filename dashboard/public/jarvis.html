@@ -158,6 +158,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .map-loading-card{display:flex;flex-direction:column;align-items:center;gap:10px;padding:16px 18px;border:1px solid rgba(68,204,255,0.18);background:rgba(6,14,22,0.88);box-shadow:0 12px 32px rgba(0,0,0,0.35)}
 .map-loading-ring{width:28px;height:28px;border:2px solid rgba(68,204,255,0.16);border-top-color:var(--accent2);border-radius:50%;animation:spin 1s linear infinite}
 .map-loading-text{font-family:var(--mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent2)}
+.map-status{position:absolute;top:42px;right:12px;z-index:7;max-width:min(320px,calc(100% - 24px));padding:10px 12px;border:1px solid rgba(255,184,76,0.24);background:rgba(10,16,24,0.9);box-shadow:0 10px 24px rgba(0,0,0,0.28);display:none}
+.map-status.show{display:block}
+.map-status-kicker{font-family:var(--mono);font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--warn);margin-bottom:5px}
+.map-status-text{font-size:11px;line-height:1.45;color:#d5e5de}
+.map-status-meta{font-family:var(--mono);font-size:9px;letter-spacing:0.06em;color:var(--dim);margin-top:6px}
 /* News label on map */
 .news-icon{fill:rgba(129,212,250,0.8);filter:drop-shadow(0 0 3px rgba(129,212,250,0.4));transition:fill .2s}
 .news-icon:hover{fill:rgba(129,212,250,1)}
@@ -350,6 +355,7 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
         <div id="globeViz"></div>
         <svg id="flatMapSvg" style="display:none;width:100%;height:100%;position:absolute;top:0;left:0;cursor:grab"></svg>
         <div class="map-loading" id="mapLoading"><div class="map-loading-card"><div class="map-loading-ring"></div><div class="map-loading-text" id="mapLoadingText">Initializing 3D Globe</div></div></div>
+        <div class="map-status" id="mapStatus"><div class="map-status-kicker" id="mapStatusKicker"></div><div class="map-status-text" id="mapStatusText"></div><div class="map-status-meta" id="mapStatusMeta"></div></div>
         <div class="map-legend" id="mapLegend"></div>
         <div class="map-hint" id="mapHint">SCROLL TO ZOOM · DRAG TO PAN</div>
         <div class="map-controls">
@@ -590,18 +596,32 @@ async function loadWorldAtlas(){
 function updateMapModeControls(){
   const btn = document.getElementById('projToggle');
   const hint = document.getElementById('mapHint');
-  if(!btn || !hint) return;
+  const status = document.getElementById('mapStatus');
+  const statusKicker = document.getElementById('mapStatusKicker');
+  const statusText = document.getElementById('mapStatusText');
+  const statusMeta = document.getElementById('mapStatusMeta');
+  if(!btn || !hint || !status || !statusKicker || !statusText || !statusMeta) return;
   btn.classList.remove('disabled');
   btn.disabled = false;
+  status.classList.remove('show');
+  statusKicker.textContent = '';
+  statusText.textContent = '';
+  statusMeta.textContent = '';
   if(isFlat){
     btn.textContent = 'GLOBE MODE';
     hint.textContent = 'SCROLL TO ZOOM · DRAG TO PAN';
     return;
   }
   btn.textContent = 'FLAT MODE';
-  hint.textContent = softwareGlobeMode
-    ? `SOFTWARE GLOBE · ${globeFailureReason || 'WEBGL UNAVAILABLE'}`
-    : 'DRAG TO ROTATE · SCROLL TO ZOOM';
+  if(softwareGlobeMode){
+    hint.textContent = 'SOFTWARE GLOBE ACTIVE';
+    status.classList.add('show');
+    statusKicker.textContent = 'VISUAL FALLBACK ACTIVE';
+    statusText.textContent = 'WebGL globe rendering is unavailable in this browser session. Crucix switched to a software globe so rotation and map context remain usable without pretending the 3D renderer is healthy.';
+    statusMeta.textContent = globeFailureReason || 'WEBGL UNAVAILABLE';
+    return;
+  }
+  hint.textContent = 'DRAG TO ROTATE · SCROLL TO ZOOM';
 }
 
 function markGlobeUnavailable(reason='3D LOAD FAILED · FLAT MODE'){
