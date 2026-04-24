@@ -396,6 +396,32 @@ function formatSignalTrustLabel(item = {}) {
   return labels.length ? ` {${labels.join(' · ')}}` : '';
 }
 
+function signalProvenanceLabel(item = {}) {
+  const sourceHealth = String(item.sourceHealth || '').toLowerCase();
+  const evidenceSource = String(item.evidenceSource || '').toLowerCase();
+  if (sourceHealth === 'hard-data') return 'hard-data corroboration';
+  if (sourceHealth === 'clean' && evidenceSource.includes('mixed')) return 'multi-source corroboration';
+  if (sourceHealth === 'clean') return 'clean source corroboration';
+  if (sourceHealth === 'degraded-air-ok' || sourceHealth === 'degraded') return 'degraded but partially corroborated';
+  if (sourceHealth === 'single-source') return 'single-source signal';
+  if (sourceHealth === 'osint-only') return 'osint-only signal';
+  if (sourceHealth === 'air-missing') return 'air picture missing';
+  if (evidenceSource.includes('telegram')) return 'telegram-led osint';
+  if (evidenceSource.includes('news')) return 'news-led evidence';
+  return sourceHealth || evidenceSource ? `${sourceHealth || 'unknown'} via ${evidenceSource || 'mixed'}` : 'unknown provenance';
+}
+
+function summarizeEvidenceProvenance(snapshot = {}) {
+  const evidence = snapshot.evidenceSummary || {};
+  const counts = evidence.counts || {};
+  const labels = [];
+  if ((counts.carriedForward || 0) > 0) labels.push(`${counts.carriedForward} carried-forward`);
+  if ((counts.cached || 0) > 0) labels.push(`${counts.cached} cached/fallback`);
+  if ((counts.degraded || 0) > 0) labels.push(`${counts.degraded} degraded`);
+  if ((counts.failedSources || 0) > 0) labels.push(`${counts.failedSources} failed sources`);
+  return labels.length ? labels.join(', ') : 'mostly live evidence';
+}
+
 function trustPhrase(item = {}) {
   const sourceHealth = item.sourceHealth || 'unknown';
   const evidenceSource = item.evidenceSource || 'mixed';
@@ -1142,15 +1168,16 @@ function buildIMessengerBrief(snapshot = {}) {
 
   if (evidence.headline) {
     lines.push(`Evidence: ${evidence.headline}`);
+    lines.push(`Provenance: ${summarizeEvidenceProvenance(snapshot)}`);
     lines.push(`Fresh ${counts.fresh || 0}, aging ${counts.aging || 0}, stale ${counts.stale || 0}, carried ${counts.carriedForward || 0}, failed ${counts.failedSources || 0}`);
   }
 
   if (topCorroborated) {
-    lines.push(`Top corroborated [${topCorroborated.id}]: ${topCorroborated.signal} (${topCorroborated.confidence}, ${trustPhrase(topCorroborated)})`);
+    lines.push(`Top corroborated [${topCorroborated.id}]: ${topCorroborated.signal} (${topCorroborated.confidence}, ${signalProvenanceLabel(topCorroborated)})`);
   }
 
   if (topSuspect) {
-    lines.push(`Top suspect [${topSuspect.id}]: ${topSuspect.signal} (${topSuspect.confidence}, ${trustPhrase(topSuspect)})`);
+    lines.push(`Top suspect [${topSuspect.id}]: ${topSuspect.signal} (${topSuspect.confidence}, ${signalProvenanceLabel(topSuspect)})`);
   }
 
   if (tgUrgent.length) {

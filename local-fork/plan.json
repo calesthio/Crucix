@@ -271,7 +271,7 @@
           {
             "id": "effort-9.1",
             "title": "Operator-facing evidence provenance labels in iMessage briefings",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-9.2",
@@ -344,8 +344,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 37,
-    "activeCycleId": "2026-04-24-cycle-037",
-    "lastCompletedCycleId": "2026-04-24-cycle-037"
+    "sequence": 38,
+    "activeCycleId": "2026-04-24-cycle-038",
+    "lastCompletedCycleId": "2026-04-24-cycle-038"
   }
 }
