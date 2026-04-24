@@ -33,6 +33,8 @@ export default {
     repairArtifactMaxSamples: parseInt(process.env.REPAIR_ARTIFACT_MAX_SAMPLES) || 12,
     repairArtifactRetentionDays: parseInt(process.env.REPAIR_ARTIFACT_RETENTION_DAYS) || 14,
     repairArtifactMaxEntries: parseInt(process.env.REPAIR_ARTIFACT_MAX_ENTRIES) || 50,
+    sweepWatchdogTimeoutMinutes: parseInt(process.env.SWEEP_WATCHDOG_TIMEOUT_MINUTES) || Math.max((parseInt(process.env.REFRESH_INTERVAL_MINUTES) || 15) * 2, 45),
+    sweepWatchdogPollSeconds: parseInt(process.env.SWEEP_WATCHDOG_POLL_SECONDS) || 30,
   },
 
   debugEndpoints: {

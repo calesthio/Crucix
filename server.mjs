@@ -51,6 +51,8 @@ const SELECTION_MEMORY_TTL_MS = 10 * 60 * 1000;
 const SELECTION_MEMORY_MAX_ENTRIES = 100;
 const REVIEW_ACK_TTL_MS = Math.max(1, Number(config.review?.ackTtlHours || 72)) * 60 * 60 * 1000;
 const REVIEW_ACK_MAX_ENTRIES = Math.max(1, Number(config.review?.ackMaxEntries || 100));
+const SWEEP_WATCHDOG_TIMEOUT_MS = Math.max(5 * 60 * 1000, Number(config.review?.sweepWatchdogTimeoutMinutes || Math.max(config.refreshIntervalMinutes * 2, 45)) * 60 * 1000);
+const SWEEP_WATCHDOG_POLL_MS = Math.max(5 * 1000, Number(config.review?.sweepWatchdogPollSeconds || 30) * 1000);
 const CLUSTER_REVIEW_STATE_KEY = 'cluster-review:regions';
 const CLUSTER_REVIEW_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 const CLUSTER_REVIEW_DECAY_HALF_LIFE_MS = 3 * 24 * 60 * 60 * 1000;
@@ -60,6 +62,13 @@ const CLUSTER_REPAIR_ARTIFACTS_STATE_KEY = 'cluster-review:repair-artifacts';
 const CLUSTER_REPAIR_ARTIFACT_RETENTION_MS = Math.max(1, Number(config.review?.repairArtifactRetentionDays || 14)) * 24 * 60 * 60 * 1000;
 const CLUSTER_REPAIR_ARTIFACT_MAX_ENTRIES = Math.max(1, Number(config.review?.repairArtifactMaxEntries || 50));
 const reviewAcks = loadReviewAcks();
+const sweepWatchdogTelemetry = {
+  recoveryCount: 0,
+  lastRecoveryAt: null,
+  lastRecoveryReason: null,
+  lastRecoveredSweepStartedAt: null,
+  lastOverdueAt: null,
+};
 
 function loadJsonFile(path, fallback) {
   try {
@@ -1708,6 +1717,58 @@ app.get('/', (req, res) => {
   }
 });
 
+function getSweepWatchdogSnapshot(nowMs = Date.now()) {
+  const startedAtMs = sweepStartedAt ? new Date(sweepStartedAt).getTime() : null;
+  const active = Boolean(sweepInProgress && startedAtMs);
+  const overdueMs = active ? Math.max(0, nowMs - startedAtMs - SWEEP_WATCHDOG_TIMEOUT_MS) : 0;
+  const overdue = Boolean(active && overdueMs > 0);
+  return {
+    timeoutMs: SWEEP_WATCHDOG_TIMEOUT_MS,
+    pollMs: SWEEP_WATCHDOG_POLL_MS,
+    active,
+    overdue,
+    overdueMs,
+    timeoutMinutes: Math.round(SWEEP_WATCHDOG_TIMEOUT_MS / 60000),
+    lastOverdueAt: overdue ? new Date(nowMs).toISOString() : sweepWatchdogTelemetry.lastOverdueAt,
+    telemetry: { ...sweepWatchdogTelemetry },
+  };
+}
+
+function recoverHungSweep(reason = 'watchdog-overdue', nowMs = Date.now()) {
+  if (!sweepInProgress) return false;
+  const recoveredSweepStartedAt = sweepStartedAt;
+  const nowIso = new Date(nowMs).toISOString();
+  sweepWatchdogTelemetry.recoveryCount += 1;
+  sweepWatchdogTelemetry.lastRecoveryAt = nowIso;
+  sweepWatchdogTelemetry.lastRecoveryReason = reason;
+  sweepWatchdogTelemetry.lastRecoveredSweepStartedAt = recoveredSweepStartedAt || null;
+  sweepWatchdogTelemetry.lastOverdueAt = nowIso;
+  sweepInProgress = false;
+  sweepStartedAt = null;
+  syncSnapshotRuntimeFreshness(currentData);
+  broadcast({
+    type: 'sweep_watchdog_recovered',
+    recoveredAt: nowIso,
+    reason,
+    recoveredSweepStartedAt,
+  });
+  console.warn(`[Crucix] Sweep watchdog recovered hung sweep gate (${reason}) started at ${recoveredSweepStartedAt || 'unknown'}`);
+  return true;
+}
+
+function runSweepWatchdog(nowMs = Date.now()) {
+  const watchdog = getSweepWatchdogSnapshot(nowMs);
+  if (!watchdog.overdue) {
+    return { recovered: false, watchdog };
+  }
+  const recovered = recoverHungSweep('watchdog-overdue', nowMs);
+  return {
+    recovered,
+    watchdog: getSweepWatchdogSnapshot(nowMs),
+    telemetry: { ...sweepWatchdogTelemetry },
+  };
+}
+
 function syncSnapshotRuntimeFreshness(snapshot = null) {
   if (!snapshot || typeof snapshot !== 'object') return snapshot;
   if (!snapshot.agentAnalysis) return snapshot;
@@ -1989,6 +2050,7 @@ app.get('/api/health', (req, res) => {
       : null,
     sweepInProgress,
     sweepStartedAt,
+    sweepWatchdog: getSweepWatchdogSnapshot(),
     sourcesOk: currentData?.meta?.sourcesOk || 0,
     sourcesFailed: currentData?.meta?.sourcesFailed || 0,
     sourceHealthSummary: currentData?.healthSummary || null,
@@ -2156,8 +2218,12 @@ async function enrichAgentAnalysisAndPublish(synthesized) {
 // === Sweep Cycle ===
 async function runSweepCycle() {
   if (sweepInProgress) {
-    console.log('[Crucix] Sweep already in progress, skipping');
-    return;
+    const watchdog = runSweepWatchdog();
+    if (!watchdog.recovered) {
+      console.log('[Crucix] Sweep already in progress, skipping');
+      return;
+    }
+    console.log('[Crucix] Sweep watchdog cleared stale in-progress gate, continuing with new sweep');
   }
 
   sweepInProgress = true;
@@ -2335,6 +2401,13 @@ async function start() {
 
     // Schedule recurring sweeps
     setInterval(runSweepCycle, config.refreshIntervalMinutes * 60 * 1000);
+    setInterval(() => {
+      try {
+        runSweepWatchdog();
+      } catch (err) {
+        console.error('[Crucix] Sweep watchdog failed:', err?.message || err);
+      }
+    }, SWEEP_WATCHDOG_POLL_MS);
   });
 }
 
