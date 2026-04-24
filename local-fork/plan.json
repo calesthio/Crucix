@@ -197,7 +197,7 @@
           {
             "id": "effort-7.1",
             "title": "Trend-memory foundation for multi-day and multi-week operator analysis",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-7.2",
@@ -224,8 +224,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 25,
-    "activeCycleId": "2026-04-24-cycle-025",
-    "lastCompletedCycleId": "2026-04-24-cycle-025"
+    "sequence": 26,
+    "activeCycleId": "2026-04-24-cycle-026",
+    "lastCompletedCycleId": "2026-04-24-cycle-026"
   }
 }

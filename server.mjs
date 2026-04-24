@@ -960,6 +960,12 @@ app.get('/api/brief/news/review/artifacts', (req, res) => {
   });
 });
 
+app.get('/api/trends', (req, res) => {
+  res.json({
+    trendSummary: memory.getTrendSummary(),
+  });
+});
+
 app.get('/api/brief/news/review/acks', (req, res) => {
   const limit = Math.max(1, Math.min(Number.parseInt(req.query.limit, 10) || 20, 100));
   res.json({
@@ -1129,6 +1135,7 @@ app.get('/api/health', (req, res) => {
     reviewAcks: reviewAckStats(),
     clusterReviewStats: summarizeClusterReviewStats(),
     clusterRepairArtifacts: summarizeClusterRepairArtifacts(),
+    trendSummary: memory.getTrendSummary(),
   });
 });
 
@@ -1224,6 +1231,7 @@ async function runSweepCycle() {
 
     const sixHourBaselineRun = memory.getBaselineRun(6);
     synthesized.baseline6h = buildSixHourBaseline(synthesized, sixHourBaselineRun);
+    synthesized.trendSummary = memory.getTrendSummary();
 
     // 5. Publish core data immediately so LLM idea generation never blocks /api/data
     if (!llmProvider?.isConfigured) {
@@ -1322,6 +1330,7 @@ async function start() {
     try {
       const existing = JSON.parse(readFileSync(join(RUNS_DIR, 'latest.json'), 'utf8'));
       synthesize(existing, llmProvider, { newsLlmMode: 'off' }).then(data => {
+        data.trendSummary = memory.getTrendSummary();
         currentData = data;
         console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');
         broadcast({ type: 'update', data: currentData });
