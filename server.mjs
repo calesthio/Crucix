@@ -282,6 +282,14 @@ function buildNewsClusterSummary(snapshot = {}) {
   if (!top) return null;
   return {
     totalClusters: clusters.length,
+    quality: snapshot.newsClusterQuality || {
+      high: clusters.filter(c => c.quality === 'high').length,
+      medium: clusters.filter(c => c.quality === 'medium').length,
+      low: clusters.filter(c => c.quality === 'low').length,
+      llmBacked: clusters.filter(c => (c.qualityFlags || []).includes('llm-backed')).length,
+      heuristicOnly: clusters.filter(c => (c.qualityFlags || []).includes('heuristic-only')).length,
+      singleSource: clusters.filter(c => (c.qualityFlags || []).includes('single-source')).length,
+    },
     topCluster: {
       id: top.id,
       headline: top.headline,
@@ -290,6 +298,9 @@ function buildNewsClusterSummary(snapshot = {}) {
       sourceCount: top.sourceCount,
       latestDate: top.latestDate || null,
       llmConfidence: top.llmConfidence || null,
+      quality: top.quality || null,
+      confidenceLabel: top.confidenceLabel || null,
+      qualityFlags: top.qualityFlags || [],
       placementPrecision: top.placementPrecision || null,
       placementBasis: top.placementBasis || null,
     },
@@ -301,6 +312,9 @@ function buildNewsClusterSummary(snapshot = {}) {
       sourceCount: cluster.sourceCount,
       latestDate: cluster.latestDate || null,
       llmConfidence: cluster.llmConfidence || null,
+      quality: cluster.quality || null,
+      confidenceLabel: cluster.confidenceLabel || null,
+      qualityFlags: cluster.qualityFlags || [],
       placementPrecision: cluster.placementPrecision || null,
       placementBasis: cluster.placementBasis || null,
     })),
@@ -341,7 +355,10 @@ function buildIMessengerBrief(snapshot = {}) {
 
   if (newsSummary?.topCluster) {
     const top = newsSummary.topCluster;
-    lines.push(`Top news cluster: ${top.headline} (${top.region}, ${top.storyCount} stories/${top.sourceCount} sources)`);
+    lines.push(`Top news cluster: ${top.headline} (${top.region}, ${top.storyCount} stories/${top.sourceCount} sources, ${top.confidenceLabel || 'unknown'})`);
+    if (newsSummary.quality) {
+      lines.push(`News cluster quality: ${newsSummary.quality.high || 0} strong, ${newsSummary.quality.medium || 0} moderate, ${newsSummary.quality.low || 0} weak`);
+    }
   }
 
   return lines.join('\n');

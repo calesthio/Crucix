@@ -20,3 +20,4 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 - Add resettable/debug-only selection-memory telemetry controls so long-lived operator sessions can zero counters after investigations without restarting the runtime.
 - Add optional guardrails for debug endpoints, such as local-only enablement or a config flag, if the runtime is ever exposed beyond loopback.
 - Add cluster-quality review metrics, such as cluster merge/split anomalies and low-confidence cluster counts, so Epic 3 tuning can be measured instead of eyeballed.
+- Add operator review helpers for suspicious near-duplicate single-source clusters so analysts can inspect likely split-story failures without scanning raw news lists.

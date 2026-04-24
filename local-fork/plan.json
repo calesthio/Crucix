@@ -79,7 +79,7 @@
           {
             "id": "effort-3.2",
             "title": "Cluster quality signals and operator-facing confidence labeling",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-3.3",
@@ -148,8 +148,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 17,
-    "activeCycleId": "2026-04-23-cycle-017",
-    "lastCompletedCycleId": "2026-04-23-cycle-017"
+    "sequence": 18,
+    "activeCycleId": "2026-04-23-cycle-018",
+    "lastCompletedCycleId": "2026-04-23-cycle-018"
   }
 }

@@ -743,6 +743,36 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null) {
   return { hints: mergedHints, debug };
 }
 
+function classifyClusterQuality(cluster = {}) {
+  const flags = [];
+  const llmConfidence = cluster.llmConfidence || 'heuristic';
+  const storyCount = cluster.items?.length || cluster.storyCount || 0;
+  const sourceCount = cluster.sourceSet?.size || cluster.sourceCount || 0;
+  const placementBasis = cluster.placementBasis || 'keyword';
+  const placementPrecision = cluster.placementPrecision || 'country';
+
+  if (sourceCount <= 1) flags.push('single-source');
+  if (storyCount <= 1) flags.push('single-story');
+  if (llmConfidence === 'heuristic') flags.push('heuristic-only');
+  if (llmConfidence === 'high') flags.push('llm-backed');
+  if (placementBasis === 'source') flags.push('source-fallback-placement');
+  if (placementPrecision === 'source-fallback') flags.push('source-fallback-placement');
+  if (placementBasis === 'keyword' && sourceCount <= 1) flags.push('keyword-placement-thin');
+
+  let quality = 'medium';
+  if (sourceCount >= 3 && storyCount >= 3 && llmConfidence !== 'heuristic') quality = 'high';
+  else if (sourceCount <= 1 || storyCount <= 1) quality = 'low';
+  else if (llmConfidence === 'heuristic' && sourceCount <= 2) quality = 'low';
+
+  const confidenceLabel = quality === 'high'
+    ? 'strong'
+    : quality === 'low'
+      ? 'weak'
+      : 'moderate';
+
+  return { quality, confidenceLabel, qualityFlags: Array.from(new Set(flags)) };
+}
+
 export async function buildNewsClusters(news = [], llmProvider = null) {
   const { hints: llmHints, debug: llmDebug } = await consolidateNewsWithLLM(news, llmProvider);
   const hintMap = new Map(llmHints.filter(x => Number.isInteger(x?.idx)).map(x => [x.idx, x]));
@@ -776,6 +806,7 @@ export async function buildNewsClusters(news = [], llmProvider = null) {
   });
   const clusters = Array.from(groups.values()).map(cluster => {
     const offset = stableClusterOffset(cluster.id, cluster.items.length);
+    const quality = classifyClusterQuality(cluster);
     return {
       id: cluster.id,
       lat: +(cluster.lat + offset.lat).toFixed(3),
@@ -789,10 +820,24 @@ export async function buildNewsClusters(news = [], llmProvider = null) {
       placementPrecision: cluster.placementPrecision,
       placementBasis: cluster.placementBasis,
       llmConfidence: cluster.llmConfidence,
+      quality: quality.quality,
+      confidenceLabel: quality.confidenceLabel,
+      qualityFlags: quality.qualityFlags,
       items: cluster.items.slice(0, 6),
     };
   }).sort((a, b) => b.storyCount - a.storyCount || new Date(b.latestDate || 0) - new Date(a.latestDate || 0));
-  return { clusters, llmDebug };
+  return {
+    clusters,
+    llmDebug,
+    qualitySummary: {
+      high: clusters.filter(c => c.quality === 'high').length,
+      medium: clusters.filter(c => c.quality === 'medium').length,
+      low: clusters.filter(c => c.quality === 'low').length,
+      llmBacked: clusters.filter(c => c.qualityFlags.includes('llm-backed')).length,
+      heuristicOnly: clusters.filter(c => c.qualityFlags.includes('heuristic-only')).length,
+      singleSource: clusters.filter(c => c.qualityFlags.includes('single-source')).length,
+    },
+  };
 }
 
 // === Leverageable Ideas from Signals ===
@@ -1156,7 +1201,7 @@ export async function synthesize(data, llmProvider = createLLMProvider(config.ll
 
   // Fetch RSS
   const news = await fetchAllNews();
-  const { clusters: newsClusters, llmDebug: newsLlmDebug } = await buildNewsClusters(news, llmProvider);
+  const { clusters: newsClusters, llmDebug: newsLlmDebug, qualitySummary: newsClusterQuality } = await buildNewsClusters(news, llmProvider);
 
   const corroboratedSignals = buildCorroboratedSignals({
     tg: { urgent: tgUrgent, topPosts: tgTop, posts: tgData.totalPosts || 0 },
@@ -1246,7 +1291,7 @@ export async function synthesize(data, llmProvider = createLLMProvider(config.ll
     },
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
     tg: { posts: tgData.totalPosts || 0, urgent: tgUrgent, topPosts: tgTop },
-    who, fred, energy, metals, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, healthSummary, evidenceSummary, news, newsClusters, newsLlmDebug,
+    who, fred, energy, metals, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, healthSummary, evidenceSummary, news, newsClusters, newsLlmDebug, newsClusterQuality,
     markets, // Live Yahoo Finance market data
     maritime: {
       disruptionChecks: maritimeData.disruptionChecks || [],
