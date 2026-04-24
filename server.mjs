@@ -65,6 +65,17 @@ function trustPhrase(item = {}) {
   return `${sourceHealth} via ${evidenceSource}`;
 }
 
+function touchSelection(contextKey = '', remembered = null) {
+  if (!contextKey || !remembered) return remembered;
+  const touched = {
+    ...remembered,
+    lastAccessAt: Date.now(),
+  };
+  selectionMemory.delete(contextKey);
+  selectionMemory.set(contextKey, touched);
+  return touched;
+}
+
 function pruneSelectionMemory() {
   const now = Date.now();
   let pruned = 0;
@@ -75,9 +86,9 @@ function pruneSelectionMemory() {
     }
   }
   while (selectionMemory.size > SELECTION_MEMORY_MAX_ENTRIES) {
-    const oldestKey = selectionMemory.keys().next().value;
-    if (!oldestKey) break;
-    selectionMemory.delete(oldestKey);
+    const lruKey = selectionMemory.keys().next().value;
+    if (!lruKey) break;
+    selectionMemory.delete(lruKey);
     pruned += 1;
   }
   return pruned;
@@ -89,20 +100,26 @@ function selectionMemoryStats() {
   for (const value of selectionMemory.values()) {
     if (!nextExpiry || value.expiresAt < nextExpiry) nextExpiry = value.expiresAt;
   }
+  const oldestKey = selectionMemory.keys().next().value || null;
+  const newestKey = selectionMemory.size ? Array.from(selectionMemory.keys()).at(-1) : null;
   return {
     activeContexts: selectionMemory.size,
     maxEntries: SELECTION_MEMORY_MAX_ENTRIES,
     ttlMs: SELECTION_MEMORY_TTL_MS,
     nextExpiry: nextExpiry ? new Date(nextExpiry).toISOString() : null,
+    oldestContext: oldestKey,
+    newestContext: newestKey,
   };
 }
 
 function rememberSelection(contextKey = '', selection = null) {
   if (!contextKey || !selection?.id) return;
   pruneSelectionMemory();
+  selectionMemory.delete(contextKey);
   selectionMemory.set(contextKey, {
     ...selection,
     expiresAt: Date.now() + SELECTION_MEMORY_TTL_MS,
+    lastAccessAt: Date.now(),
   });
   pruneSelectionMemory();
 }
@@ -115,7 +132,7 @@ function recallSelection(contextKey = '') {
     selectionMemory.delete(contextKey);
     return null;
   }
-  return remembered;
+  return touchSelection(contextKey, remembered);
 }
 
 function clearSelection(contextKey = '') {
@@ -133,6 +150,7 @@ function selectionMeta(contextKey = '') {
     index: remembered.index,
     id: remembered.id,
     expiresAt: new Date(remembered.expiresAt).toISOString(),
+    lastAccessAt: remembered.lastAccessAt ? new Date(remembered.lastAccessAt).toISOString() : null,
     ttlMs: Math.max(0, remembered.expiresAt - Date.now()),
   };
 }
