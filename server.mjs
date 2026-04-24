@@ -121,13 +121,23 @@ function loadReviewAcks() {
     if (!entry?.key || !entry?.expiresAt) continue;
     const expiresAt = Number(entry.expiresAt);
     if (!Number.isFinite(expiresAt) || expiresAt <= now) continue;
-    map.set(entry.key, { ...entry, expiresAt });
+    const createdAt = Number(entry.createdAt) || now;
+    const lastAckedAt = Number(entry.lastAckedAt) || createdAt;
+    map.set(entry.key, {
+      ...entry,
+      createdAt,
+      expiresAt,
+      firstAckedAt: Number(entry.firstAckedAt) || createdAt,
+      lastAckedAt,
+      ackCount: Math.max(1, Number(entry.ackCount) || 1),
+      lastClearedAt: Number(entry.lastClearedAt) || null,
+    });
   }
   return map;
 }
 
 function saveReviewAcks() {
-  saveJsonFile(REVIEW_ACKS_PATH, Array.from(reviewAcks.values()).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
+  saveJsonFile(REVIEW_ACKS_PATH, Array.from(reviewAcks.values()).sort((a, b) => (a.lastAckedAt || a.createdAt || 0) - (b.lastAckedAt || b.createdAt || 0)));
 }
 
 function reviewAckKey(item = {}) {
@@ -152,28 +162,48 @@ function pruneReviewAcks() {
   if (changed) saveReviewAcks();
 }
 
+function formatReviewAckEntry(entry = {}) {
+  return {
+    ...entry,
+    createdAt: entry.createdAt ? new Date(entry.createdAt).toISOString() : null,
+    firstAckedAt: entry.firstAckedAt ? new Date(entry.firstAckedAt).toISOString() : null,
+    lastAckedAt: entry.lastAckedAt ? new Date(entry.lastAckedAt).toISOString() : null,
+    expiresAt: entry.expiresAt ? new Date(entry.expiresAt).toISOString() : null,
+    lastClearedAt: entry.lastClearedAt ? new Date(entry.lastClearedAt).toISOString() : null,
+  };
+}
+
 function reviewAckSnapshot(limit = 20) {
   pruneReviewAcks();
   return Array.from(reviewAcks.values())
-    .slice(-Math.max(1, Math.min(Number(limit) || 20, 100)))
-    .map(entry => ({
-      ...entry,
-      createdAt: entry.createdAt ? new Date(entry.createdAt).toISOString() : null,
-      expiresAt: entry.expiresAt ? new Date(entry.expiresAt).toISOString() : null,
-    }));
+    .sort((a, b) => (b.lastAckedAt || b.createdAt || 0) - (a.lastAckedAt || a.createdAt || 0))
+    .slice(0, Math.max(1, Math.min(Number(limit) || 20, 100)))
+    .map(formatReviewAckEntry);
 }
 
-function reviewAckStats() {
+function reviewAckStats(limit = 5) {
   pruneReviewAcks();
   let nextExpiry = null;
+  let totalAckCount = 0;
+  let repeatAckCount = 0;
   for (const value of reviewAcks.values()) {
     if (!nextExpiry || value.expiresAt < nextExpiry) nextExpiry = value.expiresAt;
+    totalAckCount += Math.max(1, Number(value.ackCount) || 1);
+    if ((value.ackCount || 1) > 1) repeatAckCount += 1;
   }
+  const recentDismissals = Array.from(reviewAcks.values())
+    .sort((a, b) => (b.lastAckedAt || b.createdAt || 0) - (a.lastAckedAt || a.createdAt || 0))
+    .slice(0, Math.max(1, Math.min(Number(limit) || 5, 20)))
+    .map(formatReviewAckEntry);
   return {
     active: reviewAcks.size,
     maxEntries: REVIEW_ACK_MAX_ENTRIES,
     ttlMs: REVIEW_ACK_TTL_MS,
     nextExpiry: nextExpiry ? new Date(nextExpiry).toISOString() : null,
+    totalAckCount,
+    repeatAckCount,
+    recentDismissalCount: recentDismissals.length,
+    recentDismissals,
   };
 }
 
@@ -183,13 +213,19 @@ function ackReviewItem(region = '', reason = '', note = '') {
   if (!trimmedRegion || !trimmedReason) return null;
   pruneReviewAcks();
   const key = reviewAckKey({ region: trimmedRegion, reason: trimmedReason });
+  const now = Date.now();
+  const existing = reviewAcks.get(key);
   const entry = {
     key,
     region: trimmedRegion,
     reason: trimmedReason,
-    note: String(note || '').trim() || null,
-    createdAt: Date.now(),
-    expiresAt: Date.now() + REVIEW_ACK_TTL_MS,
+    note: String(note || '').trim() || existing?.note || null,
+    createdAt: existing?.createdAt || now,
+    firstAckedAt: existing?.firstAckedAt || existing?.createdAt || now,
+    lastAckedAt: now,
+    ackCount: Math.max(1, Number(existing?.ackCount) || 1) + (existing ? 1 : 0),
+    expiresAt: now + REVIEW_ACK_TTL_MS,
+    lastClearedAt: existing?.lastClearedAt || null,
   };
   reviewAcks.delete(key);
   reviewAcks.set(key, entry);
@@ -200,8 +236,9 @@ function ackReviewItem(region = '', reason = '', note = '') {
 
 function clearReviewAck(region = '', reason = '') {
   const key = reviewAckKey({ region, reason });
+  const existing = reviewAcks.get(key);
   const existed = reviewAcks.delete(key);
-  if (existed) saveReviewAcks();
+  if (existed && existing) saveReviewAcks();
   return existed;
 }
 
@@ -226,13 +263,15 @@ function annotateReview(review = {}) {
     if (ack) dismissedItems.push(annotated);
     else activeItems.push(annotated);
   }
+  const ackSummary = reviewAckStats();
   return {
     ...review,
     reviewItems: activeItems,
     dismissedItems,
     dismissedCount: dismissedItems.length,
     activeCount: activeItems.length,
-    ackSummary: reviewAckStats(),
+    ackSummary,
+    recentDismissals: ackSummary.recentDismissals,
   };
 }
 
@@ -1748,11 +1787,7 @@ app.post('/api/brief/news/review/ack', requireDebugAccess, (req, res) => {
   if (!entry) return res.status(400).json({ error: 'unable to acknowledge review item' });
   res.json({
     ok: true,
-    entry: {
-      ...entry,
-      createdAt: new Date(entry.createdAt).toISOString(),
-      expiresAt: new Date(entry.expiresAt).toISOString(),
-    },
+    entry: formatReviewAckEntry(entry),
     summary: reviewAckStats(),
   });
 });

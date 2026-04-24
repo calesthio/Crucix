@@ -315,7 +315,7 @@
           {
             "id": "effort-11.2",
             "title": "Ack history counters and recent-dismissal visibility for review-surface accountability",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-11.3",
@@ -344,8 +344,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 43,
-    "activeCycleId": "2026-04-24-cycle-043",
-    "lastCompletedCycleId": "2026-04-24-cycle-043"
+    "sequence": 44,
+    "activeCycleId": "2026-04-24-cycle-044",
+    "lastCompletedCycleId": "2026-04-24-cycle-044"
   }
 }
