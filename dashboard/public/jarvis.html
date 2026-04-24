@@ -128,6 +128,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .map-ctrl-btn:hover{color:var(--accent);border-color:var(--border-bright);background:rgba(100,240,200,0.06)}
 .map-ctrl-btn.map-toggle{font-size:14px}
 .map-ctrl-btn.off{opacity:0.4}
+.map-ctrl-btn.disabled,.proj-toggle.disabled{opacity:0.45;cursor:not-allowed;pointer-events:none}
 /* Map popup */
 .map-popup{position:absolute;z-index:20;width:280px;padding:12px;background:rgba(6,10,14,0.95);border:1px solid rgba(100,240,200,0.25);backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.5);pointer-events:auto;display:none}
 .map-popup.show{display:block}
@@ -399,6 +400,8 @@ function t(keyPath, fallback) {
 // === GLOBALS ===
 let globe = null;
 let globeInitialized = false;
+let globeFailed = false;
+let globeFailureReason = null;
 let flightsVisible = true;
 let lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true';
 let isFlat = shouldStartFlat();
@@ -571,6 +574,40 @@ function setMapLoading(show, text='Initializing 3D Globe'){
   overlay.classList.toggle('show', show);
 }
 
+function canUse3D(){
+  return !globeFailed && typeof Globe === 'function' && typeof THREE !== 'undefined';
+}
+
+function updateMapModeControls(){
+  const btn = document.getElementById('projToggle');
+  const hint = document.getElementById('mapHint');
+  if(!btn || !hint) return;
+  const unavailable = !canUse3D();
+  btn.classList.toggle('disabled', unavailable);
+  btn.disabled = unavailable;
+  if(unavailable){
+    btn.textContent = '3D UNAVAILABLE';
+    hint.textContent = globeFailureReason || '3D UNAVAILABLE · FLAT MODE';
+    return;
+  }
+  btn.textContent = isFlat ? 'GLOBE MODE' : 'FLAT MODE';
+  hint.textContent = isFlat ? 'SCROLL TO ZOOM · DRAG TO PAN' : 'DRAG TO ROTATE · SCROLL TO ZOOM';
+}
+
+function markGlobeUnavailable(reason='3D LOAD FAILED · FLAT MODE'){
+  globeFailed = true;
+  globeFailureReason = reason;
+  isFlat = true;
+  const globeEl = document.getElementById('globeViz');
+  const flatEl = document.getElementById('flatMapSvg');
+  if(globeEl) globeEl.style.display = 'none';
+  if(flatEl) flatEl.style.display = 'block';
+  updateMapModeControls();
+  if(!flatSvg) initFlatMap();
+  else if(flatG){ flatG.selectAll('*').remove(); drawFlatMap(); }
+  setMapLoading(false);
+}
+
 function togglePerfMode(){
   lowPerfMode = !lowPerfMode;
   localStorage.setItem('crucix_low_perf', String(lowPerfMode));
@@ -723,12 +760,11 @@ function renderMapLegend(){
 function initMap(){
   bindMapLifecycleEvents();
   renderMapLegend();
-  if(isFlat){
+  updateMapModeControls();
+  if(isFlat || !canUse3D()){
     if(globe && typeof globe.pauseAnimation === 'function') globe.pauseAnimation();
     document.getElementById('globeViz').style.display = 'none';
     document.getElementById('flatMapSvg').style.display = 'block';
-    document.getElementById('projToggle').textContent = 'GLOBE MODE';
-    document.getElementById('mapHint').textContent = 'SCROLL TO ZOOM · DRAG TO PAN';
     if(!flatSvg) initFlatMap();
     else { flatG.selectAll('*').remove(); drawFlatMap(); }
     setMapLoading(false);
@@ -738,27 +774,23 @@ function initMap(){
   requestAnimationFrame(() => {
     try {
       initGlobe();
+      updateMapModeControls();
       setMapLoading(false);
-    } catch {
-      isFlat = true;
-      document.getElementById('globeViz').style.display = 'none';
-      document.getElementById('flatMapSvg').style.display = 'block';
-      document.getElementById('projToggle').textContent = 'GLOBE MODE';
-      document.getElementById('mapHint').textContent = '3D LOAD FAILED · FLAT MODE';
-      if(!flatSvg) initFlatMap();
-      else { flatG.selectAll('*').remove(); drawFlatMap(); }
-      setMapLoading(false);
+    } catch (err) {
+      markGlobeUnavailable((err && err.message) ? '3D INIT FAILED · FLAT MODE' : '3D LOAD FAILED · FLAT MODE');
     }
   });
 }
 
 function initGlobe(){
+  if(!canUse3D()){
+    throw new Error(globeFailureReason || '3d-unavailable');
+  }
   if(globeInitialized && globe){
     if(typeof globe.resumeAnimation === 'function') globe.resumeAnimation();
     document.getElementById('globeViz').style.display = 'block';
     document.getElementById('flatMapSvg').style.display = 'none';
-    document.getElementById('projToggle').textContent = 'FLAT MODE';
-    document.getElementById('mapHint').textContent = 'DRAG TO ROTATE · SCROLL TO ZOOM';
+    updateMapModeControls();
     return;
   }
   const container = document.getElementById('mapContainer');
@@ -996,11 +1028,14 @@ const flatRegionBounds = {
 };
 
 function toggleMapMode(){
+  if(!canUse3D()){
+    markGlobeUnavailable(globeFailureReason || '3D UNAVAILABLE · FLAT MODE');
+    return;
+  }
   isFlat = !isFlat;
   const btn = document.getElementById('projToggle');
   const hint = document.getElementById('mapHint');
-  btn.textContent = isFlat ? 'GLOBE MODE' : 'FLAT MODE';
-  hint.textContent = isFlat ? 'SCROLL TO ZOOM · DRAG TO PAN' : 'DRAG TO ROTATE · SCROLL TO ZOOM';
+  updateMapModeControls();
   const globeEl = document.getElementById('globeViz');
   const flatEl = document.getElementById('flatMapSvg');
   if(isFlat){
@@ -1020,14 +1055,7 @@ function toggleMapMode(){
         globeEl.style.display = 'block';
         setMapLoading(false);
       } catch {
-        isFlat = true;
-        globeEl.style.display = 'none';
-        flatEl.style.display = 'block';
-        btn.textContent = 'GLOBE MODE';
-        hint.textContent = '3D LOAD FAILED · FLAT MODE';
-        if(!flatSvg) initFlatMap();
-        else { flatG.selectAll('*').remove(); drawFlatMap(); }
-        setMapLoading(false);
+        markGlobeUnavailable('3D INIT FAILED · FLAT MODE');
       }
     });
   }
