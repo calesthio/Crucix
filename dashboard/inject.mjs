@@ -1052,6 +1052,45 @@ function classifyClusterQuality(cluster = {}) {
   return { quality, confidenceLabel, qualityFlags: Array.from(new Set(flags)) };
 }
 
+function summarizeClusterReviewMetrics(clusters = []) {
+  const lowConfidenceClusters = clusters.filter(cluster =>
+    cluster.quality === 'low' ||
+    cluster.confidenceLabel === 'weak' ||
+    (cluster.qualityFlags || []).includes('heuristic-only') ||
+    (cluster.qualityFlags || []).includes('single-source')
+  );
+
+  const mergeCandidateClusters = clusters.filter(cluster =>
+    (cluster.storyCount || 0) >= 3 &&
+    (((cluster.qualityFlags || []).includes('heuristic-only')) || (cluster.llmConfidence || 'heuristic') === 'heuristic')
+  );
+
+  const splitCandidateClusters = clusters.filter(cluster =>
+    (cluster.storyCount || 0) <= 1 &&
+    (cluster.sourceCount || 0) <= 1 &&
+    (cluster.qualityFlags || []).includes('heuristic-only')
+  );
+
+  const splitPressureByRegion = splitCandidateClusters.reduce((acc, cluster) => {
+    const region = cluster.region || 'Unknown';
+    acc.set(region, (acc.get(region) || 0) + 1);
+    return acc;
+  }, new Map());
+
+  const topSplitRegions = Array.from(splitPressureByRegion.entries())
+    .filter(([, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 5)
+    .map(([region, count]) => ({ region, count }));
+
+  return {
+    lowConfidenceCount: lowConfidenceClusters.length,
+    mergeCandidateCount: mergeCandidateClusters.length,
+    splitCandidateCount: splitCandidateClusters.length,
+    topSplitRegions,
+  };
+}
+
 export async function buildNewsClusters(news = [], llmProvider = null, options = {}) {
   const { hints: llmHints, debug: llmDebug } = await consolidateNewsWithLLM(news, llmProvider, options);
   const hintMap = new Map(llmHints.filter(x => Number.isInteger(x?.idx)).map(x => [x.idx, x]));
@@ -1117,6 +1156,7 @@ export async function buildNewsClusters(news = [], llmProvider = null, options =
       llmBacked: clusters.filter(c => c.qualityFlags.includes('llm-backed')).length,
       heuristicOnly: clusters.filter(c => c.qualityFlags.includes('heuristic-only')).length,
       singleSource: clusters.filter(c => c.qualityFlags.includes('single-source')).length,
+      reviewMetrics: summarizeClusterReviewMetrics(clusters),
     },
   };
 }

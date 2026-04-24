@@ -656,6 +656,39 @@ function buildIMessengerDrilldown(snapshot = {}, { kind = 'corroborated', action
   ].join('\n');
 }
 
+function summarizeClusterReviewMetrics(clusters = []) {
+  const lowConfidenceClusters = clusters.filter(cluster =>
+    cluster.quality === 'low' ||
+    cluster.confidenceLabel === 'weak' ||
+    (cluster.qualityFlags || []).includes('heuristic-only') ||
+    (cluster.qualityFlags || []).includes('single-source')
+  );
+  const mergeCandidateCount = clusters.filter(cluster =>
+    (cluster.storyCount || 0) >= 3 &&
+    (((cluster.qualityFlags || []).includes('heuristic-only')) || (cluster.llmConfidence || 'heuristic') === 'heuristic')
+  ).length;
+  const splitCandidates = clusters.filter(cluster =>
+    (cluster.storyCount || 0) <= 1 &&
+    (cluster.sourceCount || 0) <= 1 &&
+    (cluster.qualityFlags || []).includes('heuristic-only')
+  );
+  const topSplitRegions = Array.from(splitCandidates.reduce((acc, cluster) => {
+    const region = cluster.region || 'Unknown';
+    acc.set(region, (acc.get(region) || 0) + 1);
+    return acc;
+  }, new Map()).entries())
+    .filter(([, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 5)
+    .map(([region, count]) => ({ region, count }));
+  return {
+    lowConfidenceCount: lowConfidenceClusters.length,
+    mergeCandidateCount,
+    splitCandidateCount: splitCandidates.length,
+    topSplitRegions,
+  };
+}
+
 function buildNewsClusterSummary(snapshot = {}) {
   const clusters = Array.isArray(snapshot.newsClusters) ? snapshot.newsClusters : [];
   const top = clusters[0] || null;
@@ -669,6 +702,7 @@ function buildNewsClusterSummary(snapshot = {}) {
       llmBacked: clusters.filter(c => (c.qualityFlags || []).includes('llm-backed')).length,
       heuristicOnly: clusters.filter(c => (c.qualityFlags || []).includes('heuristic-only')).length,
       singleSource: clusters.filter(c => (c.qualityFlags || []).includes('single-source')).length,
+      reviewMetrics: summarizeClusterReviewMetrics(clusters),
     },
     topCluster: {
       id: top.id,
@@ -1465,9 +1499,10 @@ app.get('/api/brief/news/review', requireDebugAccess, async (req, res) => {
           return { newsClusters: clusters, newsLlmDebug: llmDebug, newsClusterQuality: qualitySummary };
         })()),
       });
-  if (!baseSummary?.llm) return res.json({ review: null, llm: null, totalClusters: baseSummary?.totalClusters || 0, ackSummary: reviewAckStats() });
+  if (!baseSummary?.llm) return res.json({ review: null, llm: null, quality: baseSummary?.quality || null, totalClusters: baseSummary?.totalClusters || 0, ackSummary: reviewAckStats() });
   res.json({
     totalClusters: baseSummary.totalClusters,
+    quality: baseSummary.quality || null,
     llm: baseSummary.llm,
     review: attachClusterReviewStats(annotateReview(baseSummary.llm.review || { failedRegionCount: 0, topReasons: [], reviewItems: [] })),
   });
