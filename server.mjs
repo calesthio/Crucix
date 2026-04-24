@@ -683,6 +683,7 @@ function buildNewsClusterSummary(snapshot = {}) {
       qualityFlags: top.qualityFlags || [],
       placementPrecision: top.placementPrecision || null,
       placementBasis: top.placementBasis || null,
+      placementClass: top.placementClass || null,
     },
     clusters: clusters.slice(0, 5).map(cluster => ({
       id: cluster.id,
@@ -697,6 +698,7 @@ function buildNewsClusterSummary(snapshot = {}) {
       qualityFlags: cluster.qualityFlags || [],
       placementPrecision: cluster.placementPrecision || null,
       placementBasis: cluster.placementBasis || null,
+      placementClass: cluster.placementClass || null,
     })),
     llm: snapshot.newsLlmDebug ? {
       requestedMode: snapshot.newsLlmDebug.requestedMode || 'auto',

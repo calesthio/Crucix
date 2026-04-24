@@ -288,7 +288,7 @@
           {
             "id": "effort-10.1",
             "title": "Explicit map precision classes for source-native versus inferred geocoded news placement",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-10.2",
@@ -344,8 +344,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 39,
-    "activeCycleId": "2026-04-24-cycle-039",
-    "lastCompletedCycleId": "2026-04-24-cycle-039"
+    "sequence": 40,
+    "activeCycleId": "2026-04-24-cycle-040",
+    "lastCompletedCycleId": "2026-04-24-cycle-040"
   }
 }

@@ -99,6 +99,10 @@ function normalizeNewsRegionLabel(region = '') {
   return NEWS_REGION_ALIASES[cleaned.toLowerCase()] || cleaned;
 }
 
+function buildPlacementDescriptor({ lat, lon, region, precision, basis, placementClass }) {
+  return { lat, lon, region, precision, basis, placementClass };
+}
+
 function findGeoKeyword(text) {
   if (!text) return null;
   const lower = String(text).toLowerCase();
@@ -113,7 +117,8 @@ function findGeoKeyword(text) {
   const pool = concreteMatches.length ? concreteMatches : matches;
   pool.sort((a, b) => a.idx - b.idx || b.len - a.len);
   const best = pool[0];
-  return { lat: best.lat, lon: best.lon, region: best.keyword, precision: best.len > 10 ? 'subregion' : 'country', basis: 'keyword' };
+  const precision = best.len > 10 ? 'subregion' : 'country';
+  return buildPlacementDescriptor({ lat: best.lat, lon: best.lon, region: best.keyword, precision, basis: 'keyword', placementClass: `inferred-${precision}` });
 }
 
 function geoTagText(text) {
@@ -121,17 +126,28 @@ function geoTagText(text) {
 }
 
 function resolveNewsPlacement(item = {}) {
+  if (Number.isFinite(item.lat) && Number.isFinite(item.lon)) {
+    return buildPlacementDescriptor({
+      lat: item.lat,
+      lon: item.lon,
+      region: normalizeNewsRegionLabel(item.region) || item.source || 'Source-native',
+      precision: item.placementPrecision || 'source-native',
+      basis: item.placementBasis || 'source-native',
+      placementClass: item.placementClass || 'source-native',
+    });
+  }
+
   const titleGeo = findGeoKeyword(item.title);
   if (titleGeo && !NEWS_GENERIC_REGIONS.has(titleGeo.region)) return titleGeo;
 
   const normalizedRegion = normalizeNewsRegionLabel(item.region);
   const regionGeo = normalizedRegion ? findGeoKeyword(normalizedRegion) : null;
   if (regionGeo && !NEWS_GENERIC_REGIONS.has(regionGeo.region)) {
-    return { ...regionGeo, precision: 'region', basis: 'region' };
+    return buildPlacementDescriptor({ ...regionGeo, precision: 'region', basis: 'region', placementClass: 'inferred-region' });
   }
 
   const sourceGeo = RSS_SOURCE_FALLBACKS[item.source];
-  if (sourceGeo) return { ...sourceGeo, precision: 'source-fallback', basis: 'source' };
+  if (sourceGeo) return buildPlacementDescriptor({ ...sourceGeo, precision: 'source-fallback', basis: 'source', placementClass: 'source-fallback' });
   return null;
 }
 
@@ -588,6 +604,7 @@ export async function fetchAllNews() {
         region: geo.region,
         placementPrecision: geo.precision,
         placementBasis: geo.basis,
+        placementClass: geo.placementClass,
       });
     }
   }
@@ -1011,13 +1028,14 @@ function classifyClusterQuality(cluster = {}) {
   const sourceCount = cluster.sourceSet?.size || cluster.sourceCount || 0;
   const placementBasis = cluster.placementBasis || 'keyword';
   const placementPrecision = cluster.placementPrecision || 'country';
+  const placementClass = cluster.placementClass || (placementPrecision === 'source-fallback' ? 'source-fallback' : placementBasis === 'region' ? 'inferred-region' : `inferred-${placementPrecision}`);
 
   if (sourceCount <= 1) flags.push('single-source');
   if (storyCount <= 1) flags.push('single-story');
   if (llmConfidence === 'heuristic') flags.push('heuristic-only');
   if (llmConfidence === 'high') flags.push('llm-backed');
-  if (placementBasis === 'source') flags.push('source-fallback-placement');
-  if (placementPrecision === 'source-fallback') flags.push('source-fallback-placement');
+  if (placementClass === 'source-fallback') flags.push('source-fallback-placement');
+  if (placementClass === 'source-native') flags.push('source-native-placement');
   if (placementBasis === 'keyword' && sourceCount <= 1) flags.push('keyword-placement-thin');
 
   let quality = 'medium';
@@ -1057,6 +1075,7 @@ export async function buildNewsClusters(news = [], llmProvider = null, options =
         sourceSet: new Set(),
         placementPrecision: geo.placementPrecision || geo.precision || item.placementPrecision || 'country',
         placementBasis: geo.placementBasis || geo.basis || item.placementBasis || 'keyword',
+        placementClass: geo.placementClass || item.placementClass || 'inferred-country',
         llmConfidence: hint?.confidence || null,
       });
     }
@@ -1080,6 +1099,7 @@ export async function buildNewsClusters(news = [], llmProvider = null, options =
       latestDate: cluster.latestDate || null,
       placementPrecision: cluster.placementPrecision,
       placementBasis: cluster.placementBasis,
+      placementClass: cluster.placementClass,
       llmConfidence: cluster.llmConfidence,
       quality: quality.quality,
       confidenceLabel: quality.confidenceLabel,
