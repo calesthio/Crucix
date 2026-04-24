@@ -53,6 +53,8 @@ const REVIEW_ACK_TTL_MS = Math.max(1, Number(config.review?.ackTtlHours || 72)) 
 const REVIEW_ACK_MAX_ENTRIES = Math.max(1, Number(config.review?.ackMaxEntries || 100));
 const CLUSTER_REVIEW_STATE_KEY = 'cluster-review:regions';
 const CLUSTER_REVIEW_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+const CLUSTER_PRESSURE_STATE_KEY = 'cluster-review:pressure';
+const CLUSTER_PRESSURE_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 const CLUSTER_REPAIR_ARTIFACTS_STATE_KEY = 'cluster-review:repair-artifacts';
 const CLUSTER_REPAIR_ARTIFACT_RETENTION_MS = Math.max(1, Number(config.review?.repairArtifactRetentionDays || 14)) * 24 * 60 * 60 * 1000;
 const CLUSTER_REPAIR_ARTIFACT_MAX_ENTRIES = Math.max(1, Number(config.review?.repairArtifactMaxEntries || 50));
@@ -346,6 +348,137 @@ function attachClusterReviewStats(review = {}) {
     reviewItems: Array.isArray(review.reviewItems) ? review.reviewItems.map(decorate) : [],
     dismissedItems: Array.isArray(review.dismissedItems) ? review.dismissedItems.map(decorate) : [],
     stats: statsSummary,
+  };
+}
+
+function getClusterPressureStatsState() {
+  const state = memory.getSignalState(CLUSTER_PRESSURE_STATE_KEY);
+  return state && typeof state === 'object' ? state : { updatedAt: null, regions: {} };
+}
+
+function pruneClusterPressureRegions(regions = {}, now = Date.now()) {
+  const pruned = {};
+  for (const [region, stats] of Object.entries(regions || {})) {
+    const lastSeenAt = new Date(stats?.lastSeenAt || 0).getTime();
+    if (!lastSeenAt || (now - lastSeenAt) > CLUSTER_PRESSURE_RETENTION_MS) continue;
+    pruned[region] = stats;
+  }
+  return pruned;
+}
+
+function summarizeClusterPressureStats(state = getClusterPressureStatsState()) {
+  const now = Date.now();
+  const regions = pruneClusterPressureRegions(state?.regions || {}, now);
+  const entries = Object.entries(regions).map(([region, stats]) => ({ region, ...stats }));
+  const topRegions = entries
+    .filter(entry => (entry.retryCount || 0) > 0 || (entry.backoffCount || 0) > 0 || (entry.tunedCount || 0) > 0 || (entry.repairAttemptCount || 0) > 0)
+    .sort((a, b) => (b.retryCount || 0) - (a.retryCount || 0) || (b.backoffCount || 0) - (a.backoffCount || 0) || (b.tunedCount || 0) - (a.tunedCount || 0) || String(a.region).localeCompare(String(b.region)))
+    .slice(0, 8)
+    .map(entry => ({
+      region: entry.region,
+      totalSeen: entry.totalSeen || 0,
+      tunedCount: entry.tunedCount || 0,
+      retryCount: entry.retryCount || 0,
+      backoffCount: entry.backoffCount || 0,
+      repairAttemptCount: entry.repairAttemptCount || 0,
+      heuristicFallbackCount: entry.heuristicFallbackCount || 0,
+      successCount: entry.successCount || 0,
+      lastStatus: entry.lastStatus || null,
+      lastReason: entry.lastReason || null,
+      lastSeenAt: entry.lastSeenAt || null,
+      lastTunedAt: entry.lastTunedAt || null,
+      lastRetryAt: entry.lastRetryAt || null,
+      lastBackoffAt: entry.lastBackoffAt || null,
+      maxRetriesConfigured: entry.maxRetriesConfigured || 0,
+      maxRepairTimeout: entry.maxRepairTimeout || 0,
+      currentTuning: entry.currentTuning || { maxRetries: 0, repairTimeout: 45000 },
+      pressureScore: (entry.retryCount || 0) + (entry.backoffCount || 0) + (entry.repairAttemptCount || 0),
+    }));
+  return {
+    trackedRegionCount: entries.length,
+    pressuredRegionCount: topRegions.length,
+    totalRetries: entries.reduce((sum, entry) => sum + (entry.retryCount || 0), 0),
+    totalBackoffs: entries.reduce((sum, entry) => sum + (entry.backoffCount || 0), 0),
+    totalTunedRegions: entries.reduce((sum, entry) => sum + ((entry.tunedCount || 0) > 0 ? 1 : 0), 0),
+    totalRepairAttempts: entries.reduce((sum, entry) => sum + (entry.repairAttemptCount || 0), 0),
+    retentionDays: CLUSTER_PRESSURE_RETENTION_MS / (24 * 60 * 60 * 1000),
+    updatedAt: state?.updatedAt || null,
+    topRegions,
+  };
+}
+
+function recordClusterPressureStats(snapshot = {}) {
+  const perRegion = Array.isArray(snapshot.newsLlmDebug?.perRegion) ? snapshot.newsLlmDebug.perRegion : [];
+  if (!perRegion.length) return summarizeClusterPressureStats();
+  const nowIso = new Date().toISOString();
+  const current = getClusterPressureStatsState();
+  const regions = pruneClusterPressureRegions({ ...(current.regions || {}) });
+  for (const entry of perRegion) {
+    const region = String(entry?.region || '').trim();
+    if (!region) continue;
+    const tuning = entry?.tuning && typeof entry.tuning === 'object' ? entry.tuning : {};
+    const stats = regions[region] && typeof regions[region] === 'object' ? { ...regions[region] } : {
+      firstSeenAt: nowIso,
+      lastSeenAt: null,
+      lastTunedAt: null,
+      lastRetryAt: null,
+      lastBackoffAt: null,
+      lastStatus: null,
+      lastReason: null,
+      totalSeen: 0,
+      tunedCount: 0,
+      retryCount: 0,
+      backoffCount: 0,
+      repairAttemptCount: 0,
+      heuristicFallbackCount: 0,
+      successCount: 0,
+      maxRetriesConfigured: 0,
+      maxRepairTimeout: 0,
+      currentTuning: { maxRetries: 0, repairTimeout: 45000 },
+    };
+    stats.lastSeenAt = nowIso;
+    stats.lastStatus = entry.status || null;
+    stats.lastReason = entry.reason || null;
+    stats.totalSeen = (stats.totalSeen || 0) + 1;
+    stats.currentTuning = {
+      maxRetries: Number(tuning.maxRetries || 0),
+      repairTimeout: Number(tuning.repairTimeout || 45000),
+    };
+    stats.maxRetriesConfigured = Math.max(stats.maxRetriesConfigured || 0, Number(tuning.maxRetries || 0));
+    stats.maxRepairTimeout = Math.max(stats.maxRepairTimeout || 0, Number(tuning.repairTimeout || 45000));
+    if ((tuning.maxRetries || 0) > 0 || Number(tuning.repairTimeout || 45000) !== 45000) {
+      stats.tunedCount = (stats.tunedCount || 0) + 1;
+      stats.lastTunedAt = nowIso;
+    }
+    if (entry.retried) {
+      stats.retryCount = (stats.retryCount || 0) + 1;
+      stats.lastRetryAt = nowIso;
+      stats.backoffCount = (stats.backoffCount || 0) + 1;
+      stats.lastBackoffAt = nowIso;
+    }
+    if (entry.repairAttempted) stats.repairAttemptCount = (stats.repairAttemptCount || 0) + 1;
+    if (entry.status === 'heuristic-fallback') stats.heuristicFallbackCount = (stats.heuristicFallbackCount || 0) + 1;
+    else stats.successCount = (stats.successCount || 0) + 1;
+    regions[region] = stats;
+  }
+  const nextState = {
+    updatedAt: nowIso,
+    regions: pruneClusterPressureRegions(regions, Date.now()),
+  };
+  memory.setSignalState(CLUSTER_PRESSURE_STATE_KEY, nextState);
+  return summarizeClusterPressureStats(nextState);
+}
+
+function attachClusterPressureStats(llm = {}) {
+  const statsSummary = summarizeClusterPressureStats();
+  const byRegion = new Map((statsSummary.topRegions || []).map(entry => [entry.region, entry]));
+  return {
+    ...llm,
+    perRegion: Array.isArray(llm.perRegion) ? llm.perRegion.map(entry => ({
+      ...entry,
+      persistent: byRegion.get(entry.region) || null,
+    })) : [],
+    persistentPressure: statsSummary,
   };
 }
 
@@ -770,7 +903,7 @@ function buildNewsClusterSummary(snapshot = {}) {
       placementBasis: cluster.placementBasis || null,
       placementClass: cluster.placementClass || null,
     })),
-    llm: snapshot.newsLlmDebug ? {
+    llm: snapshot.newsLlmDebug ? attachClusterPressureStats({
       requestedMode: snapshot.newsLlmDebug.requestedMode || 'auto',
       provider: snapshot.newsLlmDebug.provider || null,
       providerConfigured: Boolean(snapshot.newsLlmDebug.providerConfigured),
@@ -793,7 +926,7 @@ function buildNewsClusterSummary(snapshot = {}) {
         reviewItems: Array.isArray(snapshot.newsLlmDebug.review.reviewItems) ? snapshot.newsLlmDebug.review.reviewItems.slice(0, 6) : [],
       })) : null,
       perRegion: Array.isArray(snapshot.newsLlmDebug.perRegion) ? snapshot.newsLlmDebug.perRegion.slice(0, 8) : [],
-    } : null,
+    }) : null,
   };
 }
 
@@ -1547,6 +1680,7 @@ app.get('/api/brief/news/review', requireDebugAccess, async (req, res) => {
 app.get('/api/brief/news/review/stats', requireDebugAccess, (req, res) => {
   res.json({
     stats: summarizeClusterReviewStats(),
+    pressure: summarizeClusterPressureStats(),
   });
 });
 
@@ -1782,6 +1916,7 @@ app.get('/api/health', (req, res) => {
     selectionMemory: selectionMemoryStats(),
     reviewAcks: reviewAckStats(),
     clusterReviewStats: summarizeClusterReviewStats(),
+    clusterPressureStats: summarizeClusterPressureStats(),
     clusterRepairArtifacts: summarizeClusterRepairArtifacts(),
     trendSummary: memory.getTrendSummary(),
     agentAnalysis: currentData?.agentAnalysis ? {
@@ -1952,11 +2087,14 @@ async function runSweepCycle() {
     console.log('[Crucix] Synthesizing dashboard data...');
     const synthesized = await synthesize(rawData);
     const clusterReviewStats = recordClusterReviewStats(synthesized);
+    const clusterPressureStats = recordClusterPressureStats(synthesized);
     const clusterRepairArtifacts = recordClusterRepairArtifacts(synthesized);
     if (synthesized.newsLlmDebug?.review) {
       synthesized.newsLlmDebug.review = attachClusterReviewStats(annotateReview(synthesized.newsLlmDebug.review));
     }
+    if (synthesized.newsLlmDebug) synthesized.newsLlmDebug = attachClusterPressureStats(synthesized.newsLlmDebug);
     synthesized.clusterReviewStats = clusterReviewStats;
+    synthesized.clusterPressureStats = clusterPressureStats;
     synthesized.clusterRepairArtifacts = clusterRepairArtifacts;
 
     // 4. Delta computation + memory

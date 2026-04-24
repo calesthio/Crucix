@@ -310,7 +310,7 @@
           {
             "id": "effort-11.1",
             "title": "Persist rolling per-region prompt-tuning and retry pressure stats across restarts",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-11.2",
@@ -344,8 +344,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 42,
-    "activeCycleId": "2026-04-24-cycle-042",
-    "lastCompletedCycleId": "2026-04-24-cycle-042"
+    "sequence": 43,
+    "activeCycleId": "2026-04-24-cycle-043",
+    "lastCompletedCycleId": "2026-04-24-cycle-043"
   }
 }
