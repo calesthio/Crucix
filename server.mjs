@@ -658,6 +658,249 @@ function buildNewsClusterSummary(snapshot = {}) {
   };
 }
 
+function clampText(value = '', limit = 220) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
+}
+
+function normalizeEnum(value, allowed = [], fallback = null) {
+  return allowed.includes(value) ? value : fallback;
+}
+
+function normalizeEvidenceRefs(refs = []) {
+  return (Array.isArray(refs) ? refs : [])
+    .map(ref => ({
+      type: normalizeEnum(ref?.type, ['signal', 'trend', 'news-cluster', 'source-health', 'delta', 'baseline'], 'signal'),
+      id: clampText(ref?.id || 'unknown', 80),
+      label: clampText(ref?.label || ref?.id || 'unknown', 160),
+    }))
+    .slice(0, 8);
+}
+
+function normalizeAgentAnalysis(input = {}) {
+  const normalized = {
+    status: normalizeEnum(input?.status, ['ready', 'thin-history', 'llm-unavailable', 'degraded'], 'thin-history'),
+    generatedAt: input?.generatedAt || new Date().toISOString(),
+    freshness: {
+      generatedAt: input?.freshness?.generatedAt || input?.generatedAt || new Date().toISOString(),
+      lastSweep: input?.freshness?.lastSweep || lastSweepTime || null,
+      sweepInProgress: Boolean(input?.freshness?.sweepInProgress),
+      trendUpdatedAt: input?.freshness?.trendUpdatedAt || input?.trendWindowSummary?.updatedAt || null,
+    },
+    confidenceLabel: normalizeEnum(input?.confidenceLabel, ['high', 'medium', 'low'], 'low'),
+    horizons: (Array.isArray(input?.horizons) ? input.horizons : []).slice(0, 4).map(h => ({
+      id: clampText(h?.id || `h${h?.windowHours || 'x'}`, 32),
+      label: clampText(h?.label || 'Window', 80),
+      windowHours: Math.max(1, Number(h?.windowHours) || 0),
+      status: normalizeEnum(h?.status, ['ready', 'thin-history', 'empty'], 'empty'),
+      summary: clampText(h?.summary || '', 220),
+    })),
+    outlook: (Array.isArray(input?.outlook) ? input.outlook : []).slice(0, 4).map(item => ({
+      horizonId: clampText(item?.horizonId || 'short', 32),
+      text: clampText(item?.text || '', 240),
+      confidence: normalizeEnum(item?.confidence, ['high', 'medium', 'low'], 'low'),
+      evidenceRefs: normalizeEvidenceRefs(item?.evidenceRefs),
+    })).filter(item => item.text),
+    risks: (Array.isArray(input?.risks) ? input.risks : []).slice(0, 5).map(item => ({
+      title: clampText(item?.title || '', 120),
+      severity: normalizeEnum(item?.severity, ['high', 'medium', 'low'], 'low'),
+      confidence: normalizeEnum(item?.confidence, ['high', 'medium', 'low'], 'low'),
+      summary: clampText(item?.summary || '', 220),
+      evidenceRefs: normalizeEvidenceRefs(item?.evidenceRefs),
+    })).filter(item => item.title && item.summary),
+    tippingPoints: (Array.isArray(input?.tippingPoints) ? input.tippingPoints : []).slice(0, 8).map(item => ({
+      title: clampText(item?.title || '', 120),
+      windowStart: item?.windowStart || null,
+      windowEnd: item?.windowEnd || null,
+      validFor: clampText(item?.validFor || '', 80) || null,
+      probability: normalizeEnum(item?.probability, ['HIGH', 'MEDIUM', 'LOW'], 'LOW'),
+      condition: clampText(item?.condition || '', 220),
+      expectedImpact: clampText(item?.expectedImpact || '', 220),
+      whyItMatters: clampText(item?.whyItMatters || '', 220),
+      evidenceRefs: normalizeEvidenceRefs(item?.evidenceRefs),
+      status: normalizeEnum(item?.status, ['active', 'hit', 'cleared', 'expired', 'superseded'], 'active'),
+      resolutionNote: clampText(item?.resolutionNote || '', 220) || null,
+      invalidationOrClearSignal: clampText(item?.invalidationOrClearSignal || '', 220) || null,
+    })).filter(item => item.title && item.condition && item.expectedImpact),
+    evidenceSummary: (Array.isArray(input?.evidenceSummary) ? input.evidenceSummary : []).slice(0, 6).map(item => ({
+      text: clampText(item?.text || '', 220),
+      kind: normalizeEnum(item?.kind, ['current', 'trend', 'health', 'delta'], 'current'),
+      evidenceRefs: normalizeEvidenceRefs(item?.evidenceRefs),
+    })).filter(item => item.text),
+    caveats: (Array.isArray(input?.caveats) ? input.caveats : []).slice(0, 6).map(item => ({
+      text: clampText(item?.text || '', 220),
+      level: normalizeEnum(item?.level, ['info', 'warning', 'critical'], 'info'),
+    })).filter(item => item.text),
+    trendWindowSummary: {
+      updatedAt: input?.trendWindowSummary?.updatedAt || new Date().toISOString(),
+      availableWindows: (Array.isArray(input?.trendWindowSummary?.availableWindows) ? input.trendWindowSummary.availableWindows : []).slice(0, 6),
+      primaryWindowHours: Math.max(1, Number(input?.trendWindowSummary?.primaryWindowHours) || 24),
+      primaryStatus: normalizeEnum(input?.trendWindowSummary?.primaryStatus, ['ready', 'thin-history', 'empty'], 'empty'),
+    },
+    iMessageSummary: (Array.isArray(input?.iMessageSummary) ? input.iMessageSummary : []).slice(0, 5).map(line => clampText(line, 160)).filter(Boolean),
+  };
+  return normalized;
+}
+
+function buildDeterministicAgentAnalysis(snapshot = {}) {
+  const trend = snapshot.trendSummary || memory.getTrendSummary();
+  const windows = Array.isArray(trend?.windows) ? trend.windows : [];
+  const primary = windows[0] || { hours: 24, status: 'empty' };
+  const evidenceRefs = [];
+  const newsSummary = buildNewsClusterSummary(snapshot);
+  const topSuspect = (snapshot.suspectSignals || [])[0] || null;
+  const topCorroborated = (snapshot.corroboratedSignals || [])[0] || null;
+  const health = snapshot.healthSummary || {};
+  const activeHighTippingPoints = [];
+
+  if (topSuspect) evidenceRefs.push({ type: 'signal', id: topSuspect.signal, label: topSuspect.signal });
+  if (topCorroborated) evidenceRefs.push({ type: 'signal', id: topCorroborated.signal, label: topCorroborated.signal });
+  if (newsSummary?.topCluster) evidenceRefs.push({ type: 'news-cluster', id: newsSummary.topCluster.id, label: newsSummary.topCluster.headline });
+  evidenceRefs.push({ type: 'trend', id: `trend-${primary.hours}h`, label: `${primary.hours}h trend window` });
+
+  const outlook = [];
+  if ((primary.signals?.suspectCurrent || 0) > 0) {
+    outlook.push({
+      horizonId: 'short',
+      text: `Short horizon remains cautionary, suspect pressure sits at ${primary.signals.suspectCurrent} active items with limited corroboration.`,
+      confidence: topCorroborated ? 'medium' : 'low',
+      evidenceRefs,
+    });
+  }
+  if (newsSummary?.topCluster) {
+    outlook.push({
+      horizonId: 'short',
+      text: `News flow is concentrated around ${newsSummary.topCluster.region}, led by "${newsSummary.topCluster.headline}".`,
+      confidence: newsSummary.topCluster.confidenceLabel === 'strong' ? 'high' : 'medium',
+      evidenceRefs: [{ type: 'news-cluster', id: newsSummary.topCluster.id, label: newsSummary.topCluster.headline }],
+    });
+  }
+  if ((primary.marketRegime?.vix?.current || 0) > 0 || (primary.commodityDrift?.energy?.brentCurrent || 0) > 0) {
+    outlook.push({
+      horizonId: 'medium',
+      text: `Medium horizon is sensitive to macro shock repricing, with VIX at ${primary.marketRegime?.vix?.current ?? '--'} and Brent at ${primary.commodityDrift?.energy?.brentCurrent ?? '--'}.`,
+      confidence: 'medium',
+      evidenceRefs: [{ type: 'trend', id: 'market-regime', label: 'Market regime and commodity drift' }],
+    });
+  }
+
+  const risks = [];
+  if (topSuspect) {
+    risks.push({
+      title: topSuspect.signal,
+      severity: topSuspect.confidence === 'high' ? 'high' : 'medium',
+      confidence: topSuspect.confidence === 'low' ? 'low' : 'medium',
+      summary: clampText(topSuspect.reason || 'Suspect signal requires corroboration.', 220),
+      evidenceRefs: [{ type: 'signal', id: topSuspect.signal, label: topSuspect.signal }],
+    });
+  }
+  if ((health.failed || 0) > 0) {
+    risks.push({
+      title: 'Source degradation',
+      severity: (health.failed || 0) >= 4 ? 'high' : 'medium',
+      confidence: 'high',
+      summary: `${health.failed || 0} sources are currently failed, which can weaken current-picture confidence.`,
+      evidenceRefs: [{ type: 'source-health', id: 'source-health', label: 'Current source health summary' }],
+    });
+  }
+  if ((primary.anomalyPersistence?.nuclearRuns || 0) > 0) {
+    risks.push({
+      title: 'Persistent nuclear anomaly watch',
+      severity: 'medium',
+      confidence: 'low',
+      summary: `Nuclear anomaly markers appear in ${primary.anomalyPersistence.nuclearRuns} runs, but single-source caution still applies.`,
+      evidenceRefs: [{ type: 'trend', id: 'nuclear-persistence', label: 'Nuclear anomaly persistence' }],
+    });
+  }
+
+  if ((primary.commodityDrift?.energy?.brentCurrent || 0) >= 95) {
+    activeHighTippingPoints.push({
+      title: 'Energy shock escalation',
+      windowStart: snapshot.meta?.timestamp || null,
+      windowEnd: null,
+      validFor: 'next 24h',
+      probability: 'HIGH',
+      condition: 'Brent remains elevated near or above current levels while suspect geopolitical pressure persists.',
+      expectedImpact: 'Higher macro stress, wider risk-off bias, and stronger supply-shock narrative.',
+      whyItMatters: 'Energy pricing is one of the fastest ways regional conflict pressure spills into broader operator risk.',
+      evidenceRefs: [{ type: 'trend', id: 'energy-drift', label: 'Energy drift and Brent level' }],
+      status: 'active',
+      resolutionNote: null,
+      invalidationOrClearSignal: 'Clear if Brent normalizes materially lower and conflict-related suspect pressure fades.',
+    });
+  }
+
+  const caveats = [];
+  if (primary.status !== 'ready') caveats.push({ text: 'Trend history is still thin, so outlook confidence is constrained.', level: 'warning' });
+  if ((health.failed || 0) > 0) caveats.push({ text: `${health.failed} failed sources are reducing current-picture completeness.`, level: 'warning' });
+  if (topSuspect && !topCorroborated) caveats.push({ text: 'Current risk picture leans on suspect or OSINT-only signals more than corroborated evidence.', level: 'warning' });
+  if ((snapshot.newsLlmDebug?.review?.failedRegionCount || 0) > 0) caveats.push({ text: 'News clustering still has active failed-review regions, so topic grouping is not fully clean.', level: 'info' });
+
+  const confidenceLabel = topCorroborated && (health.failed || 0) < 3 ? 'medium' : 'low';
+  const status = !llmProvider?.isConfigured ? 'llm-unavailable' : primary.status === 'ready' ? ((health.failed || 0) >= 5 ? 'degraded' : 'ready') : 'thin-history';
+
+  const schema = {
+    status,
+    generatedAt: new Date().toISOString(),
+    freshness: {
+      generatedAt: new Date().toISOString(),
+      lastSweep: snapshot.meta?.timestamp || lastSweepTime || null,
+      sweepInProgress,
+      trendUpdatedAt: trend?.generatedAt || null,
+    },
+    confidenceLabel,
+    horizons: windows.slice(0, 3).map((window, idx) => ({
+      id: idx === 0 ? 'short' : idx === 1 ? 'medium' : 'extended',
+      label: idx === 0 ? `Next ${window.hours}h` : idx === 1 ? `Next ${window.hours}h` : `Next ${Math.round(window.hours / 24)}d`,
+      windowHours: window.hours,
+      status: window.status || 'empty',
+      summary: idx === 0
+        ? `Suspects ${window.signals?.suspectCurrent || 0}, urgent tempo ${window.urgentTempo?.current || 0}, failed sources ${window.sourceHealth?.currentFailed || 0}.`
+        : `Runs ${window.runCount || 0}, air persistence ${window.anomalyPersistence?.airRuns || 0}, nuclear persistence ${window.anomalyPersistence?.nuclearRuns || 0}.`,
+    })),
+    outlook,
+    risks,
+    tippingPoints: activeHighTippingPoints,
+    evidenceSummary: [
+      { text: `Current sweep shows ${snapshot.suspectSignals?.length || 0} suspect and ${snapshot.corroboratedSignals?.length || 0} corroborated signals.`, kind: 'current', evidenceRefs },
+      { text: `${primary.hours || 24}h trend window has ${primary.runCount || 0} runs with urgent tempo ${primary.urgentTempo?.current || 0}.`, kind: 'trend', evidenceRefs: [{ type: 'trend', id: `trend-${primary.hours || 24}h`, label: `${primary.hours || 24}h trend window` }] },
+      { text: `Source health currently reports ${health.failed || 0} failed and ${health.degraded || 0} degraded sources.`, kind: 'health', evidenceRefs: [{ type: 'source-health', id: 'source-health', label: 'Current source health summary' }] },
+    ],
+    caveats,
+    trendWindowSummary: {
+      updatedAt: trend?.generatedAt || new Date().toISOString(),
+      availableWindows: windows.map(window => window.hours),
+      primaryWindowHours: primary.hours || 24,
+      primaryStatus: primary.status || 'empty',
+    },
+    iMessageSummary: [
+      `Status: ${status.replace(/-/g, ' ')}, confidence ${confidenceLabel}.`,
+      `Outlook: ${outlook[0]?.text || 'Trend history is building but still cautious.'}`.slice(0, 160),
+      `Top risk: ${risks[0] ? `${risks[0].title}, ${risks[0].summary}` : 'No dominant risk isolated yet.'}`.slice(0, 160),
+      `Tipping point: ${activeHighTippingPoints[0]?.title || 'No active HIGH-probability tipping point published yet.'}`.slice(0, 160),
+      `Caveat: ${caveats[0]?.text || 'No extra caveat.'}`.slice(0, 160),
+    ],
+  };
+
+  return normalizeAgentAnalysis(schema);
+}
+
+function buildAgentAnalysis(snapshot = {}, candidate = null) {
+  return normalizeAgentAnalysis(candidate || buildDeterministicAgentAnalysis(snapshot));
+}
+
+function buildAgentAnalysisSummary(snapshot = {}) {
+  const analysis = snapshot.agentAnalysis || buildAgentAnalysis(snapshot);
+  return {
+    status: analysis.status,
+    confidenceLabel: analysis.confidenceLabel,
+    outlook: analysis.outlook.slice(0, 2),
+    risks: analysis.risks.slice(0, 3),
+    tippingPoints: analysis.tippingPoints.filter(item => item.status === 'active' && item.probability === 'HIGH').slice(0, 3),
+    caveats: analysis.caveats.slice(0, 3),
+    iMessageSummary: analysis.iMessageSummary.slice(0, 5),
+  };
+}
+
 function buildIMessengerBrief(snapshot = {}) {
   const lines = [];
   const evidence = snapshot.evidenceSummary || {};
@@ -920,6 +1163,7 @@ app.get('/api/brief/compact', async (req, res) => {
     text: buildIMessengerBrief(snapshot),
     evidenceSummary: snapshot.evidenceSummary || null,
     newsSummary: buildNewsClusterSummary(snapshot),
+    agentAnalysis: buildAgentAnalysisSummary(snapshot),
     topCorroborated: corroborated[0] || null,
     topSuspect: suspects[0] || null,
     corroboratedSignals: corroborated.slice(0, 5),
@@ -963,6 +1207,14 @@ app.get('/api/brief/news/review/artifacts', (req, res) => {
 app.get('/api/trends', (req, res) => {
   res.json({
     trendSummary: memory.getTrendSummary(),
+  });
+});
+
+app.get('/api/analysis', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  res.json({
+    agentAnalysis: buildAgentAnalysis(snapshot),
   });
 });
 
@@ -1136,6 +1388,11 @@ app.get('/api/health', (req, res) => {
     clusterReviewStats: summarizeClusterReviewStats(),
     clusterRepairArtifacts: summarizeClusterRepairArtifacts(),
     trendSummary: memory.getTrendSummary(),
+    agentAnalysis: currentData?.agentAnalysis ? {
+      status: currentData.agentAnalysis.status,
+      confidenceLabel: currentData.agentAnalysis.confidenceLabel,
+      tippingPointCount: Array.isArray(currentData.agentAnalysis.tippingPoints) ? currentData.agentAnalysis.tippingPoints.length : 0,
+    } : null,
   });
 });
 
@@ -1232,6 +1489,7 @@ async function runSweepCycle() {
     const sixHourBaselineRun = memory.getBaselineRun(6);
     synthesized.baseline6h = buildSixHourBaseline(synthesized, sixHourBaselineRun);
     synthesized.trendSummary = memory.getTrendSummary();
+    synthesized.agentAnalysis = buildAgentAnalysis(synthesized);
 
     // 5. Publish core data immediately so LLM idea generation never blocks /api/data
     if (!llmProvider?.isConfigured) {
@@ -1331,6 +1589,7 @@ async function start() {
       const existing = JSON.parse(readFileSync(join(RUNS_DIR, 'latest.json'), 'utf8'));
       synthesize(existing, llmProvider, { newsLlmMode: 'off' }).then(data => {
         data.trendSummary = memory.getTrendSummary();
+        data.agentAnalysis = buildAgentAnalysis(data);
         currentData = data;
         console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');
         broadcast({ type: 'update', data: currentData });
