@@ -23,6 +23,7 @@ const ROOT = __dirname;
 const RUNS_DIR = join(ROOT, 'runs');
 const MEMORY_DIR = join(RUNS_DIR, 'memory');
 const REVIEW_ACKS_PATH = join(RUNS_DIR, 'cluster-review-acks.json');
+const AGENT_ANALYSIS_VALIDATION_SCRIPT = join(ROOT, 'scripts/agent-analysis-validation-summary.mjs');
 
 // Ensure directories exist
 for (const dir of [RUNS_DIR, MEMORY_DIR, join(MEMORY_DIR, 'cold')]) {
@@ -1089,6 +1090,24 @@ function buildAgentAnalysisMeta(overrides = {}) {
   };
 }
 
+async function runAgentAnalysisValidationSummary() {
+  return await new Promise((resolve, reject) => {
+    exec(`/opt/homebrew/opt/node/bin/node "${AGENT_ANALYSIS_VALIDATION_SCRIPT}" --json`, { cwd: ROOT, timeout: 120000 }, (error, stdout, stderr) => {
+      const raw = String(stdout || '').trim();
+      if (error && !raw) {
+        reject(new Error(String(stderr || error.message || 'validation-summary-failed').trim()));
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw || '{}');
+        resolve(parsed);
+      } catch (parseErr) {
+        reject(new Error(`validation-summary-parse-failed: ${parseErr.message}`));
+      }
+    });
+  });
+}
+
 function buildIMessengerBrief(snapshot = {}) {
   const lines = [];
   const evidence = snapshot.evidenceSummary || {};
@@ -1424,6 +1443,18 @@ app.get('/api/analysis/review', async (req, res) => {
     baseline6h: snapshot.baseline6h || null,
     deltaSummary: snapshot.delta?.summary || null,
   });
+});
+
+app.get('/api/analysis/validation-summary', async (req, res) => {
+  try {
+    const summary = await runAgentAnalysisValidationSummary();
+    res.json(summary);
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      error: err.message || 'validation-summary-failed',
+    });
+  }
 });
 
 app.get('/api/brief/news/review/acks', (req, res) => {

@@ -232,7 +232,7 @@
           {
             "id": "effort-7.8",
             "title": "Compact CLI or API summary surface for agent-analysis validation harness pass/fail reporting",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -344,8 +344,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 32,
-    "activeCycleId": "2026-04-24-cycle-032",
-    "lastCompletedCycleId": "2026-04-24-cycle-032"
+    "sequence": 33,
+    "activeCycleId": "2026-04-24-cycle-033",
+    "lastCompletedCycleId": "2026-04-24-cycle-033"
   }
 }

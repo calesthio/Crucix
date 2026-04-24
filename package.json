@@ -12,6 +12,7 @@
     "brief:save": "node apis/save-briefing.mjs",
     "diag": "node diag.mjs",
     "clean": "node scripts/clean.mjs",
+    "analysis:validate:summary": "node scripts/agent-analysis-validation-summary.mjs",
     "fresh-start": "npm run clean && npm start"
   },
   "keywords": [
