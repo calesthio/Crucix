@@ -50,6 +50,9 @@ const REVIEW_ACK_TTL_MS = Math.max(1, Number(config.review?.ackTtlHours || 72)) 
 const REVIEW_ACK_MAX_ENTRIES = Math.max(1, Number(config.review?.ackMaxEntries || 100));
 const CLUSTER_REVIEW_STATE_KEY = 'cluster-review:regions';
 const CLUSTER_REVIEW_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+const CLUSTER_REPAIR_ARTIFACTS_STATE_KEY = 'cluster-review:repair-artifacts';
+const CLUSTER_REPAIR_ARTIFACT_RETENTION_MS = Math.max(1, Number(config.review?.repairArtifactRetentionDays || 14)) * 24 * 60 * 60 * 1000;
+const CLUSTER_REPAIR_ARTIFACT_MAX_ENTRIES = Math.max(1, Number(config.review?.repairArtifactMaxEntries || 50));
 const reviewAcks = loadReviewAcks();
 
 function loadJsonFile(path, fallback) {
@@ -303,6 +306,57 @@ function attachClusterReviewStats(review = {}) {
     dismissedItems: Array.isArray(review.dismissedItems) ? review.dismissedItems.map(decorate) : [],
     stats: statsSummary,
   };
+}
+
+function getClusterRepairArtifactsState() {
+  const state = memory.getSignalState(CLUSTER_REPAIR_ARTIFACTS_STATE_KEY);
+  return Array.isArray(state) ? state : [];
+}
+
+function pruneClusterRepairArtifacts(artifacts = [], now = Date.now()) {
+  return (Array.isArray(artifacts) ? artifacts : [])
+    .filter(entry => {
+      const ts = new Date(entry?.recordedAt || 0).getTime();
+      return ts && (now - ts) <= CLUSTER_REPAIR_ARTIFACT_RETENTION_MS;
+    })
+    .slice(-CLUSTER_REPAIR_ARTIFACT_MAX_ENTRIES);
+}
+
+function summarizeClusterRepairArtifacts(artifacts = getClusterRepairArtifactsState()) {
+  const pruned = pruneClusterRepairArtifacts(artifacts);
+  const byReason = {};
+  const byRegion = {};
+  for (const entry of pruned) {
+    const reason = entry.reason || 'unknown';
+    const region = entry.region || 'unknown';
+    byReason[reason] = (byReason[reason] || 0) + 1;
+    byRegion[region] = (byRegion[region] || 0) + 1;
+  }
+  return {
+    totalArtifacts: pruned.length,
+    retentionDays: CLUSTER_REPAIR_ARTIFACT_RETENTION_MS / (24 * 60 * 60 * 1000),
+    maxEntries: CLUSTER_REPAIR_ARTIFACT_MAX_ENTRIES,
+    topReasons: Object.entries(byReason).map(([reason, count]) => ({ reason, count })).sort((a,b)=>b.count-a.count).slice(0,6),
+    topRegions: Object.entries(byRegion).map(([region, count]) => ({ region, count })).sort((a,b)=>b.count-a.count).slice(0,6),
+    items: pruned.slice(-12).reverse(),
+  };
+}
+
+function recordClusterRepairArtifacts(snapshot = {}) {
+  const artifacts = Array.isArray(snapshot.newsLlmDebug?.repairArtifacts) ? snapshot.newsLlmDebug.repairArtifacts : [];
+  const current = getClusterRepairArtifactsState();
+  if (!artifacts.length) {
+    const pruned = pruneClusterRepairArtifacts(current);
+    if (pruned.length !== current.length) memory.setSignalState(CLUSTER_REPAIR_ARTIFACTS_STATE_KEY, pruned);
+    return summarizeClusterRepairArtifacts(pruned);
+  }
+  const nowIso = new Date().toISOString();
+  const merged = pruneClusterRepairArtifacts([
+    ...current,
+    ...artifacts.map(entry => ({ ...entry, recordedAt: nowIso })),
+  ]);
+  memory.setSignalState(CLUSTER_REPAIR_ARTIFACTS_STATE_KEY, merged);
+  return summarizeClusterRepairArtifacts(merged);
 }
 
 function signalId(kind = 'signal', item = {}, index = 0) {
@@ -590,6 +644,7 @@ function buildNewsClusterSummary(snapshot = {}) {
       heuristicFallbackCount: snapshot.newsLlmDebug.heuristicFallbackCount || 0,
       repairAttemptCount: snapshot.newsLlmDebug.repairAttemptCount || 0,
       repairSuccessCount: snapshot.newsLlmDebug.repairSuccessCount || 0,
+      repairArtifactCount: snapshot.newsLlmDebug.repairArtifactCount || (Array.isArray(snapshot.newsLlmDebug.repairArtifacts) ? snapshot.newsLlmDebug.repairArtifacts.length : 0),
       retryCount: snapshot.newsLlmDebug.retryCount || 0,
       backoffCount: snapshot.newsLlmDebug.backoffCount || 0,
       tunedRegionCount: snapshot.newsLlmDebug.tunedRegionCount || 0,
@@ -899,6 +954,12 @@ app.get('/api/brief/news/review/stats', (req, res) => {
   });
 });
 
+app.get('/api/brief/news/review/artifacts', (req, res) => {
+  res.json({
+    artifacts: summarizeClusterRepairArtifacts(),
+  });
+});
+
 app.get('/api/brief/news/review/acks', (req, res) => {
   const limit = Math.max(1, Math.min(Number.parseInt(req.query.limit, 10) || 20, 100));
   res.json({
@@ -1067,6 +1128,7 @@ app.get('/api/health', (req, res) => {
     selectionMemory: selectionMemoryStats(),
     reviewAcks: reviewAckStats(),
     clusterReviewStats: summarizeClusterReviewStats(),
+    clusterRepairArtifacts: summarizeClusterRepairArtifacts(),
   });
 });
 
@@ -1149,10 +1211,12 @@ async function runSweepCycle() {
     console.log('[Crucix] Synthesizing dashboard data...');
     const synthesized = await synthesize(rawData);
     const clusterReviewStats = recordClusterReviewStats(synthesized);
+    const clusterRepairArtifacts = recordClusterRepairArtifacts(synthesized);
     if (synthesized.newsLlmDebug?.review) {
       synthesized.newsLlmDebug.review = attachClusterReviewStats(annotateReview(synthesized.newsLlmDebug.review));
     }
     synthesized.clusterReviewStats = clusterReviewStats;
+    synthesized.clusterRepairArtifacts = clusterRepairArtifacts;
 
     // 4. Delta computation + memory
     const delta = memory.addRun(synthesized);

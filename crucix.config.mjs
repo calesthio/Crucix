@@ -30,6 +30,9 @@ export default {
   review: {
     ackTtlHours: parseInt(process.env.REVIEW_ACK_TTL_HOURS) || 72,
     ackMaxEntries: parseInt(process.env.REVIEW_ACK_MAX_ENTRIES) || 100,
+    repairArtifactMaxSamples: parseInt(process.env.REPAIR_ARTIFACT_MAX_SAMPLES) || 12,
+    repairArtifactRetentionDays: parseInt(process.env.REPAIR_ARTIFACT_RETENTION_DAYS) || 14,
+    repairArtifactMaxEntries: parseInt(process.env.REPAIR_ARTIFACT_MAX_ENTRIES) || 50,
   },
 
   // Delta engine thresholds — override defaults from lib/delta/engine.mjs

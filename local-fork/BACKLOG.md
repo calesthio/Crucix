@@ -31,3 +31,4 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 - Add probability-gating controls so main surfaces default to HIGH-only tipping points while optional review/debug surfaces may expose MEDIUM items.
 - Add concise iMessage rendering rules so the same agent-analysis payload can collapse into a reliable 5-line operator summary without losing caveat discipline.
 - Add rolling or decayed per-region failure-rate windows so long-ago failures do not make a recovering region look chronically weak forever.
+- Add prompt/version fingerprints to repair-failure artifacts so regressions can be compared across prompt tuning changes without guessing which template generated the bad output.

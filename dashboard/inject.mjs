@@ -10,6 +10,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import config from '../crucix.config.mjs';
+import { createHash } from 'crypto';
 import { createLLMProvider, OllamaProvider } from '../lib/llm/index.mjs';
 import { generateLLMIdeas } from '../lib/llm/ideas.mjs';
 import { buildSourceHealth } from '../lib/source-health.mjs';
@@ -784,6 +785,39 @@ function getRegionClusterTuning(region = '') {
   return NEWS_REGION_TUNING[region] || NEWS_REGION_TUNING.default;
 }
 
+function hashArtifactText(text = '') {
+  return createHash('sha256').update(String(text || '')).digest('hex').slice(0, 16);
+}
+
+function compactArtifactSnippet(text = '', limit = 220) {
+  return String(text || '').replace(/\s+/g, ' ').trim().slice(0, limit) || null;
+}
+
+function pushRepairArtifact(debug = {}, artifact = {}) {
+  debug.repairArtifacts = Array.isArray(debug.repairArtifacts) ? debug.repairArtifacts : [];
+  const maxSamples = Math.max(1, Number(config.review?.repairArtifactMaxSamples || 12));
+  if (debug.repairArtifacts.length >= maxSamples) return;
+  debug.repairArtifacts.push(artifact);
+}
+
+function buildRepairArtifact({ region = '', itemCount = 0, stage = 'initial', reason = 'unknown', rawText = '', repairText = '', retried = false, repairAttempted = false, fragment = null, error = null } = {}) {
+  return {
+    region: region || 'unknown',
+    itemCount: itemCount || 0,
+    stage,
+    reason,
+    retried: Boolean(retried),
+    repairAttempted: Boolean(repairAttempted),
+    rawHash: rawText ? hashArtifactText(rawText) : null,
+    rawPreview: compactArtifactSnippet(rawText),
+    fragmentHash: fragment ? hashArtifactText(fragment) : null,
+    fragmentPreview: compactArtifactSnippet(fragment),
+    repairHash: repairText ? hashArtifactText(repairText) : null,
+    repairPreview: compactArtifactSnippet(repairText),
+    error: error ? String(error).slice(0, 240) : null,
+  };
+}
+
 function buildClusterFailureReview(debug = {}) {
   const perRegion = Array.isArray(debug.perRegion) ? debug.perRegion : [];
   const failures = perRegion.filter(entry => entry?.status === 'heuristic-fallback');
@@ -837,6 +871,7 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {
     backoffCount: 0,
     tunedRegionCount: 0,
     perRegion: [],
+    repairArtifacts: [],
   };
   if (!news.length) {
     debug.fallbackReason = 'no-news';
@@ -895,12 +930,48 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {
             parsedResult = repair.parsed;
             usedRepair = true;
             debug.repairSuccessCount += 1;
+          } else {
+            pushRepairArtifact(debug, buildRepairArtifact({
+              region: set.region,
+              itemCount: slice.length,
+              stage: 'repair-failed',
+              reason: repair.parsed.reason || parsedResult.reason || 'repair-failed',
+              rawText: lastText,
+              repairText: repair.repairText,
+              retried,
+              repairAttempted,
+              fragment: repair.parsed.fragment || parsedResult.fragment || null,
+            }));
+            parsedResult = repair.parsed;
           }
         } catch (repairErr) {
           debug[`repair_error_${set.region}`] = repairErr.message;
+          pushRepairArtifact(debug, buildRepairArtifact({
+            region: set.region,
+            itemCount: slice.length,
+            stage: 'repair-error',
+            reason: parsedResult.reason || 'repair-error',
+            rawText: lastText,
+            retried,
+            repairAttempted,
+            fragment: parsedResult.fragment || null,
+            error: repairErr.message,
+          }));
         }
       }
       if (!parsedResult.ok) {
+        if (repairAttempted && !debug.repairArtifacts.some(artifact => artifact.region === set.region && artifact.reason === parsedResult.reason && artifact.rawHash === (lastText ? hashArtifactText(lastText) : null))) {
+          pushRepairArtifact(debug, buildRepairArtifact({
+            region: set.region,
+            itemCount: slice.length,
+            stage: 'fallback-after-repair',
+            reason: parsedResult.reason,
+            rawText: lastText,
+            retried,
+            repairAttempted,
+            fragment: parsedResult.fragment || null,
+          }));
+        }
         debug.heuristicFallbackCount += 1;
         debug.perRegion.push({ region: set.region, status: 'heuristic-fallback', reason: parsedResult.reason, itemCount: slice.length, repairAttempted, retried, tuning: { maxRetries: tuning.maxRetries || 0, repairTimeout: tuning.repairTimeout || 45000 } });
         continue;
@@ -929,6 +1000,7 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {
   if (!debug.used && !debug.fallbackReason) debug.fallbackReason = debug.attempted ? 'all-candidate-sets-fell-back' : 'no-candidate-sets';
   if (debug.used && !debug.fallbackReason && debug.heuristicFallbackCount > 0) debug.fallbackReason = 'partial-fallback';
   debug.review = buildClusterFailureReview(debug);
+  debug.repairArtifactCount = Array.isArray(debug.repairArtifacts) ? debug.repairArtifacts.length : 0;
   return { hints: mergedHints, debug };
 }
 
