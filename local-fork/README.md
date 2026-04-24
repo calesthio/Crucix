@@ -8,6 +8,8 @@ When Jason says `execute next crucix dev cycle`, the expected flow is:
 
 1. Read `local-fork/plan.json` and the latest cycle note under `local-fork/cycles/`.
 2. Pick the next planned effort that is not blocked.
+   - If the roadmap is exhausted, promote the next justified backlog item into `plan.json` first.
+   - When a backlog item is promoted and completed, remove it from `BACKLOG.md` so the backlog never advertises already-shipped work.
 3. Implement the smallest production-meaningful slice.
 4. Validate locally.
 5. Update prod on this runtime and verify `/api/health` plus a representative `/api/data` check.

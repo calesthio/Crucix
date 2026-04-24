@@ -352,12 +352,24 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-14",
+        "title": "Local fork planning hygiene",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-14.1",
+            "title": "Prevent backlog drift where already-completed recommendations remain advertised after roadmap promotion",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 48,
-    "activeCycleId": "2026-04-24-cycle-048",
-    "lastCompletedCycleId": "2026-04-24-cycle-048"
+    "sequence": 49,
+    "activeCycleId": "2026-04-24-cycle-049",
+    "lastCompletedCycleId": "2026-04-24-cycle-049"
   }
 }
