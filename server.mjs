@@ -25,6 +25,7 @@ const RUNS_DIR = join(ROOT, 'runs');
 const MEMORY_DIR = join(RUNS_DIR, 'memory');
 const REVIEW_ACKS_PATH = join(RUNS_DIR, 'cluster-review-acks.json');
 const AGENT_ANALYSIS_VALIDATION_SCRIPT = join(ROOT, 'scripts/agent-analysis-validation-summary.mjs');
+const OPENSKY_STATE_PATH = join(ROOT, 'runs', 'cache', 'opensky-state.json');
 
 // Ensure directories exist
 for (const dir of [RUNS_DIR, MEMORY_DIR, join(MEMORY_DIR, 'cold')]) {
@@ -69,6 +70,20 @@ function loadJsonFile(path, fallback) {
 function saveJsonFile(path, data) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
+}
+
+function readOpenSkyRuntimeState() {
+  const raw = loadJsonFile(OPENSKY_STATE_PATH, null);
+  if (!raw || typeof raw !== 'object') return null;
+  return {
+    cacheHits: Number.isInteger(raw.cacheHits) ? raw.cacheHits : 0,
+    lastCacheHitAt: raw.lastCacheHitAt || null,
+    staleCachePrunes: Number.isInteger(raw.staleCachePrunes) ? raw.staleCachePrunes : 0,
+    lastStaleCachePrunedAt: raw.lastStaleCachePrunedAt || null,
+    cooldownUntil: raw.cooldownUntil || null,
+    last429At: raw.last429At || null,
+    cursor: Number.isInteger(raw.cursor) ? raw.cursor : 0,
+  };
 }
 
 function loadReviewAcks() {
@@ -1606,6 +1621,15 @@ app.delete('/api/brief/context', (req, res) => {
 
 // API: health check
 app.get('/api/health', (req, res) => {
+  const openSkyRuntime = currentData?.airMeta?.runtimeState
+    ? {
+        ...currentData.airMeta.runtimeState,
+        queryMode: currentData.airMeta.queryMode || null,
+        cooldownUntil: currentData.airMeta.cooldownUntil || null,
+        cacheAgeMinutes: currentData.airMeta.cacheAgeMinutes ?? null,
+        fallback: Boolean(currentData.airMeta.fallback),
+      }
+    : readOpenSkyRuntimeState();
   res.json({
     status: 'ok',
     uptime: Math.floor((Date.now() - startTime) / 1000),
@@ -1620,6 +1644,7 @@ app.get('/api/health', (req, res) => {
     sourceHealthSummary: currentData?.healthSummary || null,
     sourceCounters: currentData?.healthSummary?.counters || null,
     sourceFailureClassification: currentData?.healthSummary?.failureClassification || null,
+    openSkyRuntime,
     freshnessPolicy: {
       configured: getFreshnessPolicy(),
       activeSourceHealthPolicy: currentData?.healthSummary?.policy || null,

@@ -2,13 +2,13 @@
 // Free for research. 4,000 API credits/day (no auth), 8,000 with account.
 // Tracks all aircraft with ADS-B transponders including many military.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { safeFetch } from '../utils/fetch.mjs';
 
 const BASE = 'https://opensky-network.org/api';
-const ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+const ROOT = process.env.OPENSKY_ROOT_OVERRIDE || dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const RUNS_DIR = join(ROOT, 'runs');
 const CACHE_DIR = join(RUNS_DIR, 'cache');
 const CACHE_FILE = join(CACHE_DIR, 'opensky-latest.json');
@@ -50,17 +50,33 @@ function writeCachedSnapshot(snapshot) {
   }
 }
 
+function defaultRuntimeState() {
+  return {
+    cursor: 0,
+    cooldownUntil: null,
+    last429At: null,
+    cacheHits: 0,
+    lastCacheHitAt: null,
+    staleCachePrunes: 0,
+    lastStaleCachePrunedAt: null,
+  };
+}
+
 function readRuntimeState() {
   try {
-    if (!existsSync(STATE_FILE)) return { cursor: 0, cooldownUntil: null, last429At: null };
+    if (!existsSync(STATE_FILE)) return defaultRuntimeState();
     const parsed = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
     return {
       cursor: Number.isInteger(parsed?.cursor) ? parsed.cursor : 0,
       cooldownUntil: parsed?.cooldownUntil || null,
       last429At: parsed?.last429At || null,
+      cacheHits: Number.isInteger(parsed?.cacheHits) ? parsed.cacheHits : 0,
+      lastCacheHitAt: parsed?.lastCacheHitAt || null,
+      staleCachePrunes: Number.isInteger(parsed?.staleCachePrunes) ? parsed.staleCachePrunes : 0,
+      lastStaleCachePrunedAt: parsed?.lastStaleCachePrunedAt || null,
     };
   } catch {
-    return { cursor: 0, cooldownUntil: null, last429At: null };
+    return defaultRuntimeState();
   }
 }
 
@@ -71,6 +87,35 @@ function writeRuntimeState(state) {
   } catch {
     // Non-fatal. Continue without persistence.
   }
+}
+
+function removeCachedSnapshot() {
+  try {
+    if (existsSync(CACHE_FILE)) unlinkSync(CACHE_FILE);
+  } catch {
+    // Non-fatal. Continue without deletion.
+  }
+}
+
+function pruneStaleArtifacts(state, cached) {
+  if (!cached || !cached.isExpired) return { state, cached };
+  removeCachedSnapshot();
+  return {
+    state: {
+      ...state,
+      staleCachePrunes: (state.staleCachePrunes || 0) + 1,
+      lastStaleCachePrunedAt: new Date().toISOString(),
+    },
+    cached: null,
+  };
+}
+
+function withCacheHit(state) {
+  return {
+    ...state,
+    cacheHits: (state.cacheHits || 0) + 1,
+    lastCacheHitAt: new Date().toISOString(),
+  };
 }
 
 function selectHotspotBatch(hotspotEntries, cursor = 0, batchSize = ROTATION_BATCH_SIZE) {
@@ -143,12 +188,16 @@ const HOTSPOTS = {
 // Briefing — check hotspot regions for flight activity
 export async function briefing() {
   const hotspotEntries = Object.entries(HOTSPOTS);
-  const state = readRuntimeState();
-  const cached = readCachedSnapshot();
+  let state = readRuntimeState();
+  let cached = readCachedSnapshot();
+  ({ state, cached } = pruneStaleArtifacts(state, cached));
+  writeRuntimeState(state);
   const cooldownUntilMs = state.cooldownUntil ? new Date(state.cooldownUntil).getTime() : NaN;
   const inCooldown = Number.isFinite(cooldownUntilMs) && cooldownUntilMs > Date.now();
 
   if (inCooldown && cached && !cached.isExpired && hotspotHasAirActivity(cached.hotspots)) {
+    state = withCacheHit(state);
+    writeRuntimeState(state);
     return {
       source: 'OpenSky',
       timestamp: cached.timestamp,
@@ -162,6 +211,12 @@ export async function briefing() {
       error: `OpenSky cooldown active, serving cached snapshot (${cached.ageMinutes}m old)`,
       liveError: 'cooldown-active',
       queryMode: 'cooldown-cache',
+      runtimeState: {
+        cacheHits: state.cacheHits,
+        lastCacheHitAt: state.lastCacheHitAt,
+        staleCachePrunes: state.staleCachePrunes,
+        lastStaleCachePrunedAt: state.lastStaleCachePrunedAt,
+      },
     };
   }
 
@@ -209,7 +264,8 @@ export async function briefing() {
     .map(r => ({ region: r.region, error: r.error }));
 
   const saw429 = hotspotErrors.some(r => String(r.error).includes('HTTP 429'));
-  const nextState = {
+  let nextState = {
+    ...state,
     cursor: nextCursor,
     cooldownUntil: saw429 ? new Date(Date.now() + COOLDOWN_MS).toISOString() : null,
     last429At: saw429 ? new Date().toISOString() : state.last429At,
@@ -227,6 +283,8 @@ export async function briefing() {
   }
 
   if (hotspotErrors.length === batchResults.length && cached && !cached.isExpired && hotspotHasAirActivity(cached.hotspots)) {
+    nextState = withCacheHit(nextState);
+    writeRuntimeState(nextState);
     return {
       source: 'OpenSky',
       timestamp: cached.timestamp,
@@ -242,6 +300,12 @@ export async function briefing() {
       hotspotErrors,
       queryMode: 'rotating-batch-fallback',
       queriedRegions: selectedHotspots.map(([, box]) => box.label),
+      runtimeState: {
+        cacheHits: nextState.cacheHits,
+        lastCacheHitAt: nextState.lastCacheHitAt,
+        staleCachePrunes: nextState.staleCachePrunes,
+        lastStaleCachePrunedAt: nextState.lastStaleCachePrunedAt,
+      },
     };
   }
 
@@ -258,6 +322,12 @@ export async function briefing() {
     ...(saw429 ? { degraded: true, cooldownUntil: nextState.cooldownUntil, liveError: hotspotErrors.find(r => String(r.error).includes('HTTP 429'))?.error || 'HTTP 429' } : {}),
     queryMode: 'rotating-batch',
     queriedRegions: selectedHotspots.map(([, box]) => box.label),
+    runtimeState: {
+      cacheHits: nextState.cacheHits,
+      lastCacheHitAt: nextState.lastCacheHitAt,
+      staleCachePrunes: nextState.staleCachePrunes,
+      lastStaleCachePrunedAt: nextState.lastStaleCachePrunedAt,
+    },
   };
 }
 
