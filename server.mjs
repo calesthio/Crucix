@@ -104,6 +104,28 @@ function pruneSelectionMemory() {
   return pruned;
 }
 
+function resetSelectionMemoryTelemetry() {
+  selectionMemoryTelemetry.ttlExpired = 0;
+  selectionMemoryTelemetry.capacityEvicted = 0;
+  selectionMemoryTelemetry.manualCleared = 0;
+  selectionMemoryTelemetry.touchHits = 0;
+  selectionMemoryTelemetry.misses = 0;
+}
+
+function selectionMemorySnapshot(limit = 5) {
+  pruneSelectionMemory();
+  return Array.from(selectionMemory.entries())
+    .slice(-Math.max(1, Math.min(Number(limit) || 5, 20)))
+    .map(([context, value]) => ({
+      context,
+      kind: value.kind,
+      index: value.index,
+      id: value.id,
+      expiresAt: new Date(value.expiresAt).toISOString(),
+      lastAccessAt: value.lastAccessAt ? new Date(value.lastAccessAt).toISOString() : null,
+    }));
+}
+
 function selectionMemoryStats() {
   pruneSelectionMemory();
   let nextExpiry = null;
@@ -546,6 +568,24 @@ app.get('/api/brief/context', (req, res) => {
 app.get('/api/brief/context/health', (req, res) => {
   res.json({
     memory: selectionMemoryStats(),
+  });
+});
+
+app.get('/api/brief/context/debug', (req, res) => {
+  const limit = Math.max(1, Math.min(Number.parseInt(req.query.limit, 10) || 5, 20));
+  res.json({
+    memory: selectionMemoryStats(),
+    contexts: selectionMemorySnapshot(limit),
+  });
+});
+
+app.post('/api/brief/context/telemetry/reset', (req, res) => {
+  const before = selectionMemoryStats();
+  resetSelectionMemoryTelemetry();
+  res.json({
+    ok: true,
+    before,
+    after: selectionMemoryStats(),
   });
 });
 

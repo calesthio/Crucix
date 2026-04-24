@@ -18,3 +18,4 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 - Add per-context last-access timestamps and optional LRU-style eviction if chat traffic shows repeated churn beyond a simple max-entry cap.
 - Add lightweight counters for selection-memory evictions and prune causes so operator health views can distinguish TTL expiry from capacity pressure.
 - Add resettable/debug-only selection-memory telemetry controls so long-lived operator sessions can zero counters after investigations without restarting the runtime.
+- Add optional guardrails for debug endpoints, such as local-only enablement or a config flag, if the runtime is ever exposed beyond loopback.
