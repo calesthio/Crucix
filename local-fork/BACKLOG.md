@@ -19,3 +19,4 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 - Add lightweight counters for selection-memory evictions and prune causes so operator health views can distinguish TTL expiry from capacity pressure.
 - Add resettable/debug-only selection-memory telemetry controls so long-lived operator sessions can zero counters after investigations without restarting the runtime.
 - Add optional guardrails for debug endpoints, such as local-only enablement or a config flag, if the runtime is ever exposed beyond loopback.
+- Add cluster-quality review metrics, such as cluster merge/split anomalies and low-confidence cluster counts, so Epic 3 tuning can be measured instead of eyeballed.

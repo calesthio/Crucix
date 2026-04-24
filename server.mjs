@@ -276,6 +276,41 @@ function buildIMessengerDrilldown(snapshot = {}, { kind = 'corroborated', action
   ].join('\n');
 }
 
+function buildNewsClusterSummary(snapshot = {}) {
+  const clusters = Array.isArray(snapshot.newsClusters) ? snapshot.newsClusters : [];
+  const top = clusters[0] || null;
+  if (!top) return null;
+  return {
+    totalClusters: clusters.length,
+    topCluster: {
+      id: top.id,
+      headline: top.headline,
+      region: top.region,
+      storyCount: top.storyCount,
+      sourceCount: top.sourceCount,
+      latestDate: top.latestDate || null,
+      llmConfidence: top.llmConfidence || null,
+      placementPrecision: top.placementPrecision || null,
+      placementBasis: top.placementBasis || null,
+    },
+    clusters: clusters.slice(0, 5).map(cluster => ({
+      id: cluster.id,
+      headline: cluster.headline,
+      region: cluster.region,
+      storyCount: cluster.storyCount,
+      sourceCount: cluster.sourceCount,
+      latestDate: cluster.latestDate || null,
+      llmConfidence: cluster.llmConfidence || null,
+      placementPrecision: cluster.placementPrecision || null,
+      placementBasis: cluster.placementBasis || null,
+    })),
+    llm: snapshot.newsLlmDebug ? {
+      provider: snapshot.newsLlmDebug.provider || null,
+      candidateSetCount: Array.isArray(snapshot.newsLlmDebug.candidateSets) ? snapshot.newsLlmDebug.candidateSets.length : 0,
+    } : null,
+  };
+}
+
 function buildIMessengerBrief(snapshot = {}) {
   const lines = [];
   const evidence = snapshot.evidenceSummary || {};
@@ -285,6 +320,7 @@ function buildIMessengerBrief(snapshot = {}) {
   const topCorroborated = corroborated[0] || null;
   const topSuspect = suspects[0] || null;
   const tgUrgent = snapshot.tg?.urgent || [];
+  const newsSummary = buildNewsClusterSummary(snapshot);
 
   if (evidence.headline) {
     lines.push(`Evidence: ${evidence.headline}`);
@@ -301,6 +337,11 @@ function buildIMessengerBrief(snapshot = {}) {
 
   if (tgUrgent.length) {
     lines.push(`OSINT urgent: ${tgUrgent.length} items`);
+  }
+
+  if (newsSummary?.topCluster) {
+    const top = newsSummary.topCluster;
+    lines.push(`Top news cluster: ${top.headline} (${top.region}, ${top.storyCount} stories/${top.sourceCount} sources)`);
   }
 
   return lines.join('\n');
@@ -515,10 +556,21 @@ app.get('/api/brief/compact', (req, res) => {
   res.json({
     text: buildIMessengerBrief(currentData),
     evidenceSummary: currentData.evidenceSummary || null,
+    newsSummary: buildNewsClusterSummary(currentData),
     topCorroborated: corroborated[0] || null,
     topSuspect: suspects[0] || null,
     corroboratedSignals: corroborated.slice(0, 5),
     suspectSignals: suspects.slice(0, 5),
+  });
+});
+
+app.get('/api/brief/news', (req, res) => {
+  if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  res.json(buildNewsClusterSummary(currentData) || {
+    totalClusters: 0,
+    topCluster: null,
+    clusters: [],
+    llm: null,
   });
 });
 

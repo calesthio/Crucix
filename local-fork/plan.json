@@ -47,7 +47,7 @@
       {
         "id": "epic-2",
         "title": "Evidence normalization and fusion trust model",
-        "status": "in_progress",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-2.1",
@@ -69,12 +69,29 @@
       {
         "id": "epic-3",
         "title": "News clustering and LLM operationalization",
-        "status": "pending"
+        "status": "in_progress",
+        "efforts": [
+          {
+            "id": "effort-3.1",
+            "title": "Expose clustered news summaries through runtime briefing endpoints",
+            "status": "completed"
+          },
+          {
+            "id": "effort-3.2",
+            "title": "Cluster quality signals and operator-facing confidence labeling",
+            "status": "pending"
+          },
+          {
+            "id": "effort-3.3",
+            "title": "LLM cluster operational controls and fallback visibility",
+            "status": "pending"
+          }
+        ]
       },
       {
         "id": "epic-4",
         "title": "iMessage Crucix skill UX",
-        "status": "in_progress",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-4.1",
@@ -131,8 +148,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 16,
-    "activeCycleId": "2026-04-23-cycle-016",
-    "lastCompletedCycleId": "2026-04-23-cycle-016"
+    "sequence": 17,
+    "activeCycleId": "2026-04-23-cycle-017",
+    "lastCompletedCycleId": "2026-04-23-cycle-017"
   }
 }
