@@ -1708,8 +1708,23 @@ app.get('/', (req, res) => {
   }
 });
 
+function syncSnapshotRuntimeFreshness(snapshot = null) {
+  if (!snapshot || typeof snapshot !== 'object') return snapshot;
+  if (!snapshot.agentAnalysis) return snapshot;
+  const lastSweep = snapshot.meta?.timestamp || lastSweepTime || snapshot.agentAnalysis?.freshness?.lastSweep || null;
+  snapshot.agentAnalysis = normalizeAgentAnalysis({
+    ...snapshot.agentAnalysis,
+    freshness: {
+      ...(snapshot.agentAnalysis?.freshness || {}),
+      lastSweep,
+      sweepInProgress,
+    },
+  });
+  return snapshot;
+}
+
 async function ensureCurrentData() {
-  return currentData;
+  return syncSnapshotRuntimeFreshness(currentData);
 }
 
 // API: current data
@@ -2236,6 +2251,8 @@ async function runSweepCycle() {
     broadcast({ type: 'sweep_error', error: err.message });
   } finally {
     sweepInProgress = false;
+    sweepStartedAt = null;
+    syncSnapshotRuntimeFreshness(currentData);
   }
 }
 

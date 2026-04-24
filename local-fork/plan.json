@@ -364,12 +364,122 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-15",
+        "title": "Sweep lifecycle integrity and runtime freshness",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-15.1",
+            "title": "Investigate and fix stuck sweep-in-progress state so lastSweep, sweep lifecycle, and operator freshness signals advance honestly",
+            "status": "completed"
+          },
+          {
+            "id": "effort-15.2",
+            "title": "Add runtime watchdog or self-healing recovery for hung sweep state with explicit health telemetry",
+            "status": "pending"
+          },
+          {
+            "id": "effort-15.3",
+            "title": "Add regression coverage for sweep lifecycle transitions across restart, success, timeout, and failure paths",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-16",
+        "title": "Dashboard rendering resilience and visual truthfulness",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-16.1",
+            "title": "Fix globe-mode or 3D load failure so the Sensor Grid degrades cleanly and does not present a broken primary interaction",
+            "status": "pending"
+          },
+          {
+            "id": "effort-16.2",
+            "title": "Add browser-level validation for key dashboard interactions including layer switching, region focus, and map mode behavior",
+            "status": "pending"
+          },
+          {
+            "id": "effort-16.3",
+            "title": "Harden dashboard fallback messaging so failed visual layers are explicit, bounded, and operator-readable rather than noisy",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-17",
+        "title": "Macro card data hygiene and display safety",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-17.1",
+            "title": "Eliminate invalid macro display values such as NaN/NaNT and replace them with safe operator-facing placeholders",
+            "status": "pending"
+          },
+          {
+            "id": "effort-17.2",
+            "title": "Differentiate unavailable, stale, failed, and not-configured macro inputs in card rendering so blanks are interpretable",
+            "status": "pending"
+          },
+          {
+            "id": "effort-17.3",
+            "title": "Add regression coverage for macro card formatting and degraded-data rendering in dashboard and compact briefing surfaces",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-18",
+        "title": "LLM state coherence and operator messaging",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-18.1",
+            "title": "Unify operator-visible LLM status language across analysis, leverageable ideas, and review surfaces so off, fallback, configured, and parse-failed states do not contradict each other",
+            "status": "pending"
+          },
+          {
+            "id": "effort-18.2",
+            "title": "Expose a compact runtime explanation surface for why deterministic fallback is active and whether a configured LLM path actually participated",
+            "status": "pending"
+          },
+          {
+            "id": "effort-18.3",
+            "title": "Add end-to-end validation for operator-facing LLM status combinations across configured, disabled, fallback, and failure modes",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-19",
+        "title": "Operator review queue usability",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-19.1",
+            "title": "Convert cluster-review quality telemetry into a bounded actionable operator queue instead of metrics-only visibility",
+            "status": "pending"
+          },
+          {
+            "id": "effort-19.2",
+            "title": "Prioritize review items by region pressure, near-duplicate suspicion, and repeated low-confidence patterns so the queue is triage-friendly",
+            "status": "pending"
+          },
+          {
+            "id": "effort-19.3",
+            "title": "Surface review queue state clearly in dashboard and API responses, including empty-queue semantics that explain why metrics may still be elevated",
+            "status": "pending"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 49,
-    "activeCycleId": "2026-04-24-cycle-049",
-    "lastCompletedCycleId": "2026-04-24-cycle-049"
+    "sequence": 50,
+    "activeCycleId": "2026-04-24-cycle-050",
+    "lastCompletedCycleId": "2026-04-24-cycle-050"
   }
 }
