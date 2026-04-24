@@ -1307,6 +1307,7 @@ function renderLower(){
     const num = typeof value === 'number' ? value : Number(value);
     return Number.isFinite(num) ? num : null;
   };
+  const healthByName = Object.fromEntries((D.health||[]).map(entry => [entry.name || entry.n, entry]));
   const fmtFixed = (value, digits=1, suffix='') => {
     const num = finiteNumber(value);
     return num == null ? '--' : `${num.toFixed(digits)}${suffix}`;
@@ -1320,6 +1321,19 @@ function renderLower(){
     if(num == null) return '--';
     const rendered = num.toLocaleString(undefined, {maximumFractionDigits: digits});
     return currency ? `$${rendered}` : rendered;
+  };
+  const sourceStateText = (name, fallback='Unavailable') => {
+    const src = healthByName[name];
+    if(!src) return fallback;
+    if(src.state === 'stale') return 'Stale source';
+    if(src.state === 'degraded') return src.failure?.operatorLabel || 'Degraded source';
+    if(src.state === 'failed') {
+      if(src.failure?.class === 'setup-debt') return 'Not configured';
+      if(src.failure?.class === 'external-limit') return 'Rate limited';
+      return src.failure?.operatorLabel || 'Feed failed';
+    }
+    if(src.counters?.emptyResult) return 'No current data';
+    return fallback;
   };
 
   // Helper: format market quote card
@@ -1360,11 +1374,11 @@ function renderLower(){
     {l:'Nat Gas',v:fmtCompactPrice(D.energy.natgas, {currency:true, digits:2}),s:'$/MMBtu',p:30},
     {l:'Gold',v:fmtMarketPrice(metals.gold),s:dayMove(metals.goldChangePct)||'COMEX proxy',p:58},
     {l:'Silver',v:fmtMarketPrice(metals.silver),s:dayMove(metals.silverChangePct)||'COMEX proxy',p:54},
-    {l:'VIX',v:fmtFixed(vixVal, 1),s:vixChg||'volatility index',p:vixVal!=null?Math.min(vixVal*2.5,100):30},
-    {l:'Fed Funds',v:fmtFixed(ff?.value, 2, '%'),s:ff?.date||'',p:36},
-    {l:'GSCPI',v:fmtFixed(gscpi?.value, 2),s:gscpi?.interpretation||'',p:49},
-    {l:'CPI MoM',v:fmtSignedPct(cpi?.momChangePct)||'--',s:cpi?.date||'',p:37},
-    {l:'Unemployment',v:fmtFixed(ue?.value, 1, '%'),s:(() => { const delta = finiteNumber(ue?.momChange); return delta == null ? '' : `${delta>=0?'+':''}${delta} vs prior`; })(),p:44},
+    {l:'VIX',v:fmtFixed(vixVal, 1),s:vixChg||sourceStateText('YFinance', 'volatility index'),p:vixVal!=null?Math.min(vixVal*2.5,100):30},
+    {l:'Fed Funds',v:fmtFixed(ff?.value, 2, '%'),s:ff?.date||sourceStateText('FRED'),p:36},
+    {l:'GSCPI',v:fmtFixed(gscpi?.value, 2),s:gscpi?.interpretation||sourceStateText('GSCPI'),p:49},
+    {l:'CPI MoM',v:fmtSignedPct(cpi?.momChangePct)||'--',s:cpi?.date||sourceStateText('BLS'),p:37},
+    {l:'Unemployment',v:fmtFixed(ue?.value, 1, '%'),s:(() => { const delta = finiteNumber(ue?.momChange); return delta == null ? sourceStateText('BLS') : `${delta>=0?'+':''}${delta} vs prior`; })(),p:44},
   ];
 
   // Attach sparklines from FRED recent data
