@@ -417,7 +417,7 @@
           {
             "id": "effort-17.1",
             "title": "Eliminate invalid macro display values such as NaN/NaNT and replace them with safe operator-facing placeholders",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-17.2",
@@ -478,8 +478,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 55,
-    "activeCycleId": "2026-04-24-cycle-055",
-    "lastCompletedCycleId": "2026-04-24-cycle-055"
+    "sequence": 56,
+    "activeCycleId": "2026-04-24-cycle-056",
+    "lastCompletedCycleId": "2026-04-24-cycle-056"
   }
 }

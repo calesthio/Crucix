@@ -1303,40 +1303,68 @@ function renderLower(){
     return `<div class="spark-bar" style="height:${Math.max(pct,8)}%"></div>`;
   }).join('');
 
+  const finiteNumber = (value) => {
+    const num = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+  const fmtFixed = (value, digits=1, suffix='') => {
+    const num = finiteNumber(value);
+    return num == null ? '--' : `${num.toFixed(digits)}${suffix}`;
+  };
+  const fmtSignedPct = (value, digits=2, tail='') => {
+    const num = finiteNumber(value);
+    return num == null ? '' : `${num>=0?'+':''}${num.toFixed(digits)}%${tail}`;
+  };
+  const fmtCompactPrice = (value, {currency=false, digits=2}={}) => {
+    const num = finiteNumber(value);
+    if(num == null) return '--';
+    const rendered = num.toLocaleString(undefined, {maximumFractionDigits: digits});
+    return currency ? `$${rendered}` : rendered;
+  };
+
   // Helper: format market quote card
   const mktCard = (q) => {
     if(!q||q.error) return '';
-    const clr = q.changePct>=0?'var(--accent)':'var(--warn)';
-    const arrow = q.changePct>=0?'&#9650;':'&#9660;';
+    const changePct = finiteNumber(q.changePct);
+    const priceNum = finiteNumber(q.price);
+    const positive = changePct == null ? null : changePct >= 0;
+    const clr = positive == null ? 'var(--text)' : (positive ? 'var(--accent)' : 'var(--warn)');
+    const arrow = positive == null ? '' : (positive ? '&#9650;' : '&#9660;');
     const isCrypto = q.symbol.includes('BTC') || q.symbol.includes('ETH');
     const isIndex = q.symbol.startsWith('^');
-    const price = isCrypto
-      ? `$${q.price.toLocaleString()}`
-      : isIndex
-        ? q.price.toLocaleString(undefined, {maximumFractionDigits: 2})
-        : `$${q.price}`;
-    return `<div class="mc"><div class="ml">${q.name||q.symbol}</div><span class="mv" style="color:${clr}">${price}</span><span class="ms" style="color:${clr}">${arrow} ${q.changePct>=0?'+':''}${q.changePct}%</span></div>`;
+    const price = priceNum == null
+      ? '--'
+      : isCrypto
+        ? fmtCompactPrice(priceNum, {currency:true, digits:2})
+        : isIndex
+          ? fmtCompactPrice(priceNum, {currency:false, digits:2})
+          : fmtCompactPrice(priceNum, {currency:true, digits:2});
+    const changeText = changePct == null ? 'Unavailable' : `${arrow} ${fmtSignedPct(changePct)}`;
+    return `<div class="mc"><div class="ml">${q.name||q.symbol}</div><span class="mv" style="color:${clr}">${price}</span><span class="ms" style="color:${clr}">${changeText}</span></div>`;
   };
 
   // VIX from Yahoo Finance live data (fallback to FRED)
   const vixLive = mkt.vix;
   const vixFred = D.fred.find(f=>f.id==='VIXCLS');
-  const vixVal = vixLive?.value || vixFred?.value;
-  const vixChg = vixLive?.changePct != null ? `${vixLive.changePct>=0?'+':''}${vixLive.changePct}%` : '';
-  const fmtMarketPrice = (price) => price != null ? `$${price.toLocaleString(undefined,{maximumFractionDigits:2})}` : '--';
-  const dayMove = (pct) => pct != null ? `${pct>=0?'+':''}${pct}% today` : '';
+  const vixVal = finiteNumber(vixLive?.value ?? vixFred?.value);
+  const vixChg = fmtSignedPct(vixLive?.changePct);
+  const fmtMarketPrice = (price) => fmtCompactPrice(price, {currency:true, digits:2});
+  const dayMove = (pct) => {
+    const rendered = fmtSignedPct(pct);
+    return rendered ? `${rendered} today` : '';
+  };
 
   const metrics=[
-    {l:'WTI Crude',v:`$${D.energy.wti}`,s:'$/bbl',p:70},
-    {l:'Brent',v:`$${D.energy.brent}`,s:'$/bbl',p:75},
-    {l:'Nat Gas',v:`$${D.energy.natgas||'--'}`,s:'$/MMBtu',p:30},
+    {l:'WTI Crude',v:fmtCompactPrice(D.energy.wti, {currency:true, digits:2}),s:'$/bbl',p:70},
+    {l:'Brent',v:fmtCompactPrice(D.energy.brent, {currency:true, digits:2}),s:'$/bbl',p:75},
+    {l:'Nat Gas',v:fmtCompactPrice(D.energy.natgas, {currency:true, digits:2}),s:'$/MMBtu',p:30},
     {l:'Gold',v:fmtMarketPrice(metals.gold),s:dayMove(metals.goldChangePct)||'COMEX proxy',p:58},
     {l:'Silver',v:fmtMarketPrice(metals.silver),s:dayMove(metals.silverChangePct)||'COMEX proxy',p:54},
-    {l:'VIX',v:vixVal?vixVal.toFixed(1):'--',s:vixChg||'volatility index',p:vixVal?Math.min(vixVal*2.5,100):30},
-    {l:'Fed Funds',v:ff?`${ff.value}%`:'--',s:ff?.date||'',p:36},
-    {l:'GSCPI',v:gscpi?gscpi.value.toFixed(2):'--',s:gscpi?.interpretation||'',p:49},
-    {l:'CPI MoM',v:cpi?`+${cpi.momChangePct?.toFixed(2)}%`:'--',s:cpi?.date||'',p:37},
-    {l:'Unemployment',v:ue?`${ue.value}%`:'--',s:ue?`${ue.momChange>0?'+':''}${ue.momChange} vs prior`:'',p:44},
+    {l:'VIX',v:fmtFixed(vixVal, 1),s:vixChg||'volatility index',p:vixVal!=null?Math.min(vixVal*2.5,100):30},
+    {l:'Fed Funds',v:fmtFixed(ff?.value, 2, '%'),s:ff?.date||'',p:36},
+    {l:'GSCPI',v:fmtFixed(gscpi?.value, 2),s:gscpi?.interpretation||'',p:49},
+    {l:'CPI MoM',v:fmtSignedPct(cpi?.momChangePct)||'--',s:cpi?.date||'',p:37},
+    {l:'Unemployment',v:fmtFixed(ue?.value, 1, '%'),s:(() => { const delta = finiteNumber(ue?.momChange); return delta == null ? '' : `${delta>=0?'+':''}${delta} vs prior`; })(),p:44},
   ];
 
   // Attach sparklines from FRED recent data
