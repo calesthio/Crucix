@@ -158,7 +158,7 @@
           {
             "id": "effort-5.2",
             "title": "Per-region prompt tuning and retry/backoff telemetry",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-5.3",
@@ -170,8 +170,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 20,
-    "activeCycleId": "2026-04-23-cycle-020",
-    "lastCompletedCycleId": "2026-04-23-cycle-020"
+    "sequence": 21,
+    "activeCycleId": "2026-04-23-cycle-021",
+    "lastCompletedCycleId": "2026-04-23-cycle-021"
   }
 }

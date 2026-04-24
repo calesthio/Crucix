@@ -23,3 +23,4 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 - Add operator review helpers for suspicious near-duplicate single-source clusters so analysts can inspect likely split-story failures without scanning raw news lists.
 - Add per-region LLM cluster retry/backoff counters so operators can separate transient model failures from chronically weak candidate sets.
 - Capture sampled raw cluster-repair failures with truncation and hashes so prompt regressions can be compared across runs without keeping full model output.
+- Persist rolling per-region cluster prompt stats across restarts if operators need to distinguish one bad sweep from chronic regional failure patterns.

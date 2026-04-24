@@ -331,6 +331,9 @@ function buildNewsClusterSummary(snapshot = {}) {
       heuristicFallbackCount: snapshot.newsLlmDebug.heuristicFallbackCount || 0,
       repairAttemptCount: snapshot.newsLlmDebug.repairAttemptCount || 0,
       repairSuccessCount: snapshot.newsLlmDebug.repairSuccessCount || 0,
+      retryCount: snapshot.newsLlmDebug.retryCount || 0,
+      backoffCount: snapshot.newsLlmDebug.backoffCount || 0,
+      tunedRegionCount: snapshot.newsLlmDebug.tunedRegionCount || 0,
       perRegion: Array.isArray(snapshot.newsLlmDebug.perRegion) ? snapshot.newsLlmDebug.perRegion.slice(0, 8) : [],
     } : null,
   };
@@ -371,7 +374,7 @@ function buildIMessengerBrief(snapshot = {}) {
       lines.push(`News cluster quality: ${newsSummary.quality.high || 0} strong, ${newsSummary.quality.medium || 0} moderate, ${newsSummary.quality.low || 0} weak`);
     }
     if (newsSummary.llm) {
-      lines.push(`News LLM: mode ${newsSummary.llm.requestedMode || 'auto'}, ${newsSummary.llm.used ? 'used' : 'heuristic fallback'}${newsSummary.llm.candidateSetCount != null ? `, candidates ${newsSummary.llm.candidateSetCount}` : ''}${newsSummary.llm.heuristicFallbackCount != null ? `, fallbacks ${newsSummary.llm.heuristicFallbackCount}` : ''}${newsSummary.llm.repairSuccessCount ? `, repairs ${newsSummary.llm.repairSuccessCount}` : ''}`);
+      lines.push(`News LLM: mode ${newsSummary.llm.requestedMode || 'auto'}, ${newsSummary.llm.used ? 'used' : 'heuristic fallback'}${newsSummary.llm.candidateSetCount != null ? `, candidates ${newsSummary.llm.candidateSetCount}` : ''}${newsSummary.llm.heuristicFallbackCount != null ? `, fallbacks ${newsSummary.llm.heuristicFallbackCount}` : ''}${newsSummary.llm.retryCount ? `, retries ${newsSummary.llm.retryCount}` : ''}${newsSummary.llm.repairSuccessCount ? `, repairs ${newsSummary.llm.repairSuccessCount}` : ''}`);
     }
   }
 
