@@ -218,6 +218,21 @@
             "id": "effort-7.5",
             "title": "Validation harness for outlook drift, tipping-point lifecycle accountability, and stale-trend handling",
             "status": "completed"
+          },
+          {
+            "id": "effort-7.6",
+            "title": "Deferred agent-analysis refinement telemetry for timeout, cancellation, completion, and honest fallback visibility",
+            "status": "pending"
+          },
+          {
+            "id": "effort-7.7",
+            "title": "Published-outlook deduplication by horizon plus stable merge rules for deterministic and refined analysis paths",
+            "status": "pending"
+          },
+          {
+            "id": "effort-7.8",
+            "title": "Compact CLI or API summary surface for agent-analysis validation harness pass/fail reporting",
+            "status": "pending"
           }
         ]
       },
