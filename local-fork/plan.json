@@ -148,7 +148,7 @@
       {
         "id": "epic-5",
         "title": "LLM cluster prompt and response hardening",
-        "status": "in_progress",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-5.1",
@@ -163,15 +163,15 @@
           {
             "id": "effort-5.3",
             "title": "Operator review surfacing for persistent cluster parse failures",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 21,
-    "activeCycleId": "2026-04-23-cycle-021",
-    "lastCompletedCycleId": "2026-04-23-cycle-021"
+    "sequence": 22,
+    "activeCycleId": "2026-04-23-cycle-022",
+    "lastCompletedCycleId": "2026-04-23-cycle-022"
   }
 }

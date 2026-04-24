@@ -334,6 +334,11 @@ function buildNewsClusterSummary(snapshot = {}) {
       retryCount: snapshot.newsLlmDebug.retryCount || 0,
       backoffCount: snapshot.newsLlmDebug.backoffCount || 0,
       tunedRegionCount: snapshot.newsLlmDebug.tunedRegionCount || 0,
+      review: snapshot.newsLlmDebug.review ? {
+        failedRegionCount: snapshot.newsLlmDebug.review.failedRegionCount || 0,
+        topReasons: Array.isArray(snapshot.newsLlmDebug.review.topReasons) ? snapshot.newsLlmDebug.review.topReasons.slice(0, 4) : [],
+        reviewItems: Array.isArray(snapshot.newsLlmDebug.review.reviewItems) ? snapshot.newsLlmDebug.review.reviewItems.slice(0, 6) : [],
+      } : null,
       perRegion: Array.isArray(snapshot.newsLlmDebug.perRegion) ? snapshot.newsLlmDebug.perRegion.slice(0, 8) : [],
     } : null,
   };
@@ -375,6 +380,10 @@ function buildIMessengerBrief(snapshot = {}) {
     }
     if (newsSummary.llm) {
       lines.push(`News LLM: mode ${newsSummary.llm.requestedMode || 'auto'}, ${newsSummary.llm.used ? 'used' : 'heuristic fallback'}${newsSummary.llm.candidateSetCount != null ? `, candidates ${newsSummary.llm.candidateSetCount}` : ''}${newsSummary.llm.heuristicFallbackCount != null ? `, fallbacks ${newsSummary.llm.heuristicFallbackCount}` : ''}${newsSummary.llm.retryCount ? `, retries ${newsSummary.llm.retryCount}` : ''}${newsSummary.llm.repairSuccessCount ? `, repairs ${newsSummary.llm.repairSuccessCount}` : ''}`);
+      if (newsSummary.llm.review?.failedRegionCount) {
+        const topReason = newsSummary.llm.review.topReasons?.[0];
+        lines.push(`Cluster review: ${newsSummary.llm.review.failedRegionCount} failed regions${topReason ? `, top reason ${topReason.reason} (${topReason.count})` : ''}`);
+      }
     }
   }
 
@@ -601,6 +610,27 @@ app.get('/api/brief/compact', async (req, res) => {
     topSuspect: suspects[0] || null,
     corroboratedSignals: corroborated.slice(0, 5),
     suspectSignals: suspects.slice(0, 5),
+  });
+});
+
+app.get('/api/brief/news/review', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  const requestedMode = typeof req.query.llm === 'string' ? req.query.llm.trim().toLowerCase() : 'auto';
+  const llmMode = ['auto', 'off', 'force'].includes(requestedMode) ? requestedMode : 'auto';
+  const baseSummary = llmMode === 'auto'
+    ? buildNewsClusterSummary(snapshot)
+    : buildNewsClusterSummary({
+        ...(await (async () => {
+          const { clusters, llmDebug, qualitySummary } = await buildNewsClusters(snapshot.news || [], llmProvider, { mode: llmMode });
+          return { newsClusters: clusters, newsLlmDebug: llmDebug, newsClusterQuality: qualitySummary };
+        })()),
+      });
+  if (!baseSummary?.llm) return res.json({ review: null, llm: null, totalClusters: baseSummary?.totalClusters || 0 });
+  res.json({
+    totalClusters: baseSummary.totalClusters,
+    llm: baseSummary.llm,
+    review: baseSummary.llm.review || { failedRegionCount: 0, topReasons: [], reviewItems: [] },
   });
 });
 

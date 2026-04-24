@@ -784,6 +784,36 @@ function getRegionClusterTuning(region = '') {
   return NEWS_REGION_TUNING[region] || NEWS_REGION_TUNING.default;
 }
 
+function buildClusterFailureReview(debug = {}) {
+  const perRegion = Array.isArray(debug.perRegion) ? debug.perRegion : [];
+  const failures = perRegion.filter(entry => entry?.status === 'heuristic-fallback');
+  const byReason = failures.reduce((acc, entry) => {
+    const reason = entry.reason || 'unknown';
+    acc[reason] = (acc[reason] || 0) + 1;
+    return acc;
+  }, {});
+  const reviewItems = failures
+    .map(entry => ({
+      region: entry.region,
+      reason: entry.reason || 'unknown',
+      itemCount: entry.itemCount || 0,
+      retried: Boolean(entry.retried),
+      repairAttempted: Boolean(entry.repairAttempted),
+      severity: entry.itemCount >= 5 ? 'high' : entry.itemCount >= 3 ? 'medium' : 'low',
+      tuning: entry.tuning || null,
+    }))
+    .sort((a, b) => b.itemCount - a.itemCount || a.region.localeCompare(b.region))
+    .slice(0, 6);
+  return {
+    failedRegionCount: failures.length,
+    topReasons: Object.entries(byReason)
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4),
+    reviewItems,
+  };
+}
+
 async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {}) {
   const heuristic = heuristicStoryGroup(news);
   const mode = options.mode === 'off' ? 'off' : options.mode === 'force' ? 'force' : 'auto';
@@ -898,6 +928,7 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {
   }
   if (!debug.used && !debug.fallbackReason) debug.fallbackReason = debug.attempted ? 'all-candidate-sets-fell-back' : 'no-candidate-sets';
   if (debug.used && !debug.fallbackReason && debug.heuristicFallbackCount > 0) debug.fallbackReason = 'partial-fallback';
+  debug.review = buildClusterFailureReview(debug);
   return { hints: mergedHints, debug };
 }
 
