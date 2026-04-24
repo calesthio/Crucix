@@ -329,6 +329,8 @@ function buildNewsClusterSummary(snapshot = {}) {
       llmSuccessCount: snapshot.newsLlmDebug.llmSuccessCount || 0,
       llmErrorCount: snapshot.newsLlmDebug.llmErrorCount || 0,
       heuristicFallbackCount: snapshot.newsLlmDebug.heuristicFallbackCount || 0,
+      repairAttemptCount: snapshot.newsLlmDebug.repairAttemptCount || 0,
+      repairSuccessCount: snapshot.newsLlmDebug.repairSuccessCount || 0,
       perRegion: Array.isArray(snapshot.newsLlmDebug.perRegion) ? snapshot.newsLlmDebug.perRegion.slice(0, 8) : [],
     } : null,
   };
@@ -369,7 +371,7 @@ function buildIMessengerBrief(snapshot = {}) {
       lines.push(`News cluster quality: ${newsSummary.quality.high || 0} strong, ${newsSummary.quality.medium || 0} moderate, ${newsSummary.quality.low || 0} weak`);
     }
     if (newsSummary.llm) {
-      lines.push(`News LLM: mode ${newsSummary.llm.requestedMode || 'auto'}, ${newsSummary.llm.used ? 'used' : 'heuristic fallback'}${newsSummary.llm.candidateSetCount != null ? `, candidates ${newsSummary.llm.candidateSetCount}` : ''}${newsSummary.llm.heuristicFallbackCount != null ? `, fallbacks ${newsSummary.llm.heuristicFallbackCount}` : ''}`);
+      lines.push(`News LLM: mode ${newsSummary.llm.requestedMode || 'auto'}, ${newsSummary.llm.used ? 'used' : 'heuristic fallback'}${newsSummary.llm.candidateSetCount != null ? `, candidates ${newsSummary.llm.candidateSetCount}` : ''}${newsSummary.llm.heuristicFallbackCount != null ? `, fallbacks ${newsSummary.llm.heuristicFallbackCount}` : ''}${newsSummary.llm.repairSuccessCount ? `, repairs ${newsSummary.llm.repairSuccessCount}` : ''}`);
     }
   }
 
@@ -913,7 +915,7 @@ async function start() {
     // Try to load existing data first for instant display, but do not block initial sweep startup on it.
     try {
       const existing = JSON.parse(readFileSync(join(RUNS_DIR, 'latest.json'), 'utf8'));
-      synthesize(existing).then(data => {
+      synthesize(existing, llmProvider, { newsLlmMode: 'off' }).then(data => {
         currentData = data;
         console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');
         broadcast({ type: 'update', data: currentData });

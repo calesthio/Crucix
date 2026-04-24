@@ -706,6 +706,73 @@ function getNewsLLMProvider(existingProvider = null) {
   return existingProvider;
 }
 
+function extractBalancedJsonFragment(text = '') {
+  const input = String(text || '').trim();
+  if (!input) return null;
+  const fenced = input.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced?.[1]?.trim() || input;
+  const starts = [];
+  for (let i = 0; i < candidate.length; i++) {
+    const ch = candidate[i];
+    if (ch === '{' || ch === '[') starts.push(i);
+  }
+  for (const start of starts) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < candidate.length; i++) {
+      const ch = candidate[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (ch === '{' || ch === '[') depth += 1;
+      if (ch === '}' || ch === ']') {
+        depth -= 1;
+        if (depth === 0) return candidate.slice(start, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
+function parseClusterResponse(text = '', expectedLength = 0) {
+  const fragment = extractBalancedJsonFragment(text);
+  if (!fragment) return { ok: false, reason: 'no-json-match', parsed: null, fragment: null };
+  let parsed;
+  try {
+    parsed = JSON.parse(fragment);
+  } catch {
+    return { ok: false, reason: 'json-parse-failed', parsed: null, fragment };
+  }
+  const items = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(parsed?.items)
+      ? parsed.items
+      : null;
+  if (!Array.isArray(items)) return { ok: false, reason: 'shape-mismatch', parsed: null, fragment };
+  if (expectedLength && items.length !== expectedLength) return { ok: false, reason: 'shape-mismatch', parsed: items, fragment };
+  return { ok: true, reason: null, parsed: items, fragment };
+}
+
+async function attemptClusterRepair(provider, rawText, slice, set, heuristic, news) {
+  const system = 'You repair malformed model output into strict JSON only. Return no prose, no markdown.';
+  const user = `Repair the prior clustering response into strict JSON. Return exactly one JSON object with key "items" containing exactly ${slice.length} objects. Schema per item: {idx:number, storyKey:string, subject:string, primaryRegion:string, confidence:string}. Valid idx values are only from this item list: ${JSON.stringify(slice)}. Prior response: ${JSON.stringify(String(rawText || '').slice(0, 6000))}`;
+  const res = await provider.complete(system, user, { maxTokens: 1800, timeout: 45000 });
+  const repairText = (res.text || '').trim();
+  const parsed = parseClusterResponse(repairText, slice.length);
+  return { repairText, parsed };
+}
+
 async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {}) {
   const heuristic = heuristicStoryGroup(news);
   const mode = options.mode === 'off' ? 'off' : options.mode === 'force' ? 'force' : 'auto';
@@ -723,6 +790,8 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {
     llmSuccessCount: 0,
     llmErrorCount: 0,
     heuristicFallbackCount: 0,
+    repairAttemptCount: 0,
+    repairSuccessCount: 0,
     perRegion: [],
   };
   if (!news.length) {
@@ -748,27 +817,39 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {
   let mergedHints = [...heuristic];
   for (const set of candidateSets) {
     const slice = set.items.map(({ idx, item, heuristic: h }) => ({ idx, title: item.title, source: item.source, region: item.region, heuristicStoryKey: h?.storyKey || null }));
-    const system = 'You consolidate nearby news headlines into repeated-story groups. Return strict JSON only, no prose.';
-    const user = `Region: ${set.region}. Group only these likely-near-duplicate headlines if they are about the same underlying event. Prefer the place impacted by the event, not the nationality of actors. Reuse the same storyKey for same-story items. Return one JSON array with exactly ${slice.length} objects, one per idx. Schema: {idx:number, storyKey:string, subject:string, primaryRegion:string, confidence:string}. Items: ${JSON.stringify(slice)}`;
+    const system = 'You consolidate nearby news headlines into repeated-story groups. Return strict JSON only, no prose, no markdown fences.';
+    const user = `Region: ${set.region}. Group only these likely-near-duplicate headlines if they are about the same underlying event. Prefer the place impacted by the event, not the nationality of actors. Reuse the same storyKey for same-story items. Return exactly one JSON object with key "items" containing exactly ${slice.length} objects, one per idx. Schema per item: {idx:number, storyKey:string, subject:string, primaryRegion:string, confidence:string}. Use only these items: ${JSON.stringify(slice)}`;
     try {
       const res = await provider.complete(system, user, { maxTokens: 1400, timeout: 45000 });
       const text = (res.text || '').trim();
-      const match = text.match(/```json\s*([\s\S]*?)```/) || text.match(/\[[\s\S]*\]/);
       debug[`raw_${set.region}`] = text.substring(0, 3000);
-      if (!match) {
+      let parsedResult = parseClusterResponse(text, slice.length);
+      let usedRepair = false;
+      let repairAttempted = false;
+      if (!parsedResult.ok && ['no-json-match', 'json-parse-failed', 'shape-mismatch'].includes(parsedResult.reason)) {
+        debug.repairAttemptCount += 1;
+        repairAttempted = true;
+        try {
+          const repair = await attemptClusterRepair(provider, text, slice, set, heuristic, news);
+          debug[`repair_${set.region}`] = repair.repairText.substring(0, 3000);
+          if (repair.parsed.ok) {
+            parsedResult = repair.parsed;
+            usedRepair = true;
+            debug.repairSuccessCount += 1;
+          }
+        } catch (repairErr) {
+          debug[`repair_error_${set.region}`] = repairErr.message;
+        }
+      }
+      if (!parsedResult.ok) {
         debug.heuristicFallbackCount += 1;
-        debug.perRegion.push({ region: set.region, status: 'heuristic-fallback', reason: 'no-json-match', itemCount: slice.length });
+        debug.perRegion.push({ region: set.region, status: 'heuristic-fallback', reason: parsedResult.reason, itemCount: slice.length, repairAttempted });
         continue;
       }
-      const parsed = JSON.parse(match[1] || match[0]);
-      if (!Array.isArray(parsed) || parsed.length !== slice.length) {
-        debug.heuristicFallbackCount += 1;
-        debug.perRegion.push({ region: set.region, status: 'heuristic-fallback', reason: 'shape-mismatch', itemCount: slice.length });
-        continue;
-      }
+      const parsed = parsedResult.parsed;
       debug.used = true;
       debug.llmSuccessCount += 1;
-      debug.perRegion.push({ region: set.region, status: 'llm-used', reason: null, itemCount: slice.length });
+      debug.perRegion.push({ region: set.region, status: usedRepair ? 'llm-repaired' : 'llm-used', reason: usedRepair ? 'repair-success' : null, itemCount: slice.length });
       for (const x of parsed) {
         if (!Number.isInteger(x?.idx) || !news[x.idx]) continue;
         mergedHints[x.idx] = {
@@ -783,7 +864,7 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {
       debug.llmErrorCount += 1;
       debug.heuristicFallbackCount += 1;
       debug[`error_${set.region}`] = err.message;
-      debug.perRegion.push({ region: set.region, status: 'heuristic-fallback', reason: err.message, itemCount: slice.length });
+      debug.perRegion.push({ region: set.region, status: 'heuristic-fallback', reason: err.message, itemCount: slice.length, repairAttempted: false });
     }
   }
   if (!debug.used && !debug.fallbackReason) debug.fallbackReason = debug.attempted ? 'all-candidate-sets-fell-back' : 'no-candidate-sets';
@@ -1030,7 +1111,7 @@ export function generateIdeas(V2) {
 }
 
 // === Synthesize raw sweep data into dashboard format ===
-export async function synthesize(data, llmProvider = createLLMProvider(config.llm)) {
+export async function synthesize(data, llmProvider = createLLMProvider(config.llm), options = {}) {
   const openSkySource = data.sources.OpenSky || {};
   const liveAirHotspots = openSkySource.hotspots || [];
   const sourceProvidedFallback = openSkySource.servedFromCache
@@ -1249,7 +1330,7 @@ export async function synthesize(data, llmProvider = createLLMProvider(config.ll
 
   // Fetch RSS
   const news = await fetchAllNews();
-  const { clusters: newsClusters, llmDebug: newsLlmDebug, qualitySummary: newsClusterQuality } = await buildNewsClusters(news, llmProvider);
+  const { clusters: newsClusters, llmDebug: newsLlmDebug, qualitySummary: newsClusterQuality } = await buildNewsClusters(news, llmProvider, { mode: options.newsLlmMode || 'auto' });
 
   const corroboratedSignals = buildCorroboratedSignals({
     tg: { urgent: tgUrgent, topPosts: tgTop, posts: tgData.totalPosts || 0 },
