@@ -105,14 +105,19 @@
             "id": "effort-4.6",
             "title": "Context-state inspection and reset contract for chat follow-ups",
             "status": "completed"
+          },
+          {
+            "id": "effort-4.7",
+            "title": "Bounded selection-memory hygiene and health visibility",
+            "status": "completed"
           }
         ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 12,
-    "activeCycleId": "2026-04-23-cycle-012",
-    "lastCompletedCycleId": "2026-04-23-cycle-012"
+    "sequence": 13,
+    "activeCycleId": "2026-04-23-cycle-013",
+    "lastCompletedCycleId": "2026-04-23-cycle-013"
   }
 }

@@ -37,6 +37,7 @@ const startTime = Date.now();
 const sseClients = new Set();
 const selectionMemory = new Map();
 const SELECTION_MEMORY_TTL_MS = 10 * 60 * 1000;
+const SELECTION_MEMORY_MAX_ENTRIES = 100;
 
 function signalId(kind = 'signal', item = {}, index = 0) {
   const raw = `${kind}:${item.signal || item.category || 'item'}:${index}`
@@ -64,12 +65,46 @@ function trustPhrase(item = {}) {
   return `${sourceHealth} via ${evidenceSource}`;
 }
 
+function pruneSelectionMemory() {
+  const now = Date.now();
+  let pruned = 0;
+  for (const [key, value] of selectionMemory.entries()) {
+    if (!value || value.expiresAt <= now) {
+      selectionMemory.delete(key);
+      pruned += 1;
+    }
+  }
+  while (selectionMemory.size > SELECTION_MEMORY_MAX_ENTRIES) {
+    const oldestKey = selectionMemory.keys().next().value;
+    if (!oldestKey) break;
+    selectionMemory.delete(oldestKey);
+    pruned += 1;
+  }
+  return pruned;
+}
+
+function selectionMemoryStats() {
+  pruneSelectionMemory();
+  let nextExpiry = null;
+  for (const value of selectionMemory.values()) {
+    if (!nextExpiry || value.expiresAt < nextExpiry) nextExpiry = value.expiresAt;
+  }
+  return {
+    activeContexts: selectionMemory.size,
+    maxEntries: SELECTION_MEMORY_MAX_ENTRIES,
+    ttlMs: SELECTION_MEMORY_TTL_MS,
+    nextExpiry: nextExpiry ? new Date(nextExpiry).toISOString() : null,
+  };
+}
+
 function rememberSelection(contextKey = '', selection = null) {
   if (!contextKey || !selection?.id) return;
+  pruneSelectionMemory();
   selectionMemory.set(contextKey, {
     ...selection,
     expiresAt: Date.now() + SELECTION_MEMORY_TTL_MS,
   });
+  pruneSelectionMemory();
 }
 
 function recallSelection(contextKey = '') {
@@ -85,10 +120,12 @@ function recallSelection(contextKey = '') {
 
 function clearSelection(contextKey = '') {
   if (!contextKey) return false;
+  pruneSelectionMemory();
   return selectionMemory.delete(contextKey);
 }
 
 function selectionMeta(contextKey = '') {
+  pruneSelectionMemory();
   const remembered = recallSelection(contextKey);
   if (!remembered) return null;
   return {
@@ -466,6 +503,13 @@ app.get('/api/brief/context', (req, res) => {
   res.json({
     context: contextKey,
     selection: selectionMeta(contextKey),
+    memory: selectionMemoryStats(),
+  });
+});
+
+app.get('/api/brief/context/health', (req, res) => {
+  res.json({
+    memory: selectionMemoryStats(),
   });
 });
 
@@ -499,6 +543,7 @@ app.get('/api/health', (req, res) => {
     telegramEnabled: !!(config.telegram.botToken && config.telegram.chatId),
     refreshIntervalMinutes: config.refreshIntervalMinutes,
     language: currentLanguage,
+    selectionMemory: selectionMemoryStats(),
   });
 });
 

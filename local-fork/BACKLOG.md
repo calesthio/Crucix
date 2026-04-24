@@ -15,3 +15,4 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 - Add short-lived conversational selection memory so chat references like `that one` can bind to the user’s last resolved signal across turns instead of only within one request.
 - Add optional persisted conversation state for selected signals if the iMessage layer needs continuity across runtime restarts, not just in-memory follow-up handling.
 - Add selection-memory size limits and opportunistic pruning so context-state helpers do not accumulate unbounded stale entries under high chat volume.
+- Add per-context last-access timestamps and optional LRU-style eviction if chat traffic shows repeated churn beyond a simple max-entry cap.
