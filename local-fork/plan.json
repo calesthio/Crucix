@@ -227,7 +227,7 @@
           {
             "id": "effort-7.7",
             "title": "Published-outlook deduplication by horizon plus stable merge rules for deterministic and refined analysis paths",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-7.8",
@@ -344,8 +344,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 31,
-    "activeCycleId": "2026-04-24-cycle-031",
-    "lastCompletedCycleId": "2026-04-24-cycle-031"
+    "sequence": 32,
+    "activeCycleId": "2026-04-24-cycle-032",
+    "lastCompletedCycleId": "2026-04-24-cycle-032"
   }
 }

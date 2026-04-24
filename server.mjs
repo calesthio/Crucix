@@ -920,10 +920,48 @@ function buildDeterministicAgentAnalysis(snapshot = {}) {
   return normalizeAgentAnalysis(schema);
 }
 
+function confidenceRank(value = 'low') {
+  return value === 'high' ? 3 : value === 'medium' ? 2 : 1;
+}
+
+function dedupePublishedOutlook(analysis = {}) {
+  const normalized = normalizeAgentAnalysis(analysis);
+  const horizonOrder = new Map((normalized.horizons || []).map((item, index) => [item.id, index]));
+  const selected = new Map();
+
+  for (const item of normalized.outlook || []) {
+    const key = item.horizonId || 'unknown';
+    const existing = selected.get(key);
+    if (!existing) {
+      selected.set(key, item);
+      continue;
+    }
+    const itemRank = confidenceRank(item.confidence);
+    const existingRank = confidenceRank(existing.confidence);
+    if (itemRank > existingRank) {
+      selected.set(key, item);
+      continue;
+    }
+    if (itemRank === existingRank && (item.evidenceRefs?.length || 0) > (existing.evidenceRefs?.length || 0)) {
+      selected.set(key, item);
+    }
+  }
+
+  return Array.from(selected.values())
+    .sort((a, b) => {
+      const aOrder = horizonOrder.has(a.horizonId) ? horizonOrder.get(a.horizonId) : Number.MAX_SAFE_INTEGER;
+      const bOrder = horizonOrder.has(b.horizonId) ? horizonOrder.get(b.horizonId) : Number.MAX_SAFE_INTEGER;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return confidenceRank(b.confidence) - confidenceRank(a.confidence);
+    })
+    .slice(0, 4);
+}
+
 function buildPublishedAgentAnalysis(analysis = {}) {
   const normalized = reconcileTippingPointLifecycle(analysis);
   return {
     ...normalized,
+    outlook: dedupePublishedOutlook(normalized),
     tippingPoints: normalized.tippingPoints.filter(item => item.status === 'active' && item.probability === 'HIGH').slice(0, 5),
   };
 }

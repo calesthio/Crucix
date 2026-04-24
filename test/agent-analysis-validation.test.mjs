@@ -30,6 +30,7 @@ function loadHarness({ llmConfigured = true, now = '2026-04-24T18:00:00.000Z' } 
       buildDeterministicAgentAnalysis,
       reconcileTippingPointLifecycle,
       buildPublishedAgentAnalysis,
+      dedupePublishedOutlook,
       isCurrentSnapshotStale,
     };
   `, context);
@@ -153,6 +154,49 @@ test('degraded source-health windows keep caution visible', () => {
     assert.equal(analysis.status, 'degraded');
     assert.ok(analysis.risks.some(item => item.title === 'Source degradation' && item.severity === 'high'));
     assert.ok(analysis.caveats.some(item => /failed sources/i.test(item.text)));
+  } finally {
+    harness.restore();
+  }
+});
+
+test('published outlook deduplicates repeated horizons and preserves stable horizon order', () => {
+  const harness = loadHarness();
+  try {
+    const published = harness.buildPublishedAgentAnalysis({
+      status: 'ready',
+      confidenceLabel: 'medium',
+      horizons: [
+        { id: 'short', label: 'Next 24h', windowHours: 24, status: 'ready', summary: 'short' },
+        { id: 'medium', label: 'Next 72h', windowHours: 72, status: 'ready', summary: 'medium' },
+        { id: 'extended', label: 'Next 7d', windowHours: 168, status: 'ready', summary: 'extended' },
+      ],
+      outlook: [
+        { horizonId: 'medium', text: 'Medium low confidence', confidence: 'low', evidenceRefs: [{ type: 'trend', id: 'a', label: 'a' }] },
+        { horizonId: 'short', text: 'Short medium confidence', confidence: 'medium', evidenceRefs: [{ type: 'trend', id: 'b', label: 'b' }] },
+        { horizonId: 'short', text: 'Short high confidence', confidence: 'high', evidenceRefs: [{ type: 'trend', id: 'c', label: 'c' }] },
+        { horizonId: 'extended', text: 'Extended medium confidence', confidence: 'medium', evidenceRefs: [] },
+      ],
+    });
+    assert.deepEqual(Array.from(published.outlook, item => item.horizonId), ['short', 'medium', 'extended']);
+    assert.equal(published.outlook[0].text, 'Short high confidence');
+    assert.equal(published.outlook.length, 3);
+  } finally {
+    harness.restore();
+  }
+});
+
+ test('published outlook falls back to stronger evidence count when confidence ties', () => {
+  const harness = loadHarness();
+  try {
+    const deduped = harness.dedupePublishedOutlook({
+      horizons: [{ id: 'short', label: 'Next 24h', windowHours: 24, status: 'ready', summary: 'short' }],
+      outlook: [
+        { horizonId: 'short', text: 'Weakly evidenced', confidence: 'medium', evidenceRefs: [{ type: 'trend', id: 'a', label: 'a' }] },
+        { horizonId: 'short', text: 'More evidenced', confidence: 'medium', evidenceRefs: [{ type: 'trend', id: 'a', label: 'a' }, { type: 'signal', id: 'b', label: 'b' }] },
+      ],
+    });
+    assert.equal(deduped.length, 1);
+    assert.equal(deduped[0].text, 'More evidenced');
   } finally {
     harness.restore();
   }
