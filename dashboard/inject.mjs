@@ -817,7 +817,7 @@ function pushRepairArtifact(debug = {}, artifact = {}) {
   debug.repairArtifacts.push(artifact);
 }
 
-function buildRepairArtifact({ region = '', itemCount = 0, stage = 'initial', reason = 'unknown', rawText = '', repairText = '', retried = false, repairAttempted = false, fragment = null, error = null } = {}) {
+function buildRepairArtifact({ region = '', itemCount = 0, stage = 'initial', reason = 'unknown', rawText = '', repairText = '', retried = false, repairAttempted = false, fragment = null, error = null, provider = null, model = null, promptSystem = '', promptUser = '', repairSystem = '', repairUser = '', tuning = null } = {}) {
   return {
     region: region || 'unknown',
     itemCount: itemCount || 0,
@@ -825,6 +825,15 @@ function buildRepairArtifact({ region = '', itemCount = 0, stage = 'initial', re
     reason,
     retried: Boolean(retried),
     repairAttempted: Boolean(repairAttempted),
+    provider: provider || null,
+    model: model || null,
+    fingerprintVersion: 'cluster-repair-artifact-v1',
+    promptFingerprint: promptSystem || promptUser ? hashArtifactText(`${promptSystem}\n---\n${promptUser}`) : null,
+    repairPromptFingerprint: repairSystem || repairUser ? hashArtifactText(`${repairSystem}\n---\n${repairUser}`) : null,
+    promptPreview: compactArtifactSnippet(promptUser, 160),
+    repairPromptPreview: compactArtifactSnippet(repairUser, 160),
+    tuningFingerprint: tuning ? hashArtifactText(JSON.stringify(tuning)) : null,
+    tuning,
     rawHash: rawText ? hashArtifactText(rawText) : null,
     rawPreview: compactArtifactSnippet(rawText),
     fragmentHash: fragment ? hashArtifactText(fragment) : null,
@@ -917,6 +926,8 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {
     if (tuning !== NEWS_REGION_TUNING.default) debug.tunedRegionCount += 1;
     const system = 'You consolidate nearby news headlines into repeated-story groups. Return strict JSON only, no prose, no markdown fences.';
     const user = `Region: ${set.region}. ${tuning.promptBias} Group only these likely-near-duplicate headlines if they are about the same underlying event. Prefer the place impacted by the event, not the nationality of actors. Reuse the same storyKey for same-story items. Return exactly one JSON object with key "items" containing exactly ${slice.length} objects, one per idx. Schema per item: {idx:number, storyKey:string, subject:string, primaryRegion:string, confidence:string}. Use only these items: ${JSON.stringify(slice)}`;
+    const repairSystem = 'You repair malformed model output into strict JSON only. Return no prose, no markdown.';
+    const buildRepairUser = raw => `Repair the prior clustering response into strict JSON. Return exactly one JSON object with key "items" containing exactly ${slice.length} objects. Schema per item: {idx:number, storyKey:string, subject:string, primaryRegion:string, confidence:string}. Valid idx values are only from this item list: ${JSON.stringify(slice)}. Prior response: ${JSON.stringify(String(raw || '').slice(0, 6000))}`;
     let usedRepair = false;
     let repairAttempted = false;
     let retried = false;
@@ -958,6 +969,13 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {
               retried,
               repairAttempted,
               fragment: repair.parsed.fragment || parsedResult.fragment || null,
+              provider: provider?.name || null,
+              model: provider?.model || null,
+              promptSystem: system,
+              promptUser: user,
+              repairSystem,
+              repairUser: buildRepairUser(lastText),
+              tuning: { maxRetries: tuning.maxRetries || 0, repairTimeout: tuning.repairTimeout || 45000, promptBias: tuning.promptBias || null },
             }));
             parsedResult = repair.parsed;
           }
@@ -973,6 +991,13 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {
             repairAttempted,
             fragment: parsedResult.fragment || null,
             error: repairErr.message,
+            provider: provider?.name || null,
+            model: provider?.model || null,
+            promptSystem: system,
+            promptUser: user,
+            repairSystem,
+            repairUser: buildRepairUser(lastText),
+            tuning: { maxRetries: tuning.maxRetries || 0, repairTimeout: tuning.repairTimeout || 45000, promptBias: tuning.promptBias || null },
           }));
         }
       }
@@ -987,6 +1012,13 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {
             retried,
             repairAttempted,
             fragment: parsedResult.fragment || null,
+            provider: provider?.name || null,
+            model: provider?.model || null,
+            promptSystem: system,
+            promptUser: user,
+            repairSystem,
+            repairUser: buildRepairUser(lastText),
+            tuning: { maxRetries: tuning.maxRetries || 0, repairTimeout: tuning.repairTimeout || 45000, promptBias: tuning.promptBias || null },
           }));
         }
         debug.heuristicFallbackCount += 1;
