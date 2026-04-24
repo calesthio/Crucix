@@ -681,11 +681,47 @@ function summarizeClusterReviewMetrics(clusters = []) {
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, 5)
     .map(([region, count]) => ({ region, count }));
+
+  const normalizeDuplicateTokens = text => String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(token => token && !['the','and','for','with','from','that','this','into','after','amid','over','under','will','have','has','had','says','say','news','latest','live','update','updates'].includes(token))
+    .slice(0, 8);
+  const duplicateSimilarity = (a, b) => {
+    const A = new Set(normalizeDuplicateTokens(a));
+    const B = new Set(normalizeDuplicateTokens(b));
+    if (!A.size || !B.size) return 0;
+    let overlap = 0;
+    for (const token of A) if (B.has(token)) overlap += 1;
+    return overlap / Math.max(Math.min(A.size, B.size), 1);
+  };
+
+  const suspiciousNearDuplicates = [];
+  for (let i = 0; i < splitCandidates.length; i++) {
+    for (let j = i + 1; j < splitCandidates.length; j++) {
+      const a = splitCandidates[i];
+      const b = splitCandidates[j];
+      if ((a.region || '') !== (b.region || '')) continue;
+      const similarity = duplicateSimilarity(a.headline || a.summary || '', b.headline || b.summary || '');
+      if (similarity < 0.5) continue;
+      suspiciousNearDuplicates.push({
+        region: a.region || 'Unknown',
+        similarity: Number(similarity.toFixed(2)),
+        clusterA: { id: a.id || null, headline: a.headline || a.summary || null, sourceCount: a.sourceCount || 0, storyCount: a.storyCount || 0 },
+        clusterB: { id: b.id || null, headline: b.headline || b.summary || null, sourceCount: b.sourceCount || 0, storyCount: b.storyCount || 0 },
+      });
+    }
+  }
+  suspiciousNearDuplicates.sort((a, b) => b.similarity - a.similarity || String(a.region).localeCompare(String(b.region)));
+
   return {
     lowConfidenceCount: lowConfidenceClusters.length,
     mergeCandidateCount,
     splitCandidateCount: splitCandidates.length,
     topSplitRegions,
+    suspiciousNearDuplicateCount: suspiciousNearDuplicates.length,
+    suspiciousNearDuplicates: suspiciousNearDuplicates.slice(0, 8),
   };
 }
 

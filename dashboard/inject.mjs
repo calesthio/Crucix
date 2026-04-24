@@ -1083,11 +1083,31 @@ function summarizeClusterReviewMetrics(clusters = []) {
     .slice(0, 5)
     .map(([region, count]) => ({ region, count }));
 
+  const suspiciousNearDuplicates = [];
+  for (let i = 0; i < splitCandidateClusters.length; i++) {
+    for (let j = i + 1; j < splitCandidateClusters.length; j++) {
+      const a = splitCandidateClusters[i];
+      const b = splitCandidateClusters[j];
+      if ((a.region || '') !== (b.region || '')) continue;
+      const similarity = titleSimilarity(a.headline || a.summary || '', b.headline || b.summary || '');
+      if (similarity < 0.5) continue;
+      suspiciousNearDuplicates.push({
+        region: a.region || 'Unknown',
+        similarity: Number(similarity.toFixed(2)),
+        clusterA: { id: a.id || null, headline: a.headline || a.summary || null, sourceCount: a.sourceCount || 0, storyCount: a.storyCount || 0 },
+        clusterB: { id: b.id || null, headline: b.headline || b.summary || null, sourceCount: b.sourceCount || 0, storyCount: b.storyCount || 0 },
+      });
+    }
+  }
+  suspiciousNearDuplicates.sort((a, b) => b.similarity - a.similarity || String(a.region).localeCompare(String(b.region)));
+
   return {
     lowConfidenceCount: lowConfidenceClusters.length,
     mergeCandidateCount: mergeCandidateClusters.length,
     splitCandidateCount: splitCandidateClusters.length,
     topSplitRegions,
+    suspiciousNearDuplicateCount: suspiciousNearDuplicates.length,
+    suspiciousNearDuplicates: suspiciousNearDuplicates.slice(0, 8),
   };
 }
 
