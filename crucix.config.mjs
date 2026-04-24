@@ -35,6 +35,22 @@ export default {
     repairArtifactMaxEntries: parseInt(process.env.REPAIR_ARTIFACT_MAX_ENTRIES) || 50,
   },
 
+  freshnessPolicy: {
+    defaultFreshnessMinutes: parseInt(process.env.DEFAULT_FRESHNESS_MINUTES) || 60,
+    sources: {
+      ...(process.env.OPENSKY_FRESHNESS_MINUTES ? { OpenSky: { freshnessTargetMinutes: parseInt(process.env.OPENSKY_FRESHNESS_MINUTES) || 20 } } : {}),
+      ...(process.env.YFINANCE_FRESHNESS_MINUTES ? { YFinance: { freshnessTargetMinutes: parseInt(process.env.YFINANCE_FRESHNESS_MINUTES) || 20 } } : {}),
+      ...(process.env.TELEGRAM_FRESHNESS_MINUTES ? { Telegram: { freshnessTargetMinutes: parseInt(process.env.TELEGRAM_FRESHNESS_MINUTES) || 30 } } : {}),
+      ...(process.env.GDELT_FRESHNESS_MINUTES ? { GDELT: { freshnessTargetMinutes: parseInt(process.env.GDELT_FRESHNESS_MINUTES) || 30 } } : {}),
+    },
+    areas: {
+      ...(process.env.AIR_FRESHNESS_WARN_MINUTES ? { air: { freshnessWarnMinutes: parseInt(process.env.AIR_FRESHNESS_WARN_MINUTES) || 30 } } : {}),
+      ...(process.env.MARKETS_FRESHNESS_WARN_MINUTES ? { markets: { freshnessWarnMinutes: parseInt(process.env.MARKETS_FRESHNESS_WARN_MINUTES) || 20 } } : {}),
+      ...(process.env.TELEGRAM_FRESHNESS_WARN_MINUTES ? { telegram: { freshnessWarnMinutes: parseInt(process.env.TELEGRAM_FRESHNESS_WARN_MINUTES) || 30 } } : {}),
+      ...(process.env.NEWS_FRESHNESS_WARN_MINUTES ? { news: { freshnessWarnMinutes: parseInt(process.env.NEWS_FRESHNESS_WARN_MINUTES) || 120 } } : {}),
+    },
+  },
+
   // Delta engine thresholds — override defaults from lib/delta/engine.mjs
   // Set to null to use built-in defaults
   delta: {

@@ -244,7 +244,7 @@
           {
             "id": "effort-8.1",
             "title": "Configurable per-source freshness thresholds and policy tuning",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-8.2",
@@ -344,8 +344,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 33,
-    "activeCycleId": "2026-04-24-cycle-033",
-    "lastCompletedCycleId": "2026-04-24-cycle-033"
+    "sequence": 34,
+    "activeCycleId": "2026-04-24-cycle-034",
+    "lastCompletedCycleId": "2026-04-24-cycle-034"
   }
 }

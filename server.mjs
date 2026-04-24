@@ -17,6 +17,7 @@ import { generateLLMIdeas } from './lib/llm/ideas.mjs';
 import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
 import { buildSixHourBaseline } from './lib/baseline-sixhour.mjs';
+import { getFreshnessPolicy } from './lib/freshness-policy.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -1617,6 +1618,11 @@ app.get('/api/health', (req, res) => {
     sourcesOk: currentData?.meta?.sourcesOk || 0,
     sourcesFailed: currentData?.meta?.sourcesFailed || 0,
     sourceHealthSummary: currentData?.healthSummary || null,
+    freshnessPolicy: {
+      configured: getFreshnessPolicy(),
+      activeSourceHealthPolicy: currentData?.healthSummary?.policy || null,
+      activeEvidencePolicy: currentData?.evidenceSummary?.policy || null,
+    },
     llmEnabled: !!config.llm.provider,
     llmProvider: config.llm.provider,
     telegramEnabled: !!(config.telegram.botToken && config.telegram.chatId),
