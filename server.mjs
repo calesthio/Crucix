@@ -1005,6 +1005,11 @@ function buildIMessengerBrief(snapshot = {}) {
   const topSuspect = suspects[0] || null;
   const tgUrgent = snapshot.tg?.urgent || [];
   const newsSummary = buildNewsClusterSummary(snapshot);
+  const agentAnalysis = snapshot.agentAnalysis || buildAgentAnalysis(snapshot);
+
+  if (Array.isArray(agentAnalysis?.iMessageSummary) && agentAnalysis.iMessageSummary.length) {
+    lines.push(...agentAnalysis.iMessageSummary.slice(0, 5));
+  }
 
   if (evidence.headline) {
     lines.push(`Evidence: ${evidence.headline}`);
@@ -1310,6 +1315,20 @@ app.get('/api/analysis', async (req, res) => {
   res.json({
     agentAnalysis: snapshot.agentAnalysis || buildAgentAnalysis(snapshot),
     meta: snapshot.agentAnalysisMeta || { source: 'deterministic', used: false, error: null, model: llmProvider?.model || null },
+  });
+});
+
+app.get('/api/analysis/review', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  const analysis = snapshot.agentAnalysis || buildAgentAnalysis(snapshot);
+  res.json({
+    agentAnalysis: analysis,
+    published: buildAgentAnalysisSummary(snapshot),
+    meta: snapshot.agentAnalysisMeta || { source: 'deterministic', used: false, error: null, model: llmProvider?.model || null },
+    trendSummary: snapshot.trendSummary || memory.getTrendSummary(),
+    baseline6h: snapshot.baseline6h || null,
+    deltaSummary: snapshot.delta?.summary || null,
   });
 });
 

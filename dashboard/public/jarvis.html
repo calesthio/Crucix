@@ -1333,12 +1333,26 @@ function renderLower(){
         <div class="spark">${sparkHtml}</div>
       </div>
     </div>`;
+  const analysis = D.agentAnalysis || {};
+  const analysisMeta = D.agentAnalysisMeta || {};
+  const analysisOutlook = (analysis.outlook || []).slice(0,3).map(item=>`<div class="signal-row"><strong>${cleanText(item.horizonId || 'outlook')}</strong><p>${cleanText(item.text || '')}</p></div>`).join('') || `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">No outlook published</div>`;
+  const analysisRisks = (analysis.risks || []).slice(0,3).map(item=>`<div class="signal-row" style="border-left-color:${item.severity==='high'?'var(--warn)':'rgba(68,204,255,0.5)'}"><strong>${cleanText(item.title || 'Risk')}</strong><p>${cleanText(item.summary || '')}</p></div>`).join('') || `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">No key risks published</div>`;
+  const analysisTp = (analysis.tippingPoints || []).slice(0,3).map(item=>`<div class="signal-row" style="border-left-color:var(--accent2)"><strong>${cleanText(item.title || 'Tipping point')}</strong><p>${cleanText(item.condition || '')}</p><div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px">Impact: ${cleanText(item.expectedImpact || '')}</div></div>`).join('') || `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">No active HIGH tipping points</div>`;
+  const analysisCaveats = (analysis.caveats || []).slice(0,3).map(item=>`<div style="font-size:10px;color:${item.level==='critical'?'var(--danger)':item.level==='warning'?'var(--warn)':'var(--dim)'};margin-bottom:4px">• ${cleanText(item.text || '')}</div>`).join('') || `<div style="font-size:10px;color:var(--dim)">No caveats</div>`;
+  const analysisPanel = `<div class="g-panel lp-analysis">
+      <div class="sec-head"><h3>Agent Analysis</h3><span class="badge">${cleanText((analysisMeta.source || 'deterministic').toUpperCase())}</span></div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:8px">Confidence ${cleanText((analysis.confidenceLabel || 'low').toUpperCase())} • Status ${cleanText((analysis.status || 'unknown').toUpperCase())}</div>
+      <div style="margin-bottom:8px"><div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">OUTLOOK</div>${analysisOutlook}</div>
+      <div style="margin-bottom:8px"><div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">KEY RISKS</div>${analysisRisks}</div>
+      <div style="margin-bottom:8px"><div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">ACTIVE HIGH TIPPING POINTS</div>${analysisTp}</div>
+      <div><div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">CAVEATS</div>${analysisCaveats}</div>
+    </div>`;
   const ideasPanel = `<div class="g-panel lp-ideas">
       <div class="sec-head"><h3>${t('panels.tradeIdeas','Leverageable Ideas')}</h3>${D.ideasSource==='llm'?'<span class="ideas-src llm">'+t('ideas.aiEnhanced','AI ENHANCED')+'</span>':D.ideasSource==='disabled'?'<span class="ideas-src static">'+t('ideas.llmOff','LLM OFF')+'</span>':'<span class="ideas-src static">'+t('ideas.pending','PENDING')+'</span>'}</div>
       ${ideasHtml}
       <div class="disclosure">FOR INFORMATIONAL PURPOSES ONLY. This is not financial advice, a recommendation to buy or sell any security, or a solicitation of any kind. All signal-based observations are derived from publicly available OSINT data and should not be relied upon for investment decisions. Consult a licensed financial advisor before making any investment. Past performance does not guarantee future results.</div>
     </div>`;
-  document.getElementById('lowerGrid').innerHTML=`${tickerPanel}${osintPanel}${macroPanel}${ideasPanel}`;
+  document.getElementById('lowerGrid').innerHTML=`${tickerPanel}${osintPanel}${macroPanel}${analysisPanel}${ideasPanel}`;
 }
 
 // === RIGHT RAIL ===
@@ -1414,12 +1428,21 @@ function renderRight(){
   }
   const deltaHtml = hasDelta ? deltaRows.join('') : `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${t('delta.noChanges','No changes since last sweep')}</div>`;
 
+  const analysis = D.agentAnalysis || {};
+  const analysisMeta = D.agentAnalysisMeta || {};
+  const analysisReview = `<div class="g-panel right-analysis-review">
+      <div class="sec-head"><h3>Analysis Review</h3><span class="badge">${cleanText((analysisMeta.source || 'deterministic').toUpperCase())}</span></div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:8px">${cleanText((analysisMeta.model || 'no-model').toString())}${analysisMeta.error?` • ${cleanText(analysisMeta.error)}`:''}</div>
+      <div style="font-size:10px;color:var(--dim);margin-bottom:8px">${(analysis.iMessageSummary||[]).slice(0,5).map(line=>`<div style="margin-bottom:4px">• ${cleanText(line)}</div>`).join('') || 'No analysis summary yet'}</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">Review endpoint: <span style="color:var(--accent2)">/api/analysis/review</span></div>
+    </div>`;
   document.getElementById('rightRail').innerHTML=`
     <div class="g-panel right-signals">
       <div class="sec-head"><h3>${t('panels.crossSourceSignals','Cross-Source Signals')}</h3><span class="badge">${t('badges.worldview','WORLDVIEW')}</span></div>
       ${signals}
     </div>
     ${mobile ? '' : buildOsintPanel('right-osint', 260)}
+    ${analysisReview}
     ${buildEvidencePanel('right-evidence')}
     <div class="g-panel right-core">
       <div class="sec-head"><h3>${t('panels.signalCore','Signal Core')}</h3><span class="badge">${t('badges.hotMetrics','HOT METRICS')}</span></div>
