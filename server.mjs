@@ -659,6 +659,8 @@ function buildNewsClusterSummary(snapshot = {}) {
 }
 
 const ANALYSIS_STALE_CURRENT_MS = 6 * 60 * 60 * 1000;
+const AGENT_ANALYSIS_REFINEMENT_TIMEOUT_MS = 90 * 1000;
+let agentAnalysisRefinementSeq = 0;
 
 function clampText(value = '', limit = 220) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
@@ -1021,11 +1023,31 @@ function buildAgentAnalysisSummary(snapshot = {}) {
     status: analysis.status,
     confidenceLabel: analysis.confidenceLabel,
     source: snapshot.agentAnalysisMeta?.source || 'deterministic',
+    refinementState: snapshot.agentAnalysisMeta?.refinementState || 'not-requested',
     outlook: analysis.outlook.slice(0, 2),
     risks: analysis.risks.slice(0, 3),
     tippingPoints: analysis.tippingPoints.slice(0, 3),
     caveats: analysis.caveats.slice(0, 3),
     iMessageSummary: analysis.iMessageSummary.slice(0, 5),
+  };
+}
+
+function buildAgentAnalysisMeta(overrides = {}) {
+  return {
+    source: 'deterministic',
+    used: false,
+    error: null,
+    model: llmProvider?.model || null,
+    refinementState: 'not-requested',
+    refinementAttemptId: null,
+    refinementStartedAt: null,
+    refinementCompletedAt: null,
+    refinementDurationMs: null,
+    refinementTimeoutMs: AGENT_ANALYSIS_REFINEMENT_TIMEOUT_MS,
+    refinementCancelled: false,
+    refinementTimedOut: false,
+    refinementCompletion: null,
+    ...overrides,
   };
 }
 
@@ -1348,7 +1370,7 @@ app.get('/api/analysis', async (req, res) => {
   if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
   res.json({
     agentAnalysis: snapshot.agentAnalysis || buildAgentAnalysis(snapshot),
-    meta: snapshot.agentAnalysisMeta || { source: 'deterministic', used: false, error: null, model: llmProvider?.model || null },
+    meta: snapshot.agentAnalysisMeta || buildAgentAnalysisMeta({ error: llmProvider?.isConfigured ? null : 'llm-unavailable' }),
   });
 });
 
@@ -1359,7 +1381,7 @@ app.get('/api/analysis/review', async (req, res) => {
   res.json({
     agentAnalysis: analysis,
     published: buildAgentAnalysisSummary(snapshot),
-    meta: snapshot.agentAnalysisMeta || { source: 'deterministic', used: false, error: null, model: llmProvider?.model || null },
+    meta: snapshot.agentAnalysisMeta || buildAgentAnalysisMeta({ error: llmProvider?.isConfigured ? null : 'llm-unavailable' }),
     trendSummary: snapshot.trendSummary || memory.getTrendSummary(),
     baseline6h: snapshot.baseline6h || null,
     deltaSummary: snapshot.delta?.summary || null,
@@ -1541,6 +1563,9 @@ app.get('/api/health', (req, res) => {
       confidenceLabel: currentData.agentAnalysis.confidenceLabel,
       tippingPointCount: Array.isArray(currentData.agentAnalysis.tippingPoints) ? currentData.agentAnalysis.tippingPoints.length : 0,
       source: currentData.agentAnalysisMeta?.source || 'deterministic',
+      refinementState: currentData.agentAnalysisMeta?.refinementState || 'not-requested',
+      refinementCompletion: currentData.agentAnalysisMeta?.refinementCompletion || null,
+      refinementTimedOut: Boolean(currentData.agentAnalysisMeta?.refinementTimedOut),
     } : null,
   });
 });
@@ -1601,25 +1626,73 @@ async function enrichIdeasAndPublish(synthesized, delta) {
 async function enrichAgentAnalysisAndPublish(synthesized) {
   if (!llmProvider?.isConfigured) {
     synthesized.agentAnalysis = buildAgentAnalysis(synthesized, synthesized.agentAnalysis);
-    synthesized.agentAnalysisMeta = { source: 'deterministic', used: false, error: 'llm-unavailable', model: null };
+    synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({
+      error: 'llm-unavailable',
+      model: null,
+      refinementState: 'unavailable',
+      refinementCompletion: 'unavailable',
+    });
     return synthesized;
   }
 
+  const attemptId = `analysis-refine-${String(++agentAnalysisRefinementSeq).padStart(4, '0')}`;
+  const startedAt = new Date().toISOString();
+  const startMs = Date.now();
+  synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({
+    refinementState: 'pending',
+    refinementAttemptId: attemptId,
+    refinementStartedAt: startedAt,
+  });
+  currentData = synthesized;
+  broadcast({ type: 'analysis_update', data: currentData });
+
   try {
-    console.log('[Crucix] Generating LLM agent analysis...');
+    console.log(`[Crucix] Generating LLM agent analysis (${attemptId})...`);
     const { analysis, meta } = await generateLLMAgentAnalysis(llmProvider, synthesized);
+    const durationMs = Date.now() - startMs;
     if (analysis) {
       synthesized.agentAnalysis = buildAgentAnalysis(synthesized, analysis);
-      synthesized.agentAnalysisMeta = meta;
+      synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({
+        ...meta,
+        refinementState: 'completed',
+        refinementAttemptId: attemptId,
+        refinementStartedAt: startedAt,
+        refinementCompletedAt: new Date().toISOString(),
+        refinementDurationMs: durationMs,
+        refinementCompletion: 'llm-applied',
+      });
     } else {
       synthesized.agentAnalysis = buildAgentAnalysis(synthesized);
-      synthesized.agentAnalysisMeta = meta;
+      synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({
+        ...meta,
+        source: 'deterministic',
+        refinementState: meta?.error === 'parse-failed' ? 'failed' : 'completed',
+        refinementAttemptId: attemptId,
+        refinementStartedAt: startedAt,
+        refinementCompletedAt: new Date().toISOString(),
+        refinementDurationMs: durationMs,
+        refinementCompletion: meta?.error === 'parse-failed' ? 'fallback-parse-failed' : 'fallback-no-analysis',
+      });
     }
-    console.log(`[Crucix] Agent analysis ready: ${synthesized.agentAnalysis.status} (${synthesized.agentAnalysisMeta?.source || 'deterministic'})`);
+    console.log(`[Crucix] Agent analysis ready: ${synthesized.agentAnalysis.status} (${synthesized.agentAnalysisMeta?.source || 'deterministic'}) [${synthesized.agentAnalysisMeta?.refinementCompletion || 'unknown'}]`);
   } catch (err) {
+    const durationMs = Date.now() - startMs;
+    const timedOut = /timeout|timed out|abort/i.test(err.message || '');
     console.error('[Crucix] LLM agent analysis failed (non-fatal):', err.message);
     synthesized.agentAnalysis = buildAgentAnalysis(synthesized);
-    synthesized.agentAnalysisMeta = { source: 'llm-failed', used: false, error: err.message, model: llmProvider.model || null };
+    synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({
+      source: 'deterministic',
+      used: false,
+      error: err.message,
+      model: llmProvider.model || null,
+      refinementState: timedOut ? 'timed-out' : 'failed',
+      refinementAttemptId: attemptId,
+      refinementStartedAt: startedAt,
+      refinementCompletedAt: new Date().toISOString(),
+      refinementDurationMs: durationMs,
+      refinementTimedOut: timedOut,
+      refinementCompletion: timedOut ? 'fallback-timeout' : 'fallback-error',
+    });
   }
 
   currentData = synthesized;
@@ -1668,7 +1741,11 @@ async function runSweepCycle() {
     synthesized.baseline6h = buildSixHourBaseline(synthesized, sixHourBaselineRun);
     synthesized.trendSummary = memory.getTrendSummary();
     synthesized.agentAnalysis = buildAgentAnalysis(synthesized);
-    synthesized.agentAnalysisMeta = { source: 'deterministic', used: false, error: llmProvider?.isConfigured ? null : 'llm-unavailable', model: llmProvider?.model || null };
+    synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({
+      error: llmProvider?.isConfigured ? null : 'llm-unavailable',
+      refinementState: llmProvider?.isConfigured ? 'queued' : 'unavailable',
+      refinementCompletion: llmProvider?.isConfigured ? 'deterministic-published-awaiting-refinement' : 'unavailable',
+    });
 
     // 5. Publish core data immediately so LLM idea generation never blocks /api/data
     if (!llmProvider?.isConfigured) {
@@ -1772,7 +1849,11 @@ async function start() {
       synthesize(existing, llmProvider, { newsLlmMode: 'off' }).then(data => {
         data.trendSummary = memory.getTrendSummary();
         data.agentAnalysis = buildAgentAnalysis(data);
-        data.agentAnalysisMeta = { source: 'deterministic', used: false, error: llmProvider?.isConfigured ? null : 'llm-unavailable', model: llmProvider?.model || null };
+        data.agentAnalysisMeta = buildAgentAnalysisMeta({
+          error: llmProvider?.isConfigured ? null : 'llm-unavailable',
+          refinementState: llmProvider?.isConfigured ? 'queued' : 'unavailable',
+          refinementCompletion: llmProvider?.isConfigured ? 'deterministic-published-awaiting-refinement' : 'unavailable',
+        });
         currentData = data;
         console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');
         broadcast({ type: 'update', data: currentData });
