@@ -22,6 +22,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
 const RUNS_DIR = join(ROOT, 'runs');
 const MEMORY_DIR = join(RUNS_DIR, 'memory');
+const REVIEW_ACKS_PATH = join(RUNS_DIR, 'cluster-review-acks.json');
 
 // Ensure directories exist
 for (const dir of [RUNS_DIR, MEMORY_DIR, join(MEMORY_DIR, 'cold')]) {
@@ -45,6 +46,147 @@ const selectionMemoryTelemetry = {
 };
 const SELECTION_MEMORY_TTL_MS = 10 * 60 * 1000;
 const SELECTION_MEMORY_MAX_ENTRIES = 100;
+const REVIEW_ACK_TTL_MS = Math.max(1, Number(config.review?.ackTtlHours || 72)) * 60 * 60 * 1000;
+const REVIEW_ACK_MAX_ENTRIES = Math.max(1, Number(config.review?.ackMaxEntries || 100));
+const reviewAcks = loadReviewAcks();
+
+function loadJsonFile(path, fallback) {
+  try {
+    if (!existsSync(path)) return fallback;
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
+
+function saveJsonFile(path, data) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
+}
+
+function loadReviewAcks() {
+  const raw = loadJsonFile(REVIEW_ACKS_PATH, []);
+  const entries = Array.isArray(raw) ? raw : [];
+  const map = new Map();
+  const now = Date.now();
+  for (const entry of entries) {
+    if (!entry?.key || !entry?.expiresAt) continue;
+    const expiresAt = Number(entry.expiresAt);
+    if (!Number.isFinite(expiresAt) || expiresAt <= now) continue;
+    map.set(entry.key, { ...entry, expiresAt });
+  }
+  return map;
+}
+
+function saveReviewAcks() {
+  saveJsonFile(REVIEW_ACKS_PATH, Array.from(reviewAcks.values()).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
+}
+
+function reviewAckKey(item = {}) {
+  return `${String(item.region || 'unknown').trim().toLowerCase()}::${String(item.reason || 'unknown').trim().toLowerCase()}`;
+}
+
+function pruneReviewAcks() {
+  const now = Date.now();
+  let changed = false;
+  for (const [key, value] of reviewAcks.entries()) {
+    if (!value || Number(value.expiresAt) <= now) {
+      reviewAcks.delete(key);
+      changed = true;
+    }
+  }
+  while (reviewAcks.size > REVIEW_ACK_MAX_ENTRIES) {
+    const oldestKey = reviewAcks.keys().next().value;
+    if (!oldestKey) break;
+    reviewAcks.delete(oldestKey);
+    changed = true;
+  }
+  if (changed) saveReviewAcks();
+}
+
+function reviewAckSnapshot(limit = 20) {
+  pruneReviewAcks();
+  return Array.from(reviewAcks.values())
+    .slice(-Math.max(1, Math.min(Number(limit) || 20, 100)))
+    .map(entry => ({
+      ...entry,
+      createdAt: entry.createdAt ? new Date(entry.createdAt).toISOString() : null,
+      expiresAt: entry.expiresAt ? new Date(entry.expiresAt).toISOString() : null,
+    }));
+}
+
+function reviewAckStats() {
+  pruneReviewAcks();
+  let nextExpiry = null;
+  for (const value of reviewAcks.values()) {
+    if (!nextExpiry || value.expiresAt < nextExpiry) nextExpiry = value.expiresAt;
+  }
+  return {
+    active: reviewAcks.size,
+    maxEntries: REVIEW_ACK_MAX_ENTRIES,
+    ttlMs: REVIEW_ACK_TTL_MS,
+    nextExpiry: nextExpiry ? new Date(nextExpiry).toISOString() : null,
+  };
+}
+
+function ackReviewItem(region = '', reason = '', note = '') {
+  const trimmedRegion = String(region || '').trim();
+  const trimmedReason = String(reason || '').trim();
+  if (!trimmedRegion || !trimmedReason) return null;
+  pruneReviewAcks();
+  const key = reviewAckKey({ region: trimmedRegion, reason: trimmedReason });
+  const entry = {
+    key,
+    region: trimmedRegion,
+    reason: trimmedReason,
+    note: String(note || '').trim() || null,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + REVIEW_ACK_TTL_MS,
+  };
+  reviewAcks.delete(key);
+  reviewAcks.set(key, entry);
+  pruneReviewAcks();
+  saveReviewAcks();
+  return entry;
+}
+
+function clearReviewAck(region = '', reason = '') {
+  const key = reviewAckKey({ region, reason });
+  const existed = reviewAcks.delete(key);
+  if (existed) saveReviewAcks();
+  return existed;
+}
+
+function annotateReview(review = {}) {
+  pruneReviewAcks();
+  const reviewItems = Array.isArray(review.reviewItems) ? review.reviewItems : [];
+  const activeItems = [];
+  const dismissedItems = [];
+  for (const item of reviewItems) {
+    const ack = reviewAcks.get(reviewAckKey(item));
+    const annotated = ack
+      ? {
+          ...item,
+          dismissed: true,
+          ack: {
+            note: ack.note,
+            createdAt: new Date(ack.createdAt).toISOString(),
+            expiresAt: new Date(ack.expiresAt).toISOString(),
+          },
+        }
+      : { ...item, dismissed: false, ack: null };
+    if (ack) dismissedItems.push(annotated);
+    else activeItems.push(annotated);
+  }
+  return {
+    ...review,
+    reviewItems: activeItems,
+    dismissedItems,
+    dismissedCount: dismissedItems.length,
+    activeCount: activeItems.length,
+    ackSummary: reviewAckStats(),
+  };
+}
 
 function signalId(kind = 'signal', item = {}, index = 0) {
   const raw = `${kind}:${item.signal || item.category || 'item'}:${index}`
@@ -334,11 +476,11 @@ function buildNewsClusterSummary(snapshot = {}) {
       retryCount: snapshot.newsLlmDebug.retryCount || 0,
       backoffCount: snapshot.newsLlmDebug.backoffCount || 0,
       tunedRegionCount: snapshot.newsLlmDebug.tunedRegionCount || 0,
-      review: snapshot.newsLlmDebug.review ? {
+      review: snapshot.newsLlmDebug.review ? annotateReview({
         failedRegionCount: snapshot.newsLlmDebug.review.failedRegionCount || 0,
         topReasons: Array.isArray(snapshot.newsLlmDebug.review.topReasons) ? snapshot.newsLlmDebug.review.topReasons.slice(0, 4) : [],
         reviewItems: Array.isArray(snapshot.newsLlmDebug.review.reviewItems) ? snapshot.newsLlmDebug.review.reviewItems.slice(0, 6) : [],
-      } : null,
+      }) : null,
       perRegion: Array.isArray(snapshot.newsLlmDebug.perRegion) ? snapshot.newsLlmDebug.perRegion.slice(0, 8) : [],
     } : null,
   };
@@ -626,11 +768,48 @@ app.get('/api/brief/news/review', async (req, res) => {
           return { newsClusters: clusters, newsLlmDebug: llmDebug, newsClusterQuality: qualitySummary };
         })()),
       });
-  if (!baseSummary?.llm) return res.json({ review: null, llm: null, totalClusters: baseSummary?.totalClusters || 0 });
+  if (!baseSummary?.llm) return res.json({ review: null, llm: null, totalClusters: baseSummary?.totalClusters || 0, ackSummary: reviewAckStats() });
   res.json({
     totalClusters: baseSummary.totalClusters,
     llm: baseSummary.llm,
-    review: baseSummary.llm.review || { failedRegionCount: 0, topReasons: [], reviewItems: [] },
+    review: annotateReview(baseSummary.llm.review || { failedRegionCount: 0, topReasons: [], reviewItems: [] }),
+  });
+});
+
+app.get('/api/brief/news/review/acks', (req, res) => {
+  const limit = Math.max(1, Math.min(Number.parseInt(req.query.limit, 10) || 20, 100));
+  res.json({
+    summary: reviewAckStats(),
+    entries: reviewAckSnapshot(limit),
+  });
+});
+
+app.post('/api/brief/news/review/ack', (req, res) => {
+  const region = typeof req.query.region === 'string' ? req.query.region.trim() : '';
+  const reason = typeof req.query.reason === 'string' ? req.query.reason.trim() : '';
+  const note = typeof req.query.note === 'string' ? req.query.note.trim() : '';
+  if (!region || !reason) return res.status(400).json({ error: 'region and reason query parameters are required' });
+  const entry = ackReviewItem(region, reason, note);
+  if (!entry) return res.status(400).json({ error: 'unable to acknowledge review item' });
+  res.json({
+    ok: true,
+    entry: {
+      ...entry,
+      createdAt: new Date(entry.createdAt).toISOString(),
+      expiresAt: new Date(entry.expiresAt).toISOString(),
+    },
+    summary: reviewAckStats(),
+  });
+});
+
+app.delete('/api/brief/news/review/ack', (req, res) => {
+  const region = typeof req.query.region === 'string' ? req.query.region.trim() : '';
+  const reason = typeof req.query.reason === 'string' ? req.query.reason.trim() : '';
+  if (!region || !reason) return res.status(400).json({ error: 'region and reason query parameters are required' });
+  res.json({
+    ok: true,
+    cleared: clearReviewAck(region, reason),
+    summary: reviewAckStats(),
   });
 });
 
@@ -763,6 +942,7 @@ app.get('/api/health', (req, res) => {
     refreshIntervalMinutes: config.refreshIntervalMinutes,
     language: currentLanguage,
     selectionMemory: selectionMemoryStats(),
+    reviewAcks: reviewAckStats(),
   });
 });
 

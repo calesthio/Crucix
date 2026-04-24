@@ -24,4 +24,4 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 - Add per-region LLM cluster retry/backoff counters so operators can separate transient model failures from chronically weak candidate sets.
 - Capture sampled raw cluster-repair failures with truncation and hashes so prompt regressions can be compared across runs without keeping full model output.
 - Persist rolling per-region cluster prompt stats across restarts if operators need to distinguish one bad sweep from chronic regional failure patterns.
-- Add a bounded operator ack/dismiss layer for known noisy cluster-failure regions so review surfaces can stay actionable during prolonged model regressions.
+- Add ack history counters and recent-dismissal visibility so operators can distinguish a genuinely quiet review surface from one muted by repeated acknowledgements.

@@ -166,12 +166,34 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-6",
+        "title": "Operator review workflow controls",
+        "status": "in_progress",
+        "efforts": [
+          {
+            "id": "effort-6.1",
+            "title": "Bounded operator ack/dismiss layer for noisy cluster-failure regions",
+            "status": "completed"
+          },
+          {
+            "id": "effort-6.2",
+            "title": "Persist rolling per-region cluster failure stats across restarts",
+            "status": "pending"
+          },
+          {
+            "id": "effort-6.3",
+            "title": "Sampled hashed repair-failure artifacts for prompt regression comparison",
+            "status": "pending"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 22,
-    "activeCycleId": "2026-04-23-cycle-022",
-    "lastCompletedCycleId": "2026-04-23-cycle-022"
+    "sequence": 23,
+    "activeCycleId": "2026-04-24-cycle-023",
+    "lastCompletedCycleId": "2026-04-24-cycle-023"
   }
 }

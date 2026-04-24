@@ -27,6 +27,11 @@ export default {
     webhookUrl: process.env.DISCORD_WEBHOOK_URL || null, // Fallback: webhook-only alerts (no bot needed)
   },
 
+  review: {
+    ackTtlHours: parseInt(process.env.REVIEW_ACK_TTL_HOURS) || 72,
+    ackMaxEntries: parseInt(process.env.REVIEW_ACK_MAX_ENTRIES) || 100,
+  },
+
   // Delta engine thresholds — override defaults from lib/delta/engine.mjs
   // Set to null to use built-in defaults
   delta: {
