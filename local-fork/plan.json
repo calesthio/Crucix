@@ -201,7 +201,7 @@
           },
           {
             "id": "effort-7.2",
-            "title": "Structured agent-analysis schema for outlook, risks, accountable tipping points, and iMessage summaries",
+            "title": "Structured agent-analysis schema for outlook, configurable horizons, evidence anchors, accountable tipping points, and iMessage summaries",
             "status": "pending"
           },
           {
@@ -216,7 +216,112 @@
           },
           {
             "id": "effort-7.5",
-            "title": "Validation harness for outlook drift and tipping-point lifecycle accountability",
+            "title": "Validation harness for outlook drift, tipping-point lifecycle accountability, and stale-trend handling",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-8",
+        "title": "Source health policy, failure classification, and runtime maintenance",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-8.1",
+            "title": "Configurable per-source freshness thresholds and policy tuning",
+            "status": "pending"
+          },
+          {
+            "id": "effort-8.2",
+            "title": "Source-level fallback, parse, LLM-fallback, and empty-result counters",
+            "status": "pending"
+          },
+          {
+            "id": "effort-8.3",
+            "title": "Operator-facing source failure classification for setup debt versus live outages",
+            "status": "pending"
+          },
+          {
+            "id": "effort-8.4",
+            "title": "Runtime maintenance pass for stale OpenSky artifacts and cache-hit telemetry",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-9",
+        "title": "Operator briefing guardrails and externalized debug posture",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-9.1",
+            "title": "Operator-facing evidence provenance labels in iMessage briefings",
+            "status": "pending"
+          },
+          {
+            "id": "effort-9.2",
+            "title": "Guardrails for debug and review endpoints, including local-only or config-gated exposure",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-10",
+        "title": "Geocoding precision and cluster-review quality operations",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-10.1",
+            "title": "Explicit map precision classes for source-native versus inferred geocoded news placement",
+            "status": "pending"
+          },
+          {
+            "id": "effort-10.2",
+            "title": "Cluster-quality review metrics for merge-split anomalies and low-confidence counts",
+            "status": "pending"
+          },
+          {
+            "id": "effort-10.3",
+            "title": "Operator review helpers for suspicious near-duplicate single-source clusters",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-11",
+        "title": "Persistent cluster-review diagnostics and operator accountability",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-11.1",
+            "title": "Persist rolling per-region prompt-tuning and retry pressure stats across restarts",
+            "status": "pending"
+          },
+          {
+            "id": "effort-11.2",
+            "title": "Ack history counters and recent-dismissal visibility for review-surface accountability",
+            "status": "pending"
+          },
+          {
+            "id": "effort-11.3",
+            "title": "Rolling or decayed per-region failure-rate windows so recovering regions stop looking chronically weak",
+            "status": "pending"
+          },
+          {
+            "id": "effort-11.4",
+            "title": "Prompt and version fingerprints on repair-failure artifacts for regression comparison",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-12",
+        "title": "Trend-memory backfill and historical compatibility",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-12.1",
+            "title": "Compact-history backfill or migration for older cold runs so trend summaries stop zeroing newly added fields",
             "status": "pending"
           }
         ]
