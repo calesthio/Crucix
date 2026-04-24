@@ -53,6 +53,7 @@ const REVIEW_ACK_TTL_MS = Math.max(1, Number(config.review?.ackTtlHours || 72)) 
 const REVIEW_ACK_MAX_ENTRIES = Math.max(1, Number(config.review?.ackMaxEntries || 100));
 const CLUSTER_REVIEW_STATE_KEY = 'cluster-review:regions';
 const CLUSTER_REVIEW_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+const CLUSTER_REVIEW_DECAY_HALF_LIFE_MS = 3 * 24 * 60 * 60 * 1000;
 const CLUSTER_PRESSURE_STATE_KEY = 'cluster-review:pressure';
 const CLUSTER_PRESSURE_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 const CLUSTER_REPAIR_ARTIFACTS_STATE_KEY = 'cluster-review:repair-artifacts';
@@ -293,11 +294,30 @@ function pruneClusterReviewRegions(regions = {}, now = Date.now()) {
 function summarizeClusterReviewStats(state = getClusterReviewStatsState()) {
   const now = Date.now();
   const regions = pruneClusterReviewRegions(state?.regions || {}, now);
-  const entries = Object.entries(regions).map(([region, stats]) => ({ region, ...stats }));
+  const entries = Object.entries(regions).map(([region, stats]) => {
+    const failureWindow = Number(stats?.failureWindow || 0);
+    const successWindow = Number(stats?.successWindow || 0);
+    const lastWindowAtMs = new Date(stats?.lastWindowAt || stats?.lastSeenAt || 0).getTime();
+    const decayFactor = lastWindowAtMs && CLUSTER_REVIEW_DECAY_HALF_LIFE_MS > 0
+      ? Math.pow(0.5, Math.max(0, now - lastWindowAtMs) / CLUSTER_REVIEW_DECAY_HALF_LIFE_MS)
+      : 1;
+    const decayedFailureWindow = Number((failureWindow * decayFactor).toFixed(3));
+    const decayedSuccessWindow = Number((successWindow * decayFactor).toFixed(3));
+    const windowTotal = decayedFailureWindow + decayedSuccessWindow;
+    const decayedFailureRate = windowTotal > 0 ? Number((decayedFailureWindow / windowTotal).toFixed(3)) : 0;
+    return {
+      region,
+      ...stats,
+      decayedFailureWindow,
+      decayedSuccessWindow,
+      decayedFailureRate,
+      windowTotal: Number(windowTotal.toFixed(3)),
+    };
+  });
   const recentFailureCutoff = now - (24 * 60 * 60 * 1000);
   const topRegions = entries
-    .filter(entry => entry.failureCount || entry.consecutiveFailures || entry.lastFailureAt)
-    .sort((a, b) => (b.consecutiveFailures || 0) - (a.consecutiveFailures || 0) || (b.failureCount || 0) - (a.failureCount || 0) || String(a.region).localeCompare(String(b.region)))
+    .filter(entry => entry.failureCount || entry.consecutiveFailures || entry.lastFailureAt || entry.decayedFailureWindow > 0.05)
+    .sort((a, b) => (b.decayedFailureRate || 0) - (a.decayedFailureRate || 0) || (b.decayedFailureWindow || 0) - (a.decayedFailureWindow || 0) || (b.consecutiveFailures || 0) - (a.consecutiveFailures || 0) || String(a.region).localeCompare(String(b.region)))
     .slice(0, 8)
     .map(entry => ({
       region: entry.region,
@@ -310,15 +330,24 @@ function summarizeClusterReviewStats(state = getClusterReviewStatsState()) {
       lastSeenAt: entry.lastSeenAt || null,
       lastFailureAt: entry.lastFailureAt || null,
       lastSuccessAt: entry.lastSuccessAt || null,
+      lastWindowAt: entry.lastWindowAt || null,
       maxItemCount: entry.maxItemCount || 0,
       reasons: entry.reasons || {},
-      chronic: (entry.consecutiveFailures || 0) >= 2 || (entry.failureCount || 0) >= 3,
+      failureWindow: Number((entry.failureWindow || 0).toFixed ? (entry.failureWindow || 0).toFixed(3) : entry.failureWindow || 0),
+      successWindow: Number((entry.successWindow || 0).toFixed ? (entry.successWindow || 0).toFixed(3) : entry.successWindow || 0),
+      decayedFailureWindow: entry.decayedFailureWindow,
+      decayedSuccessWindow: entry.decayedSuccessWindow,
+      decayedFailureRate: entry.decayedFailureRate,
+      chronic: (entry.consecutiveFailures || 0) >= 2 || (entry.decayedFailureRate || 0) >= 0.6,
+      recovering: (entry.successCount || 0) > 0 && (entry.decayedFailureRate || 0) < 0.4,
       recentlyFailing: entry.lastFailureAt ? new Date(entry.lastFailureAt).getTime() >= recentFailureCutoff : false,
     }));
   return {
     trackedRegionCount: entries.length,
     chronicFailureCount: topRegions.filter(entry => entry.chronic).length,
     recentFailureCount: topRegions.filter(entry => entry.recentlyFailing).length,
+    recoveringRegionCount: topRegions.filter(entry => entry.recovering).length,
+    decayHalfLifeHours: CLUSTER_REVIEW_DECAY_HALF_LIFE_MS / (60 * 60 * 1000),
     retentionDays: CLUSTER_REVIEW_RETENTION_MS / (24 * 60 * 60 * 1000),
     updatedAt: state?.updatedAt || null,
     topRegions,
@@ -328,7 +357,8 @@ function summarizeClusterReviewStats(state = getClusterReviewStatsState()) {
 function recordClusterReviewStats(snapshot = {}) {
   const perRegion = Array.isArray(snapshot.newsLlmDebug?.perRegion) ? snapshot.newsLlmDebug.perRegion : [];
   if (!perRegion.length) return summarizeClusterReviewStats();
-  const nowIso = new Date().toISOString();
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
   const current = getClusterReviewStatsState();
   const regions = pruneClusterReviewRegions({ ...(current.regions || {}) });
   for (const entry of perRegion) {
@@ -347,7 +377,17 @@ function recordClusterReviewStats(snapshot = {}) {
       consecutiveFailures: 0,
       maxItemCount: 0,
       reasons: {},
+      failureWindow: 0,
+      successWindow: 0,
+      lastWindowAt: nowIso,
     };
+    const lastWindowAtMs = new Date(stats.lastWindowAt || stats.lastSeenAt || 0).getTime();
+    const decayFactor = lastWindowAtMs && CLUSTER_REVIEW_DECAY_HALF_LIFE_MS > 0
+      ? Math.pow(0.5, Math.max(0, now - lastWindowAtMs) / CLUSTER_REVIEW_DECAY_HALF_LIFE_MS)
+      : 1;
+    stats.failureWindow = Number(((Number(stats.failureWindow || 0)) * decayFactor).toFixed(6));
+    stats.successWindow = Number(((Number(stats.successWindow || 0)) * decayFactor).toFixed(6));
+    stats.lastWindowAt = nowIso;
     stats.lastSeenAt = nowIso;
     stats.lastStatus = entry.status || null;
     stats.lastReason = entry.reason || null;
@@ -357,6 +397,7 @@ function recordClusterReviewStats(snapshot = {}) {
       stats.failureCount = (stats.failureCount || 0) + 1;
       stats.consecutiveFailures = (stats.consecutiveFailures || 0) + 1;
       stats.lastFailureAt = nowIso;
+      stats.failureWindow = Number((stats.failureWindow + 1).toFixed(6));
       const reason = entry.reason || 'unknown';
       stats.reasons = stats.reasons && typeof stats.reasons === 'object' ? stats.reasons : {};
       stats.reasons[reason] = (stats.reasons[reason] || 0) + 1;
@@ -364,6 +405,7 @@ function recordClusterReviewStats(snapshot = {}) {
       stats.successCount = (stats.successCount || 0) + 1;
       stats.consecutiveFailures = 0;
       stats.lastSuccessAt = nowIso;
+      stats.successWindow = Number((stats.successWindow + 1).toFixed(6));
     }
     regions[region] = stats;
   }
