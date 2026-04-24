@@ -35,6 +35,10 @@ export default {
     repairArtifactMaxEntries: parseInt(process.env.REPAIR_ARTIFACT_MAX_ENTRIES) || 50,
   },
 
+  debugEndpoints: {
+    exposure: process.env.DEBUG_ENDPOINT_EXPOSURE || 'local-only', // local-only | open
+  },
+
   freshnessPolicy: {
     defaultFreshnessMinutes: parseInt(process.env.DEFAULT_FRESHNESS_MINUTES) || 60,
     sources: {

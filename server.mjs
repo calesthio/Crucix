@@ -72,6 +72,30 @@ function saveJsonFile(path, data) {
   writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
 }
 
+function isLocalRequest(req) {
+  const candidates = [
+    req.ip,
+    req.socket?.remoteAddress,
+    req.connection?.remoteAddress,
+  ].filter(Boolean).map(value => String(value));
+  return candidates.some(value =>
+    value === '127.0.0.1' ||
+    value === '::1' ||
+    value === '::ffff:127.0.0.1' ||
+    value.startsWith('::ffff:127.0.0.1')
+  );
+}
+
+function requireDebugAccess(req, res, next) {
+  const exposure = config.debugEndpoints?.exposure || 'local-only';
+  if (exposure === 'open') return next();
+  if (isLocalRequest(req)) return next();
+  return res.status(403).json({
+    error: 'debug-endpoint-forbidden',
+    detail: 'Debug and review endpoints are restricted to local requests unless DEBUG_ENDPOINT_EXPOSURE=open.',
+  });
+}
+
 function readOpenSkyRuntimeState() {
   const raw = loadJsonFile(OPENSKY_STATE_PATH, null);
   if (!raw || typeof raw !== 'object') return null;
@@ -1426,7 +1450,7 @@ app.get('/api/brief/compact', async (req, res) => {
   });
 });
 
-app.get('/api/brief/news/review', async (req, res) => {
+app.get('/api/brief/news/review', requireDebugAccess, async (req, res) => {
   const snapshot = await ensureCurrentData();
   if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
   const requestedMode = typeof req.query.llm === 'string' ? req.query.llm.trim().toLowerCase() : 'auto';
@@ -1447,19 +1471,19 @@ app.get('/api/brief/news/review', async (req, res) => {
   });
 });
 
-app.get('/api/brief/news/review/stats', (req, res) => {
+app.get('/api/brief/news/review/stats', requireDebugAccess, (req, res) => {
   res.json({
     stats: summarizeClusterReviewStats(),
   });
 });
 
-app.get('/api/brief/news/review/artifacts', (req, res) => {
+app.get('/api/brief/news/review/artifacts', requireDebugAccess, (req, res) => {
   res.json({
     artifacts: summarizeClusterRepairArtifacts(),
   });
 });
 
-app.get('/api/trends', (req, res) => {
+app.get('/api/trends', requireDebugAccess, (req, res) => {
   res.json({
     trendSummary: memory.getTrendSummary(),
   });
@@ -1474,7 +1498,7 @@ app.get('/api/analysis', async (req, res) => {
   });
 });
 
-app.get('/api/analysis/review', async (req, res) => {
+app.get('/api/analysis/review', requireDebugAccess, async (req, res) => {
   const snapshot = await ensureCurrentData();
   if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
   const analysis = snapshot.agentAnalysis || buildAgentAnalysis(snapshot);
@@ -1500,7 +1524,7 @@ app.get('/api/analysis/validation-summary', async (req, res) => {
   }
 });
 
-app.get('/api/brief/news/review/acks', (req, res) => {
+app.get('/api/brief/news/review/acks', requireDebugAccess, (req, res) => {
   const limit = Math.max(1, Math.min(Number.parseInt(req.query.limit, 10) || 20, 100));
   res.json({
     summary: reviewAckStats(),
@@ -1508,7 +1532,7 @@ app.get('/api/brief/news/review/acks', (req, res) => {
   });
 });
 
-app.post('/api/brief/news/review/ack', (req, res) => {
+app.post('/api/brief/news/review/ack', requireDebugAccess, (req, res) => {
   const region = typeof req.query.region === 'string' ? req.query.region.trim() : '';
   const reason = typeof req.query.reason === 'string' ? req.query.reason.trim() : '';
   const note = typeof req.query.note === 'string' ? req.query.note.trim() : '';
@@ -1526,7 +1550,7 @@ app.post('/api/brief/news/review/ack', (req, res) => {
   });
 });
 
-app.delete('/api/brief/news/review/ack', (req, res) => {
+app.delete('/api/brief/news/review/ack', requireDebugAccess, (req, res) => {
   const region = typeof req.query.region === 'string' ? req.query.region.trim() : '';
   const reason = typeof req.query.reason === 'string' ? req.query.reason.trim() : '';
   if (!region || !reason) return res.status(400).json({ error: 'region and reason query parameters are required' });
