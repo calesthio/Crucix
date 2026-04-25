@@ -1,0 +1,68 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import { readFileSync } from 'node:fs';
+
+const source = readFileSync(new URL('../server.mjs', import.meta.url), 'utf8');
+
+function extractChunk(startMarker, endMarker) {
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start);
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error(`Could not extract chunk between ${startMarker} and ${endMarker}`);
+  }
+  return source.slice(start, end);
+}
+
+const context = {
+  console,
+  module: { exports: {} },
+  exports: {},
+  Date,
+  Map,
+  Math,
+  Number,
+  String,
+  Object,
+  Array,
+  memory: { getSignalState: () => ({ regions: {}, updatedAt: null }) },
+};
+vm.createContext(context);
+vm.runInContext(`
+  const CLUSTER_REVIEW_STATE_KEY = 'cluster-review:regions';
+  const CLUSTER_REVIEW_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+  const CLUSTER_REVIEW_DECAY_HALF_LIFE_MS = 3 * 24 * 60 * 60 * 1000;
+  ${extractChunk('function getClusterReviewStatsState() {', 'function getClusterPressureStatsState() {')}
+  module.exports = { buildOperatorReviewQueue };
+`, context);
+
+const { buildOperatorReviewQueue } = context.module.exports;
+
+test('buildOperatorReviewQueue returns bounded actionable items with top reasons', () => {
+  const review = {
+    reviewItems: [
+      { region: 'Iran', reason: 'no-json-match', severity: 'high', itemCount: 7, retried: true, repairAttempted: true, persistent: { chronic: true, consecutiveFailures: 9, lastStatus: 'heuristic-fallback' } },
+      { region: 'Australia', reason: 'no-json-match', severity: 'high', itemCount: 5, retried: true, repairAttempted: true, persistent: { chronic: true, consecutiveFailures: 17, lastStatus: 'heuristic-fallback' } },
+      { region: 'Pakistan', reason: 'shape-mismatch', severity: 'medium', itemCount: 3, retried: true, repairAttempted: false, persistent: { chronic: false, consecutiveFailures: 3, lastStatus: 'heuristic-fallback' } },
+      { region: 'EU', reason: 'no-json-match', severity: 'high', itemCount: 6, retried: true, repairAttempted: true, persistent: { chronic: true, consecutiveFailures: 20, lastStatus: 'heuristic-fallback' } },
+      { region: 'Spain', reason: 'shape-mismatch', severity: 'medium', itemCount: 2, retried: false, repairAttempted: false, persistent: { chronic: true, consecutiveFailures: 6, lastStatus: 'heuristic-fallback' } },
+      { region: 'India', reason: 'no-json-match', severity: 'medium', itemCount: 2, retried: true, repairAttempted: false, persistent: { chronic: true, consecutiveFailures: 1, lastStatus: 'llm-used-retry' } },
+    ],
+    dismissedItems: [],
+  };
+
+  const queue = buildOperatorReviewQueue(review, { maxItems: 5 });
+  assert.equal(queue.totalItems, 6);
+  assert.equal(queue.visibleItems, 5);
+  assert.equal(queue.hasMore, true);
+  assert.equal(queue.bounded, true);
+  assert.match(queue.summary, /6 active review items/i);
+  assert.equal(JSON.stringify(queue.topReasons), JSON.stringify([
+    { reason: 'no-json-match', count: 4 },
+    { reason: 'shape-mismatch', count: 2 },
+  ]));
+  assert.equal(queue.items[0].region, 'Iran');
+  assert.equal(queue.items[0].chronic, true);
+  assert.match(queue.items[0].suggestedAction, /Inspect response shape/i);
+  assert.match(queue.items[2].suggestedAction, /schema mismatch/i);
+});

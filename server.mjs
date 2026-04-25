@@ -441,6 +441,47 @@ function attachClusterReviewStats(review = {}) {
   };
 }
 
+function buildOperatorReviewQueue(review = {}, { maxItems = 5 } = {}) {
+  const items = Array.isArray(review.reviewItems) ? review.reviewItems : [];
+  const bounded = items.slice(0, Math.max(1, maxItems));
+  const reasonCounts = new Map();
+  for (const item of items) {
+    const reason = item?.reason || 'unknown';
+    reasonCounts.set(reason, (reasonCounts.get(reason) || 0) + 1);
+  }
+  const topReasons = Array.from(reasonCounts.entries())
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+    .slice(0, 4)
+    .map(([reason, count]) => ({ reason, count }));
+  return {
+    totalItems: items.length,
+    visibleItems: bounded.length,
+    maxItems: Math.max(1, maxItems),
+    hasMore: items.length > Math.max(1, maxItems),
+    bounded: true,
+    summary: items.length
+      ? `${items.length} active review item${items.length === 1 ? '' : 's'} awaiting operator triage.`
+      : 'No active review items.',
+    topReasons,
+    items: bounded.map(item => ({
+      region: item.region || null,
+      reason: item.reason || 'unknown',
+      severity: item.severity || 'medium',
+      itemCount: item.itemCount || 0,
+      retried: Boolean(item.retried),
+      repairAttempted: Boolean(item.repairAttempted),
+      chronic: Boolean(item.persistent?.chronic),
+      consecutiveFailures: item.persistent?.consecutiveFailures || 0,
+      lastStatus: item.persistent?.lastStatus || item.status || null,
+      suggestedAction: item.reason === 'no-json-match'
+        ? 'Inspect response shape and retry/repair behavior.'
+        : item.reason === 'shape-mismatch'
+          ? 'Review schema mismatch and fallback parsing path.'
+          : 'Inspect clustered output and operator review evidence.',
+    })),
+  };
+}
+
 function getClusterPressureStatsState() {
   const state = memory.getSignalState(CLUSTER_PRESSURE_STATE_KEY);
   return state && typeof state === 'object' ? state : { updatedAt: null, regions: {} };
@@ -1901,9 +1942,13 @@ async function ensureCurrentData() {
 app.get('/api/data', async (req, res) => {
   const snapshot = await ensureCurrentData();
   if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  const review = snapshot?.newsLlmDebug?.review
+    ? attachClusterReviewStats(annotateReview(snapshot.newsLlmDebug.review))
+    : { reviewItems: [], dismissedItems: [], activeCount: 0, dismissedCount: 0, ackSummary: reviewAckStats(), stats: summarizeClusterReviewStats() };
   res.json({
     ...snapshot,
     runtimeLlm: buildRuntimeLlmStatus(snapshot),
+    reviewQueue: buildOperatorReviewQueue(review),
   });
 });
 
@@ -1938,12 +1983,14 @@ app.get('/api/brief/news/review', requireDebugAccess, async (req, res) => {
           return { newsClusters: clusters, newsLlmDebug: llmDebug, newsClusterQuality: qualitySummary };
         })()),
       });
-  if (!baseSummary?.llm) return res.json({ review: null, llm: null, quality: baseSummary?.quality || null, totalClusters: baseSummary?.totalClusters || 0, ackSummary: reviewAckStats() });
+  if (!baseSummary?.llm) return res.json({ review: null, queue: buildOperatorReviewQueue({ reviewItems: [], dismissedItems: [], activeCount: 0, dismissedCount: 0, ackSummary: reviewAckStats(), stats: summarizeClusterReviewStats() }), llm: null, quality: baseSummary?.quality || null, totalClusters: baseSummary?.totalClusters || 0, ackSummary: reviewAckStats() });
+  const review = attachClusterReviewStats(annotateReview(baseSummary.llm.review || { failedRegionCount: 0, topReasons: [], reviewItems: [] }));
   res.json({
     totalClusters: baseSummary.totalClusters,
     quality: baseSummary.quality || null,
     llm: baseSummary.llm,
-    review: attachClusterReviewStats(annotateReview(baseSummary.llm.review || { failedRegionCount: 0, topReasons: [], reviewItems: [] })),
+    review,
+    queue: buildOperatorReviewQueue(review),
   });
 });
 

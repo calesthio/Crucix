@@ -1592,6 +1592,14 @@ function renderRight(){
   const analysis = D.agentAnalysis || {};
   const analysisMeta = D.agentAnalysisMeta || {};
   const runtimeLlm = D.runtimeLlm || null;
+  const reviewQueue = D.reviewQueue || null;
+  const reviewQueuePanel = `<div class="g-panel right-review-queue">
+      <div class="sec-head"><h3>Review Queue</h3><span class="badge">${cleanText(String(reviewQueue?.totalItems || 0))}</span></div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:6px">${cleanText(reviewQueue?.summary || 'No active review items.')}</div>
+      ${reviewQueue?.topReasons?.length ? `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:8px">Top reasons: ${reviewQueue.topReasons.map(item => `${cleanText(item.reason)} (${item.count})`).join(' • ')}</div>` : ''}
+      ${(reviewQueue?.items || []).length ? reviewQueue.items.map(item=>`<div class="signal-row" style="border-left-color:${item.severity==='high'?'var(--warn)':'rgba(68,204,255,0.5)'}"><strong>${cleanText(item.region || 'region')}</strong><p>${cleanText(item.reason)} • ${cleanText(String(item.itemCount || 0))} item${(item.itemCount||0)===1?'':'s'}${item.chronic ? ' • chronic' : ''}</p><div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px">${cleanText(item.suggestedAction || '')}</div></div>`).join('') : `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">No active review items</div>`}
+      ${reviewQueue?.hasMore ? `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:8px">Showing ${cleanText(String(reviewQueue.visibleItems || 0))} of ${cleanText(String(reviewQueue.totalItems || 0))} items</div>` : ''}
+    </div>`;
   const analysisReview = `<div class="g-panel right-analysis-review">
       <div class="sec-head"><h3>Analysis Review</h3><span class="badge">${cleanText(runtimeLlm?.analysis?.label || analysisLlmBadge(analysisMeta))}</span></div>
       <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:6px">${cleanText(runtimeLlm?.analysis?.explanation || analysisLlmMetaLine(analysisMeta))}</div>
@@ -1606,6 +1614,7 @@ function renderRight(){
     </div>
     ${mobile ? '' : buildOsintPanel('right-osint', 260)}
     ${analysisReview}
+    ${reviewQueuePanel}
     ${buildEvidencePanel('right-evidence')}
     <div class="g-panel right-core">
       <div class="sec-head"><h3>${t('panels.signalCore','Signal Core')}</h3><span class="badge">${t('badges.hotMetrics','HOT METRICS')}</span></div>
