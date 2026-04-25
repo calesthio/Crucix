@@ -70,6 +70,7 @@
   ],
   "weightedTotal": 3.2,
   "recommendation": "human-review",
+  "recommendedAction": "human-review",
   "confidence": "medium",
   "productionGuardrails": {
     "productionMutationProposed": false,

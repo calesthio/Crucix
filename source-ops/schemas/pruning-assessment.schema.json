@@ -13,6 +13,7 @@
     "dimensionScores",
     "weightedTotal",
     "recommendation",
+    "recommendedAction",
     "confidence",
     "productionGuardrails"
   ],
@@ -63,6 +64,7 @@
     },
     "weightedTotal": { "type": "number", "minimum": 0 },
     "recommendation": { "type": "string", "enum": ["retain", "human-review", "downgrade-review", "deprecate-review"] },
+    "recommendedAction": { "type": ["string", "null"], "enum": ["retain", "human-review", "downgrade-review", "deprecate-review", null] },
     "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
     "productionGuardrails": {
       "type": "object",

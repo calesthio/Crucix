@@ -12,6 +12,7 @@ const pruningSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/pru
 const gradingRubric = JSON.parse(readFileSync(new URL('../source-ops/grading-rubric.json', import.meta.url), 'utf8'));
 const overlapRubric = JSON.parse(readFileSync(new URL('../source-ops/overlap-rubric.json', import.meta.url), 'utf8'));
 const pruningRubric = JSON.parse(readFileSync(new URL('../source-ops/pruning-rubric.json', import.meta.url), 'utf8'));
+const actionTaxonomy = JSON.parse(readFileSync(new URL('../source-ops/action-taxonomy.json', import.meta.url), 'utf8'));
 const exampleTask = JSON.parse(readFileSync(new URL('../source-ops/tasks/example-discovery-task.json', import.meta.url), 'utf8'));
 const exampleGradingTask = JSON.parse(readFileSync(new URL('../source-ops/tasks/example-grading-task.json', import.meta.url), 'utf8'));
 const exampleOverlapTask = JSON.parse(readFileSync(new URL('../source-ops/tasks/example-overlap-task.json', import.meta.url), 'utf8'));
@@ -55,6 +56,7 @@ test('source ops profile aligns with the chosen file-first and human-gated promo
   assert.deepEqual(profile.transitionPolicy.agentMayAutoAdvanceTo, ['researched', 'graded', 'shadow']);
   assert.equal(profile.shadowPolicy.productionInfluenceBlocked, true);
   assert.equal(profile.shadowPolicy.minimumPromotionReadiness, 'shadow-ready');
+  assert.equal(profile.actionTaxonomyPath, 'source-ops/action-taxonomy.json');
   assert.equal(profile.discipline.productionMutationsAllowed, false);
   assert.ok(profile.allowedRoles.includes('discovery'));
   assert.ok(profile.allowedRoles.includes('grading'));
@@ -114,8 +116,20 @@ test('pruning contract includes structured assessment artifacts and active-sourc
   assert.equal(examplePruningAssessment.version, 'source-pruning-v1');
   assert.equal(examplePruningAssessment.dimensionScores.length, pruningRubric.dimensions.length);
   assert.equal(examplePruningAssessment.recommendation, 'human-review');
+  assert.equal(examplePruningAssessment.recommendedAction, 'human-review');
   assert.equal(examplePruningAssessment.productionGuardrails.productionMutationProposed, false);
   assert.equal(examplePruningAssessment.productionGuardrails.autoRemovalAllowed, false);
+});
+
+test('shared action taxonomy covers source-ops recommendation labels', () => {
+  const ids = actionTaxonomy.actions.map(item => item.id);
+  assert.equal(actionTaxonomy.version, 'source-action-taxonomy-v1');
+  assert.ok(ids.includes('shadow'));
+  assert.ok(ids.includes('human-review'));
+  assert.ok(ids.includes('approve'));
+  assert.ok(ids.includes('deprecate-review'));
+  assert.ok(resultSchema.properties.recommendations.items.properties.action.enum.includes('human-review'));
+  assert.ok(resultSchema.properties.recommendations.items.properties.action.enum.includes('approve'));
 });
 
 test('result schema and queue scaffolding exist for bounded subagent workflows', () => {
@@ -180,5 +194,6 @@ test('registry lifecycle policy and profile lifecycle policy agree on human appr
   assert.equal(exampleLifecycleEvaluation.version, 'source-lifecycle-evaluation-v1');
   assert.equal(exampleLifecycleEvaluation.currentState, 'shadow');
   assert.equal(exampleLifecycleEvaluation.nextAllowedState, 'approved');
+  assert.equal(exampleLifecycleEvaluation.recommendedAction, 'human-review');
   assert.equal(exampleLifecycleEvaluation.blocked, true);
 });

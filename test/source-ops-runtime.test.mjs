@@ -33,6 +33,8 @@ test('source ops surface summarizes contract, inventory, and needs from workspac
   assert.equal(surface.pruning.version, 'source-pruning-rubric-v1');
   assert.equal(surface.pruning.dimensionCount, 5);
   assert.equal(surface.pruning.totalWeight, 1);
+  assert.equal(surface.actionTaxonomy.version, 'source-action-taxonomy-v1');
+  assert.ok(surface.actionTaxonomy.ids.includes('human-review'));
   assert.equal(surface.shadow.total, 1);
   assert.equal(surface.shadow.readyForHumanReview, 1);
   assert.equal(surface.shadow.blockedFromProduction, 1);
@@ -53,8 +55,10 @@ test('source ops surface summarizes contract, inventory, and needs from workspac
   assert.equal(surface.exampleOverlap.comparedSourceCount, 4);
   assert.equal(surface.examplePruning.version, 'source-pruning-v1');
   assert.equal(surface.examplePruning.recommendation, 'human-review');
+  assert.equal(surface.examplePruning.recommendedAction, 'human-review');
   assert.equal(surface.examplePruning.comparedSourceCount, 3);
   assert.equal(surface.examplePruning.productionGuardrails.productionMutationProposed, false);
+  assert.equal(surface.lifecycleEvaluation.recommendedAction, 'human-review');
   assert.equal(surface.examplePruning.productionGuardrails.autoRemovalAllowed, false);
   assert.equal(surface.lifecycleEvaluation.currentState, 'shadow');
   assert.equal(surface.lifecycleEvaluation.nextAllowedState, 'approved');

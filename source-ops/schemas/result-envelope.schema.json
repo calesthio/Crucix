@@ -18,7 +18,7 @@
         "additionalProperties": false,
         "required": ["action", "target", "rationale"],
         "properties": {
-          "action": { "type": "string", "enum": ["research", "grade", "shadow", "reject", "deprecate", "prepare-onboarding"] },
+          "action": { "type": "string", "enum": ["research", "grade", "shadow", "prepare-onboarding", "retain", "human-review", "downgrade-review", "deprecate-review", "reject", "deprecate", "approve", "block"] },
           "target": { "type": "string", "minLength": 1 },
           "rationale": { "type": "string", "minLength": 1 }
         }
