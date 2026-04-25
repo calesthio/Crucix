@@ -97,6 +97,46 @@ test('source ops surface attaches live source-health state when snapshot health 
         { type: 'rss', source: 'NYT' },
         { type: 'rss', source: 'France 24' },
       ],
+      newsClusters: [
+        {
+          id: 'iran::cluster-a',
+          headline: 'Iran cluster',
+          region: 'Iran',
+          storyCount: 3,
+          sourceCount: 2,
+          sourceProvenance: {
+            totalItems: 3,
+            uniqueSources: 3,
+            entries: [
+              { source: 'Telegram', type: 'telegram', runtimeSource: 'Telegram', count: 1 },
+              { source: 'NYT', type: 'unknown', runtimeSource: 'GDELT', count: 1 },
+              { source: 'France 24', type: 'unknown', runtimeSource: 'GDELT', count: 1 },
+            ],
+            topSources: [
+              { source: 'NYT', type: 'unknown', runtimeSource: 'GDELT', count: 1 },
+              { source: 'France 24', type: 'unknown', runtimeSource: 'GDELT', count: 1 },
+              { source: 'Telegram', type: 'telegram', runtimeSource: 'Telegram', count: 1 },
+            ],
+          },
+        },
+        {
+          id: 'africa::cluster-b',
+          headline: 'Africa cluster',
+          region: 'Africa',
+          storyCount: 1,
+          sourceCount: 1,
+          sourceProvenance: {
+            totalItems: 1,
+            uniqueSources: 1,
+            entries: [
+              { source: 'Bluesky', type: 'social', runtimeSource: 'Bluesky', count: 1 },
+            ],
+            topSources: [
+              { source: 'Bluesky', type: 'social', runtimeSource: 'Bluesky', count: 1 },
+            ],
+          },
+        },
+      ],
       suspectSignals: [
         { category: 'source', signal: 'Telegram urgent cluster', evidenceSource: 'Telegram', source: 'Telegram', reason: 'Telegram shows urgent posts without corroboration' },
         { category: 'source', signal: 'Bluesky noise', evidenceSource: 'Bluesky', source: 'Bluesky', reason: 'degraded source behavior observed' },
@@ -139,9 +179,16 @@ test('source ops surface attaches live source-health state when snapshot health 
   assert.equal(acledPerf.contribution.corroboratedSignals, 1);
   assert.equal(acledPerf.contribution.citedByTippingPoints, 1);
   assert.equal(telegramPerf.contribution.feedItems, 1);
+  assert.equal(telegramPerf.contribution.clusteredItems, 1);
+  assert.equal(telegramPerf.contribution.clusteredStories, 1);
   assert.equal(telegramPerf.contribution.suspectSignals, 1);
   assert.equal(gdeltPerf.contribution.feedItems, 2);
+  assert.equal(gdeltPerf.contribution.clusteredItems, 2);
+  assert.equal(gdeltPerf.contribution.clusteredStories, 1);
+  assert.equal(blueskyPerf.contribution.clusteredItems, 1);
   assert.equal(blueskyPerf.trustOutcome, 'degraded');
+  assert.equal(surface.performance.measurementNotes.directClusterAttribution.includes('available'), true);
+  assert.equal(surface.performance.withClusterAttribution >= 3, true);
   assert.equal(surface.performance.targets.reviewPressure.lowConfidenceCount, 3);
   assert.equal(surface.performance.withSignalContribution >= 3, true);
 });

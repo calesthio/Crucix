@@ -40,14 +40,16 @@ test('summarizeClusterReviewMetrics counts low-confidence, merge, and split cand
 test('buildNewsClusterSummary exposes review metrics on quality summary', () => {
   const snapshot = {
     newsClusters: [
-      { id: 'a', headline: 'A', region: 'Iran', storyCount: 3, sourceCount: 2, latestDate: '2026-04-24T00:00:00Z', llmConfidence: 'heuristic', quality: 'medium', confidenceLabel: 'moderate', qualityFlags: ['heuristic-only'] },
-      { id: 'b', headline: 'B', region: 'Iran', storyCount: 1, sourceCount: 1, latestDate: '2026-04-24T00:00:00Z', llmConfidence: 'heuristic', quality: 'low', confidenceLabel: 'weak', qualityFlags: ['single-source', 'heuristic-only'] },
+      { id: 'a', headline: 'A', region: 'Iran', storyCount: 3, sourceCount: 2, sourceProvenance: { totalItems: 3, uniqueSources: 2, entries: [{ source: 'GDELT', type: 'rss', runtimeSource: 'GDELT', count: 2 }, { source: 'Telegram', type: 'telegram', runtimeSource: 'Telegram', count: 1 }], topSources: [{ source: 'GDELT', type: 'rss', runtimeSource: 'GDELT', count: 2 }] }, latestDate: '2026-04-24T00:00:00Z', llmConfidence: 'heuristic', quality: 'medium', confidenceLabel: 'moderate', qualityFlags: ['heuristic-only'] },
+      { id: 'b', headline: 'B', region: 'Iran', storyCount: 1, sourceCount: 1, sourceProvenance: { totalItems: 1, uniqueSources: 1, entries: [{ source: 'Telegram', type: 'telegram', runtimeSource: 'Telegram', count: 1 }], topSources: [{ source: 'Telegram', type: 'telegram', runtimeSource: 'Telegram', count: 1 }] }, latestDate: '2026-04-24T00:00:00Z', llmConfidence: 'heuristic', quality: 'low', confidenceLabel: 'weak', qualityFlags: ['single-source', 'heuristic-only'] },
     ]
   };
   const summary = buildNewsClusterSummary(snapshot);
   assert.equal(summary.quality.reviewMetrics.lowConfidenceCount, 2);
   assert.equal(summary.quality.reviewMetrics.mergeCandidateCount, 1);
   assert.equal(summary.quality.reviewMetrics.splitCandidateCount, 1);
+  assert.equal(summary.topCluster.sourceProvenance.totalItems, 3);
+  assert.equal(summary.clusters[0].sourceProvenance.entries[0].source, 'GDELT');
 });
 
 test('buildNewsClusterSummary carries source reasoning context when source ops metadata exists', () => {

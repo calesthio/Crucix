@@ -1053,6 +1053,38 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {
   return { hints: mergedHints, debug };
 }
 
+function inferRuntimeSourceAttribution(item = {}) {
+  const type = String(item?.type || '').trim().toLowerCase();
+  const source = String(item?.source || '').trim();
+  const normalizedSource = source.toLowerCase();
+  if (type === 'telegram' || normalizedSource === 'telegram') return 'Telegram';
+  if (type === 'reddit' || normalizedSource === 'reddit') return 'Reddit';
+  if (type === 'bluesky' || normalizedSource === 'bluesky') return 'Bluesky';
+  if (type === 'gdelt' || normalizedSource === 'gdelt') return 'GDELT';
+  if (type === 'rss' || type === 'news' || !type) return 'GDELT';
+  return source || 'unknown';
+}
+
+function summarizeClusterSources(cluster = {}) {
+  const counts = new Map();
+  for (const item of Array.isArray(cluster.items) ? cluster.items : []) {
+    const source = String(item?.source || 'unknown').trim() || 'unknown';
+    const type = String(item?.type || 'unknown').trim() || 'unknown';
+    const runtimeSource = inferRuntimeSourceAttribution(item);
+    const key = `${source}__${type}__${runtimeSource}`;
+    const current = counts.get(key) || { source, type, runtimeSource, count: 0 };
+    current.count += 1;
+    counts.set(key, current);
+  }
+  const entries = Array.from(counts.values()).sort((a, b) => b.count - a.count || a.source.localeCompare(b.source) || a.type.localeCompare(b.type));
+  return {
+    totalItems: Array.isArray(cluster.items) ? cluster.items.length : 0,
+    uniqueSources: entries.length,
+    entries,
+    topSources: entries.slice(0, 5),
+  };
+}
+
 function classifyClusterQuality(cluster = {}) {
   const flags = [];
   const llmConfidence = cluster.llmConfidence || 'heuristic';
@@ -1178,6 +1210,7 @@ export async function buildNewsClusters(news = [], llmProvider = null, options =
   const clusters = Array.from(groups.values()).map(cluster => {
     const offset = stableClusterOffset(cluster.id, cluster.items.length);
     const quality = classifyClusterQuality(cluster);
+    const sourceProvenance = summarizeClusterSources(cluster);
     return {
       id: cluster.id,
       lat: +(cluster.lat + offset.lat).toFixed(3),
@@ -1187,6 +1220,7 @@ export async function buildNewsClusters(news = [], llmProvider = null, options =
       summary: cluster.summary,
       storyCount: cluster.items.length,
       sourceCount: cluster.sourceSet.size,
+      sourceProvenance,
       latestDate: cluster.latestDate || null,
       placementPrecision: cluster.placementPrecision,
       placementBasis: cluster.placementBasis,

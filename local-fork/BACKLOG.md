@@ -11,4 +11,4 @@ New items can be added here when they do not yet belong in the active roadmap.
 - Add schema-level validation helpers for source-ops artifacts so example task packets, scorecards, overlap assessments, and result envelopes are checked against their JSON schemas instead of only spot-checking key fields in tests.
 - Add a dev-safe Crucix restart helper or port-ownership sanity check so local validation cycles stop hitting ambiguous `3117` listener handoff failures during restart.
 - Endpoint-level contract coverage for reasoning metadata on `/api/analysis` and `/api/brief/news` was promoted into `local-fork/plan.json` as Epic 26, effort 26.4 on 2026-04-25.
-- Direct per-cluster source provenance or cluster-to-runtime-source attribution was promoted into `local-fork/plan.json` as Epic 26, effort 26.5 on 2026-04-25.
+- Direct per-cluster source provenance or cluster-to-runtime-source attribution was promoted into `local-fork/plan.json` as Epic 26, effort 26.5 on 2026-04-25 and completed in cycle 086.

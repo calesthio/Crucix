@@ -21,6 +21,9 @@ test('buildNewsClusters marks source-native placements explicitly', async () => 
   assert.equal(clusters[0].placementClass, 'source-native');
   assert.equal(clusters[0].placementPrecision, 'source-native');
   assert.ok(clusters[0].qualityFlags.includes('source-native-placement'));
+  assert.equal(clusters[0].sourceProvenance.totalItems, 1);
+  assert.equal(clusters[0].sourceProvenance.topSources[0].source, 'Operator Feed');
+  assert.equal(clusters[0].sourceProvenance.topSources[0].runtimeSource, 'GDELT');
 });
 
 test('buildNewsClusters marks keyword geocoding as inferred precision', async () => {

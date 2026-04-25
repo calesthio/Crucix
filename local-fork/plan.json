@@ -630,7 +630,7 @@
           {
             "id": "effort-26.5",
             "title": "Add direct per-cluster source provenance or cluster-to-runtime-source attribution so source contribution scoring stops relying on feed-type proxies like RSS to GDELT and can measure downstream quality impact more truthfully",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       }
