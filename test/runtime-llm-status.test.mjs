@@ -60,6 +60,8 @@ test('runtime LLM status reports unavailable when no provider is configured', ()
   assert.equal(status.label, 'LLM UNAVAILABLE');
   assert.equal(status.analysis.reason, 'unavailable');
   assert.equal(status.ideas.reason, 'unavailable');
+  assert.equal(status.analysis.supported, false);
+  assert.equal(status.ideas.supported, false);
   assert.equal(status.configured, false);
 });
 
@@ -73,7 +75,24 @@ test('runtime LLM status reports applied when either analysis or ideas used the 
   assert.equal(status.label, 'LLM APPLIED');
   assert.equal(status.analysis.participated, true);
   assert.equal(status.ideas.participated, true);
+  assert.equal(status.analysis.supported, true);
+  assert.equal(status.ideas.supported, true);
   assert.match(status.summary, /participated in the current published output/i);
+});
+
+test('runtime LLM status distinguishes static-by-design from unavailable for ideas', () => {
+  const status = buildRuntimeLlmStatus({
+    agentAnalysisMeta: buildAgentAnalysisMeta({ source: 'deterministic', refinementState: 'pending' }),
+    ideasSource: 'disabled',
+  }, { provider: 'ollama', model: 'qwen' });
+
+  assert.equal(status.ideas.reason, 'static-by-design');
+  assert.equal(status.ideas.label, 'STATIC BY DESIGN');
+  assert.equal(status.ideas.supported, true);
+  assert.equal(status.ideas.available, true);
+  assert.equal(status.ideas.attempted, false);
+  assert.equal(status.ideas.participated, false);
+  assert.match(status.ideas.explanation, /static by design/i);
 });
 
 test('operator LLM state contract wraps runtime state in a versioned shared payload', () => {
@@ -88,6 +107,10 @@ test('operator LLM state contract wraps runtime state in a versioned shared payl
   assert.equal(contract.provider, 'ollama');
   assert.equal(contract.model, 'qwen');
   assert.equal(contract.surfaces.analysis.label, 'LLM APPLIED');
-  assert.equal(contract.surfaces.ideas.label, 'LLM UNAVAILABLE');
+  assert.equal(contract.surfaces.ideas.label, 'STATIC BY DESIGN');
+  assert.equal(contract.support.ideas.supported, true);
+  assert.equal(contract.support.ideas.available, true);
+  assert.equal(contract.participation.ideas.attempted, false);
+  assert.equal(contract.participation.ideas.participated, false);
   assert.equal(contract.runtimeLlm.status, contract.status);
 });

@@ -1566,7 +1566,9 @@ function buildRuntimeLlmStatus(snapshot = {}, { provider = config.llm?.provider 
   const analysisAttempted = Boolean(analysisMeta.refinementAttemptId || analysisMeta.refinementStartedAt || analysisMeta.refinementCompletedAt || analysisMeta.refinementState === 'failed' || analysisMeta.refinementState === 'timed-out' || analysisMeta.refinementState === 'completed');
   const analysisApplied = analysisMeta.source === 'llm';
   const analysisPending = analysisMeta.refinementState === 'pending' || analysisMeta.refinementState === 'queued';
-  const analysisUnavailable = !configured || analysisMeta.error === 'llm-unavailable' || analysisMeta.refinementState === 'unavailable';
+  const analysisSupported = configured;
+  const analysisAvailable = configured && analysisMeta.error !== 'llm-unavailable' && analysisMeta.refinementState !== 'unavailable';
+  const analysisUnavailable = !analysisAvailable;
   const analysisReason = analysisUnavailable
     ? 'unavailable'
     : analysisPending
@@ -1575,7 +1577,7 @@ function buildRuntimeLlmStatus(snapshot = {}, { provider = config.llm?.provider 
         ? 'applied'
         : analysisAttempted || analysisMeta.source === 'deterministic'
           ? 'fallback'
-          : 'deterministic';
+          : 'not-invoked';
   const analysisExplanation = analysisUnavailable
     ? 'Analysis refinement unavailable, deterministic analysis only.'
     : analysisPending
@@ -1584,19 +1586,39 @@ function buildRuntimeLlmStatus(snapshot = {}, { provider = config.llm?.provider 
         ? `Analysis refinement applied${model ? ` via ${model}` : ''}.`
         : analysisAttempted
           ? `Analysis refinement attempted, deterministic fallback kept${analysisMeta.error ? ` (${analysisMeta.error})` : ''}.`
-          : `Deterministic analysis active${model ? `, ${model} configured but not used yet` : ''}.`;
+          : `Analysis refinement supported but not invoked${model ? ` (${model})` : ''}.`;
 
   const ideasApplied = ideasSource === 'llm';
   const ideasPending = ideasSource === 'pending';
-  const ideasUnavailable = !configured || ideasSource === 'disabled';
-  const ideasReason = ideasUnavailable ? 'unavailable' : ideasPending ? 'pending' : ideasApplied ? 'applied' : 'fallback';
+  const ideasSupported = configured;
+  const ideasAvailable = configured;
+  const ideasStaticByDesign = configured && ideasSource === 'disabled';
+  const ideasNotInvoked = configured && (ideasSource === 'disabled' || ideasSource === 'not-invoked');
+  const ideasUnavailable = !ideasAvailable;
+  const ideasReason = ideasUnavailable
+    ? 'unavailable'
+    : ideasPending
+      ? 'pending'
+      : ideasApplied
+        ? 'applied'
+        : ideasSource === 'llm-failed'
+          ? 'fallback'
+          : ideasStaticByDesign
+            ? 'static-by-design'
+            : ideasNotInvoked
+              ? 'not-invoked'
+              : 'available';
   const ideasExplanation = ideasUnavailable
     ? 'Ideas LLM unavailable, static ideas only.'
     : ideasPending
       ? 'Ideas generation still pending.'
       : ideasApplied
         ? `Ideas generated with LLM${model ? ` via ${model}` : ''}.`
-        : 'Ideas LLM attempted but fallback/static output remained active.';
+        : ideasSource === 'llm-failed'
+          ? 'Ideas LLM attempted but fallback/static output remained active.'
+          : ideasStaticByDesign
+            ? 'Ideas are currently static by design, despite LLM support being available.'
+            : 'Ideas LLM support is available but was not invoked this cycle.';
 
   const status = !configured
     ? 'unavailable'
@@ -1637,10 +1659,12 @@ function buildRuntimeLlmStatus(snapshot = {}, { provider = config.llm?.provider 
         pending: 'LLM PENDING',
         applied: 'LLM APPLIED',
         fallback: 'LLM FALLBACK',
-        deterministic: 'DETERMINISTIC ONLY',
+        'not-invoked': 'LLM AVAILABLE',
       }[analysisReason] || 'LLM STATUS',
       reason: analysisReason,
       configured,
+      supported: analysisSupported,
+      available: analysisAvailable,
       attempted: analysisAttempted,
       participated: analysisApplied,
       explanation: analysisExplanation,
@@ -1651,10 +1675,15 @@ function buildRuntimeLlmStatus(snapshot = {}, { provider = config.llm?.provider 
         pending: 'LLM PENDING',
         applied: 'LLM APPLIED',
         fallback: 'LLM FALLBACK',
+        'static-by-design': 'STATIC BY DESIGN',
+        'not-invoked': 'LLM AVAILABLE',
+        available: 'LLM AVAILABLE',
       }[ideasReason] || 'LLM STATUS',
       reason: ideasReason,
       configured,
-      attempted: configured && !ideasUnavailable,
+      supported: ideasSupported,
+      available: ideasAvailable,
+      attempted: configured && (ideasPending || ideasApplied || ideasSource === 'llm-failed'),
       participated: ideasApplied,
       explanation: ideasExplanation,
     },
@@ -1674,6 +1703,26 @@ function buildOperatorLlmStateContract(snapshot = {}, options = {}) {
     surfaces: {
       analysis: runtimeLlm.analysis,
       ideas: runtimeLlm.ideas,
+    },
+    support: {
+      analysis: {
+        supported: Boolean(runtimeLlm.analysis?.supported),
+        available: Boolean(runtimeLlm.analysis?.available),
+      },
+      ideas: {
+        supported: Boolean(runtimeLlm.ideas?.supported),
+        available: Boolean(runtimeLlm.ideas?.available),
+      },
+    },
+    participation: {
+      analysis: {
+        attempted: Boolean(runtimeLlm.analysis?.attempted),
+        participated: Boolean(runtimeLlm.analysis?.participated),
+      },
+      ideas: {
+        attempted: Boolean(runtimeLlm.ideas?.attempted),
+        participated: Boolean(runtimeLlm.ideas?.participated),
+      },
     },
     runtimeLlm,
   };
