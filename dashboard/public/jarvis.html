@@ -1596,9 +1596,10 @@ function renderRight(){
   const reviewQueuePanel = `<div class="g-panel right-review-queue">
       <div class="sec-head"><h3>Review Queue</h3><span class="badge">${cleanText(String(reviewQueue?.totalItems || 0))}</span></div>
       <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:6px">${cleanText(reviewQueue?.summary || 'No active review items.')}</div>
+      ${(reviewQueue?.ackSummary?.active || 0) > 0 ? `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:8px">Dismissed now ${cleanText(String(reviewQueue?.ackSummary?.active || 0))} • repeat ${cleanText(String(reviewQueue?.ackSummary?.repeatAckCount || 0))}${reviewQueue?.ackSummary?.nextExpiry ? ` • next expiry ${cleanText(getAge(reviewQueue.ackSummary.nextExpiry))}` : ''}</div>` : ''}
       ${reviewQueue?.state === 'empty_elevated_metrics' ? `<div style="font-family:var(--mono);font-size:10px;color:var(--warn);margin-bottom:8px">Metrics still elevated • chronic ${cleanText(String(reviewQueue?.metrics?.chronicFailureCount || 0))} • recent ${cleanText(String(reviewQueue?.metrics?.recentFailureCount || 0))} • low-confidence ${cleanText(String(reviewQueue?.metrics?.lowConfidenceCount || 0))} • duplicates ${cleanText(String(reviewQueue?.metrics?.suspiciousNearDuplicateCount || 0))}</div>` : ''}
       ${reviewQueue?.topReasons?.length ? `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:8px">Top reasons: ${reviewQueue.topReasons.map(item => `${cleanText(item.reason)} (${item.count})`).join(' • ')}</div>` : ''}
-      ${(reviewQueue?.items || []).length ? reviewQueue.items.map(item=>`<div class="signal-row" style="border-left-color:${item.severity==='high'?'var(--warn)':'rgba(68,204,255,0.5)'}"><strong>${cleanText(item.region || 'region')}</strong><p>${cleanText(item.reason)} • ${cleanText(String(item.itemCount || 0))} item${(item.itemCount||0)===1?'':'s'}${item.chronic ? ' • chronic' : ''} • priority ${cleanText(String(item.priorityScore || 0))}</p><div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px">Drivers: ${cleanText((item.priorityDrivers || []).join(', ') || 'baseline')}</div><div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px">${cleanText(item.suggestedAction || '')}</div></div>`).join('') : `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${cleanText(reviewQueue?.emptyReason || 'No active review items')}</div>`}
+      ${(reviewQueue?.items || []).length ? reviewQueue.items.map(item=>`<div class="signal-row" style="border-left-color:${item.severity==='high'?'var(--warn)':'rgba(68,204,255,0.5)'}"><strong>${cleanText(item.region || 'region')}</strong><p>${cleanText(item.reason)} • ${cleanText(String(item.itemCount || 0))} item${(item.itemCount||0)===1?'':'s'}${item.chronic ? ' • chronic' : ''} • priority ${cleanText(String(item.priorityScore || 0))}</p><div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px">Drivers: ${cleanText((item.priorityDrivers || []).join(', ') || 'baseline')}</div><div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px">${cleanText(item.suggestedAction || '')}</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${(item.actions||[]).map(action => action.id === 'artifacts' ? `<button class="map-ctrl-btn" style="font-size:9px;padding:4px 8px" onclick="openReviewQueueAction('${cleanText(action.href)}')">${cleanText(action.label)}</button>` : `<button class="map-ctrl-btn" style="font-size:9px;padding:4px 8px" onclick="runReviewQueueAction('${cleanText(action.href)}','${cleanText(action.method || 'GET')}')">${cleanText(action.label)}</button>`).join('')}</div></div>`).join('') : `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${cleanText(reviewQueue?.emptyReason || 'No active review items')}</div>`}
       ${reviewQueue?.hasMore ? `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:8px">Showing ${cleanText(String(reviewQueue.visibleItems || 0))} of ${cleanText(String(reviewQueue.totalItems || 0))} items</div>` : ''}
     </div>`;
   const analysisReview = `<div class="g-panel right-analysis-review">
@@ -1636,6 +1637,33 @@ function renderRight(){
 function getAge(d){const ms=Date.now()-new Date(d).getTime();const h=Math.floor(ms/3600000);if(h<1)return 'just now';if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago'}
 function cleanText(t){return t.replace(/&#39;/g,"'").replace(/&#33;/g,"!").replace(/&amp;/g,"&").replace(/<[^>]+>/g,'')}
 function safeExternalUrl(raw){try{const u=new URL(raw,location.href);return u.protocol==='http:'||u.protocol==='https:'?u.toString():null}catch{return null}}
+function flashTopbar(color='var(--accent)'){
+  const topbar = document.querySelector('.topbar');
+  if (!topbar) return;
+  topbar.style.borderColor = color;
+  setTimeout(() => { topbar.style.borderColor = ''; }, 1500);
+}
+async function refreshFromApi(){
+  const response = await fetch('/api/data', { cache: 'no-store' });
+  if (!response.ok) throw new Error(`api ${response.status}`);
+  D = await response.json();
+  reinit();
+  flashTopbar();
+}
+async function runReviewQueueAction(href, method='GET'){
+  try {
+    const response = await fetch(href, { method, cache: 'no-store' });
+    if (!response.ok) throw new Error(`queue action ${response.status}`);
+    await refreshFromApi();
+  } catch (err) {
+    flashTopbar('var(--warn)');
+    console.error('[Crucix] review queue action failed', err);
+  }
+}
+function openReviewQueueAction(href){
+  const url = safeExternalUrl(href);
+  if (url) window.open(url, '_blank', 'noopener');
+}
 
 // === BOOT SEQUENCE ===
 function runBoot(){

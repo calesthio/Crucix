@@ -505,7 +505,7 @@
           {
             "id": "effort-21.1",
             "title": "Add first-class operator queue actions such as ack, snooze, and jump-to-artifact links so the review queue becomes directly actionable",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -524,8 +524,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 67,
-    "activeCycleId": "2026-04-24-cycle-067",
-    "lastCompletedCycleId": "2026-04-24-cycle-067"
+    "sequence": 68,
+    "activeCycleId": "2026-04-24-cycle-068",
+    "lastCompletedCycleId": "2026-04-24-cycle-068"
   }
 }

@@ -217,7 +217,7 @@ function reviewAckStats(limit = 5) {
   };
 }
 
-function ackReviewItem(region = '', reason = '', note = '') {
+function ackReviewItem(region = '', reason = '', note = '', options = {}) {
   const trimmedRegion = String(region || '').trim();
   const trimmedReason = String(reason || '').trim();
   if (!trimmedRegion || !trimmedReason) return null;
@@ -225,6 +225,9 @@ function ackReviewItem(region = '', reason = '', note = '') {
   const key = reviewAckKey({ region: trimmedRegion, reason: trimmedReason });
   const now = Date.now();
   const existing = reviewAcks.get(key);
+  const requestedDurationMs = Number(options?.durationMs);
+  const durationMs = Number.isFinite(requestedDurationMs) && requestedDurationMs > 0 ? requestedDurationMs : REVIEW_ACK_TTL_MS;
+  const action = String(options?.action || '').trim() || 'ack';
   const entry = {
     key,
     region: trimmedRegion,
@@ -234,7 +237,9 @@ function ackReviewItem(region = '', reason = '', note = '') {
     firstAckedAt: existing?.firstAckedAt || existing?.createdAt || now,
     lastAckedAt: now,
     ackCount: Math.max(1, Number(existing?.ackCount) || 1) + (existing ? 1 : 0),
-    expiresAt: now + REVIEW_ACK_TTL_MS,
+    expiresAt: now + durationMs,
+    durationMs,
+    action,
     lastClearedAt: existing?.lastClearedAt || null,
   };
   reviewAcks.delete(key);
@@ -450,6 +455,7 @@ function buildOperatorReviewQueue(review = {}, { maxItems = 5, quality = null } 
   const metrics = quality?.reviewMetrics || {};
   const stats = review?.stats || {};
   const pressure = review?.pressure || {};
+  const ackSummary = review?.ackSummary || reviewAckStats();
   const duplicateByRegion = new Map();
   for (const entry of Array.isArray(metrics.suspiciousNearDuplicates) ? metrics.suspiciousNearDuplicates : []) {
     const region = entry?.region || 'Unknown';
@@ -518,6 +524,12 @@ function buildOperatorReviewQueue(review = {}, { maxItems = 5, quality = null } 
       ? `${items.length} active review item${items.length === 1 ? '' : 's'} awaiting operator triage.`
       : emptyReason,
     topReasons,
+    ackSummary: {
+      active: ackSummary?.active || 0,
+      repeatAckCount: ackSummary?.repeatAckCount || 0,
+      nextExpiry: ackSummary?.nextExpiry || null,
+      recentDismissalCount: ackSummary?.recentDismissalCount || 0,
+    },
     metrics: {
       chronicFailureCount: stats?.chronicFailureCount || 0,
       recentFailureCount: stats?.recentFailureCount || 0,
@@ -525,27 +537,59 @@ function buildOperatorReviewQueue(review = {}, { maxItems = 5, quality = null } 
       suspiciousNearDuplicateCount: metrics?.suspiciousNearDuplicateCount || 0,
       pressuredRegionCount: pressure?.pressuredRegionCount || 0,
     },
-    items: bounded.map(item => ({
-      region: item.region || null,
-      reason: item.reason || 'unknown',
-      severity: item.severity || 'medium',
-      itemCount: item.itemCount || 0,
-      retried: Boolean(item.retried),
-      repairAttempted: Boolean(item.repairAttempted),
-      chronic: Boolean(item.persistent?.chronic),
-      consecutiveFailures: item.persistent?.consecutiveFailures || 0,
-      lastStatus: item.persistent?.lastStatus || item.status || null,
-      priorityScore: item.priorityScore || 0,
-      priorityDrivers: item.drivers || [],
-      pressureScore: item.pressureScore || 0,
-      duplicateScore: item.duplicateScore || 0,
-      splitCount: item.splitCount || 0,
-      suggestedAction: item.reason === 'no-json-match'
-        ? 'Inspect response shape and retry/repair behavior.'
-        : item.reason === 'shape-mismatch'
-          ? 'Review schema mismatch and fallback parsing path.'
-          : 'Inspect clustered output and operator review evidence.',
-    })),
+    items: bounded.map(item => {
+      const region = item.region || null;
+      const reason = item.reason || 'unknown';
+      const artifactRegion = encodeURIComponent(region || '');
+      const artifactReason = encodeURIComponent(reason);
+      return {
+        region,
+        reason,
+        severity: item.severity || 'medium',
+        itemCount: item.itemCount || 0,
+        retried: Boolean(item.retried),
+        repairAttempted: Boolean(item.repairAttempted),
+        chronic: Boolean(item.persistent?.chronic),
+        consecutiveFailures: item.persistent?.consecutiveFailures || 0,
+        lastStatus: item.persistent?.lastStatus || item.status || null,
+        priorityScore: item.priorityScore || 0,
+        priorityDrivers: item.drivers || [],
+        pressureScore: item.pressureScore || 0,
+        duplicateScore: item.duplicateScore || 0,
+        splitCount: item.splitCount || 0,
+        suggestedAction: reason === 'no-json-match'
+          ? 'Inspect response shape and retry/repair behavior.'
+          : reason === 'shape-mismatch'
+            ? 'Review schema mismatch and fallback parsing path.'
+            : 'Inspect clustered output and operator review evidence.',
+        actions: [
+          {
+            id: 'ack',
+            label: 'Ack',
+            method: 'POST',
+            href: `/api/brief/news/review/ack?region=${artifactRegion}&reason=${artifactReason}`,
+            intent: 'dismiss',
+            detail: 'Dismiss this queue item until the normal ack TTL expires.',
+          },
+          {
+            id: 'snooze',
+            label: 'Snooze 24h',
+            method: 'POST',
+            href: `/api/brief/news/review/snooze?region=${artifactRegion}&reason=${artifactReason}&hours=24`,
+            intent: 'snooze',
+            detail: 'Dismiss this queue item for 24 hours, then automatically return it if still present.',
+          },
+          {
+            id: 'artifacts',
+            label: 'Artifacts',
+            method: 'GET',
+            href: `/api/brief/news/review/artifacts?region=${artifactRegion}&reason=${artifactReason}`,
+            intent: 'inspect',
+            detail: 'Open recent repair artifacts for this region and reason.',
+          },
+        ],
+      };
+    }),
   };
 }
 
@@ -2140,8 +2184,25 @@ app.get('/api/brief/news/review/stats', requireDebugAccess, (req, res) => {
 });
 
 app.get('/api/brief/news/review/artifacts', requireDebugAccess, (req, res) => {
+  const region = typeof req.query.region === 'string' ? req.query.region.trim() : '';
+  const reason = typeof req.query.reason === 'string' ? req.query.reason.trim() : '';
+  const artifacts = summarizeClusterRepairArtifacts();
+  const filteredItems = (artifacts.items || []).filter(item => {
+    if (region && String(item?.region || '').trim() !== region) return false;
+    if (reason && String(item?.reason || '').trim() !== reason) return false;
+    return true;
+  });
   res.json({
-    artifacts: summarizeClusterRepairArtifacts(),
+    filter: {
+      region: region || null,
+      reason: reason || null,
+      applied: Boolean(region || reason),
+    },
+    artifacts: {
+      ...artifacts,
+      filteredCount: filteredItems.length,
+      items: filteredItems,
+    },
   });
 });
 
@@ -2199,12 +2260,28 @@ app.post('/api/brief/news/review/ack', requireDebugAccess, (req, res) => {
   const reason = typeof req.query.reason === 'string' ? req.query.reason.trim() : '';
   const note = typeof req.query.note === 'string' ? req.query.note.trim() : '';
   if (!region || !reason) return res.status(400).json({ error: 'region and reason query parameters are required' });
-  const entry = ackReviewItem(region, reason, note);
+  const entry = ackReviewItem(region, reason, note, { action: 'ack' });
   if (!entry) return res.status(400).json({ error: 'unable to acknowledge review item' });
   res.json({
     ok: true,
     entry: formatReviewAckEntry(entry),
     summary: reviewAckStats(),
+  });
+});
+
+app.post('/api/brief/news/review/snooze', requireDebugAccess, (req, res) => {
+  const region = typeof req.query.region === 'string' ? req.query.region.trim() : '';
+  const reason = typeof req.query.reason === 'string' ? req.query.reason.trim() : '';
+  const note = typeof req.query.note === 'string' ? req.query.note.trim() : '';
+  const hours = Math.max(1, Math.min(Number.parseInt(req.query.hours, 10) || 24, 24 * 14));
+  if (!region || !reason) return res.status(400).json({ error: 'region and reason query parameters are required' });
+  const entry = ackReviewItem(region, reason, note || `Snoozed for ${hours}h`, { action: 'snooze', durationMs: hours * 60 * 60 * 1000 });
+  if (!entry) return res.status(400).json({ error: 'unable to snooze review item' });
+  res.json({
+    ok: true,
+    entry: formatReviewAckEntry(entry),
+    summary: reviewAckStats(),
+    snoozeHours: hours,
   });
 });
 

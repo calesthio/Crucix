@@ -26,6 +26,7 @@ const context = {
   Object,
   Array,
   memory: { getSignalState: () => ({ regions: {}, updatedAt: null }) },
+  reviewAckStats: () => ({ active: 0, repeatAckCount: 0, recentDismissalCount: 0, nextExpiry: null }),
 };
 vm.createContext(context);
 vm.runInContext(`
@@ -54,6 +55,7 @@ test('buildOperatorReviewQueue marks empty-but-elevated queues explicitly', () =
   assert.match(queue.summary, /metrics remain elevated/i);
   assert.equal(queue.metrics.chronicFailureCount, 2);
   assert.equal(queue.metrics.lowConfidenceCount, 5);
+  assert.equal(queue.ackSummary.active, 0);
 });
 
 test('buildOperatorReviewQueue returns bounded actionable items with triage prioritization', () => {
@@ -93,4 +95,11 @@ test('buildOperatorReviewQueue returns bounded actionable items with triage prio
   assert.match(queue.items[0].priorityDrivers.join(' '), /near-duplicate|split-pattern/);
   assert.match(queue.items[1].suggestedAction, /Inspect response shape/i);
   assert.match(queue.items[3].suggestedAction, /schema mismatch/i);
+  assert.equal(queue.items[0].actions.length, 3);
+  assert.equal(queue.items[0].actions[0].id, 'ack');
+  assert.match(queue.items[0].actions[0].href, /\/api\/brief\/news\/review\/ack\?/);
+  assert.equal(queue.items[0].actions[1].id, 'snooze');
+  assert.match(queue.items[0].actions[1].href, /hours=24/);
+  assert.equal(queue.items[0].actions[2].id, 'artifacts');
+  assert.match(queue.items[0].actions[2].href, /\/api\/brief\/news\/review\/artifacts\?/);
 });
