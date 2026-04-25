@@ -625,6 +625,11 @@
           {
             "id": "effort-26.4",
             "title": "Add endpoint-level contract coverage for reasoning metadata on `/api/analysis` and `/api/brief/news` so source-role context cannot silently drop from live operator surfaces",
+            "status": "completed"
+          },
+          {
+            "id": "effort-26.5",
+            "title": "Add direct per-cluster source provenance or cluster-to-runtime-source attribution so source contribution scoring stops relying on feed-type proxies like RSS to GDELT and can measure downstream quality impact more truthfully",
             "status": "pending"
           }
         ]
@@ -632,8 +637,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 84,
-    "activeCycleId": "2026-04-25-cycle-084",
-    "lastCompletedCycleId": "2026-04-25-cycle-084"
+    "sequence": 85,
+    "activeCycleId": "2026-04-25-cycle-085",
+    "lastCompletedCycleId": "2026-04-25-cycle-085"
   }
 }
