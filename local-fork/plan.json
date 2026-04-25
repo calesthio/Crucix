@@ -427,7 +427,7 @@
           {
             "id": "effort-17.3",
             "title": "Add regression coverage for macro card formatting and degraded-data rendering in dashboard and compact briefing surfaces",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -478,8 +478,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 57,
-    "activeCycleId": "2026-04-24-cycle-057",
-    "lastCompletedCycleId": "2026-04-24-cycle-057"
+    "sequence": 58,
+    "activeCycleId": "2026-04-24-cycle-058",
+    "lastCompletedCycleId": "2026-04-24-cycle-058"
   }
 }
