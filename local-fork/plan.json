@@ -610,7 +610,7 @@
           {
             "id": "effort-26.1",
             "title": "Classify sources by fusion role such as anchor, corroborator, anomaly detector, context, and exploratory so runtime evidence handling stops treating all feeds alike",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-26.2",
@@ -627,8 +627,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 81,
-    "activeCycleId": "2026-04-25-cycle-081",
-    "lastCompletedCycleId": "2026-04-25-cycle-081"
+    "sequence": 82,
+    "activeCycleId": "2026-04-25-cycle-082",
+    "lastCompletedCycleId": "2026-04-25-cycle-082"
   }
 }

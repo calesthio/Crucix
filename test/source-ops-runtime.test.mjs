@@ -21,6 +21,10 @@ test('source ops surface summarizes contract, inventory, and needs from workspac
   assert.equal(surface.inventory.byLifecycle.shadow, 1);
   assert.ok(surface.inventory.byCategory.social >= 1);
   assert.ok(surface.inventory.byOperatorRole.anchor >= 1);
+  assert.equal(surface.fusionRoles.total, 30);
+  assert.ok(surface.fusionRoles.byRole.anchor >= 1);
+  assert.ok(surface.fusionRoles.byRole.exploratory >= 1);
+  assert.ok(surface.fusionRoles.roles.find(item => item.role === 'context')?.count >= 1);
   assert.equal(surface.needs.total, 2);
   assert.equal(surface.needs.highPriority, 2);
   assert.ok(surface.needs.byCategory.maritime >= 1);

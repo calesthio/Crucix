@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
-import { buildCanonicalSourceRegistry, SOURCE_REGISTRY_VERSION } from '../lib/source-registry.mjs';
+import { buildCanonicalSourceRegistry, SOURCE_REGISTRY_VERSION, summarizeSourceFusionRoles } from '../lib/source-registry.mjs';
 import { DEFAULT_SOURCE_POLICY } from '../lib/freshness-policy.mjs';
 
 const schema = JSON.parse(readFileSync(new URL('../source-ops/source-registry.schema.json', import.meta.url), 'utf8'));
@@ -36,6 +36,15 @@ test('canonical source registry schema covers current runtime source policy set'
   assert.equal(registry.sources.length, Object.keys(DEFAULT_SOURCE_POLICY).length);
   assert.equal(new Set(registry.sources.map(source => source.name)).size, registry.sources.length);
   assert.equal(new Set(registry.sources.map(source => source.id)).size, registry.sources.length);
+});
+
+test('source fusion-role summary stays aligned with canonical registry roles', () => {
+  const registry = buildCanonicalSourceRegistry();
+  const summary = summarizeSourceFusionRoles(registry.sources);
+  assert.equal(summary.total, registry.sources.length);
+  assert.equal(summary.byRole.anchor >= 1, true);
+  assert.equal(summary.byRole.exploratory >= 1, true);
+  assert.equal(summary.roles.find(item => item.role === 'anchor')?.sourceIds.includes('opensky'), true);
 });
 
 test('canonical source registry maps current source policy entries to real source modules', () => {
