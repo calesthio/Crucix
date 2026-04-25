@@ -30,6 +30,8 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.5 var(--mono
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
       <a class="pill" href="/">Dashboard</a>
+      <button class="pill" id="saveBtn" type="button" style="background:transparent;cursor:pointer">Save</button>
+      <button class="pill" id="exportBtn" type="button" style="background:transparent;cursor:pointer">Export</button>
       <a class="pill" href="/api/settings" target="_blank" rel="noreferrer">Raw JSON</a>
     </div>
   </div>
@@ -41,6 +43,45 @@ function esc(value){return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&
 function row(key, value){return `<div class="row"><div class="key">${esc(key)}</div><div class="val">${value}</div></div>`;}
 function tags(items){return `<div class="tags">${items.map(item => `<span class="tag">${esc(item)}</span>`).join('')}</div>`;}
 function renderCard(title, subtitle, body){return `<section class="card"><div class="mini">${esc(subtitle)}</div><h2>${esc(title)}</h2>${body}</section>`;}
+function selectRow(label, id, value, options){return `<div class="row"><label class="key" for="${esc(id)}">${esc(label)}</label><div class="val"><select id="${esc(id)}">${options.map(option => `<option value="${esc(option.value)}" ${option.value===value?'selected':''}>${esc(option.label)}</option>`).join('')}</select></div></div>`;}
+function checkboxGroup(title, name, items, selectedValues){const selected=new Set(selectedValues||[]);return `<div class="row"><div class="key">${esc(title)}</div><div class="val"><div class="tags">${items.map(item => `<label class="tag"><input type="checkbox" name="${esc(name)}" value="${esc(item.value)}" ${selected.has(item.value)?'checked':''}> ${esc(item.label)}</label>`).join('')}</div></div></div>`;}
+async function savePreferences(){
+  const payload = {
+    preferences: {
+      layout: {
+        visualsMode: document.getElementById('visualsMode')?.value || 'full',
+        mapMode: document.getElementById('mapMode')?.value || 'auto',
+        defaultRegion: document.getElementById('defaultRegion')?.value || 'world',
+        activeLayer: document.getElementById('activeLayer')?.value || null,
+      },
+      sources: {
+        enabledCategories: Array.from(document.querySelectorAll('input[name="enabledCategories"]:checked')).map(el => el.value),
+        enabledSourceIds: Array.from(document.querySelectorAll('input[name="enabledSourceIds"]:checked')).map(el => el.value),
+      },
+      llm: {
+        newsModeDefault: document.getElementById('newsModeDefault')?.value || 'auto',
+      },
+      agentAnalysis: {
+        detailLevel: document.getElementById('analysisDetailLevel')?.value || 'standard',
+      },
+    },
+  };
+  const res = await fetch('/api/settings/operator', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  if(!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+async function exportPreferences(){
+  const res = await fetch('/api/settings/export');
+  if(!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'crucix-operator-settings.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
 async function boot(){
   const status = document.getElementById('status');
   const grid = document.getElementById('grid');
@@ -56,8 +97,10 @@ async function boot(){
     grid.innerHTML = [
       renderCard('Layout', 'UI posture', [
         row('Current', esc(data.layout?.current || 'unknown')),
-        row('Visuals mode', esc(data.layout?.controls?.visualsMode || 'unknown')),
-        row('Mobile flat map default', esc(String(Boolean(data.layout?.controls?.mobileFlatMapDefault)))),
+        selectRow('Visuals mode', 'visualsMode', data.layout?.controls?.visualsMode || 'full', [{value:'full',label:'FULL'},{value:'lite',label:'LITE'}]),
+        selectRow('Map mode', 'mapMode', data.layout?.controls?.mapMode || 'auto', [{value:'auto',label:'AUTO'},{value:'flat',label:'FLAT'},{value:'globe',label:'GLOBE'}]),
+        selectRow('Default region', 'defaultRegion', data.layout?.controls?.defaultRegion || 'world', [{value:'world',label:'WORLD'},{value:'americas',label:'AMERICAS'},{value:'europe',label:'EUROPE'},{value:'middleEast',label:'MIDDLE EAST'},{value:'asiaPacific',label:'ASIA PACIFIC'},{value:'africa',label:'AFRICA'}]),
+        selectRow('Active layer', 'activeLayer', data.layout?.controls?.activeLayer || '', [{value:'',label:'ALL'},{value:'air',label:'AIR'},{value:'thermal',label:'THERMAL'},{value:'sdr',label:'SDR'},{value:'maritime',label:'MARITIME'},{value:'nuke',label:'NUKE'},{value:'conflict',label:'CONFLICT'},{value:'health',label:'HEALTH'},{value:'news',label:'NEWS'},{value:'osint',label:'OSINT'},{value:'space',label:'SPACE'}]),
         row('Persistence', esc(data.layout?.controls?.persistence || 'unknown')),
         tags(layouts),
       ].join('')),
@@ -66,6 +109,8 @@ async function boot(){
         row('Active', esc(data.sources?.active ?? 0)),
         row('Selection mode', esc(data.sources?.selection?.mode || 'unknown')),
         row('Per-source controls', esc(String(Boolean(data.sources?.selection?.supportsPerSourceControl)))),
+        checkboxGroup('Enabled categories', 'enabledCategories', (data.sources?.categories || []).map(item => ({ value: item.category, label: `${item.category}: ${item.count}` })), data.sources?.selection?.enabledCategories || []),
+        checkboxGroup('Enabled sources', 'enabledSourceIds', (data.sources?.availableSources || []).map(item => ({ value: item.id, label: `${item.name} [${item.category}/${item.lifecycle}]` })), data.sources?.selection?.enabledSourceIds || []),
         categories.length ? tags(categories) : '',
         lifecycle.length ? tags(lifecycle) : '',
       ].join('')),
@@ -74,7 +119,7 @@ async function boot(){
         row('Model', esc(data.llm?.model || 'none')),
         row('Configured', esc(String(Boolean(data.llm?.configured)))),
         row('State', esc(data.llm?.state?.label || data.llm?.state?.status || 'unknown')),
-        row('Modes', esc((data.llm?.requestedModeOptions || []).join(', '))),
+        selectRow('Default news mode', 'newsModeDefault', data.llm?.defaultMode || 'auto', [{value:'auto',label:'AUTO'},{value:'off',label:'OFF'},{value:'force',label:'FORCE'}]),
       ].join('')),
       renderCard('Agent analysis', 'Published reasoning behavior', [
         row('Status', esc(data.agentAnalysis?.current?.status || 'unavailable')),
@@ -82,6 +127,7 @@ async function boot(){
         row('Source', esc(data.agentAnalysis?.current?.source || 'n/a')),
         row('Refinement', esc(data.agentAnalysis?.current?.refinementState || 'n/a')),
         row('Publish mode', esc(data.agentAnalysis?.controls?.publishMode || 'unknown')),
+        selectRow('Detail level', 'analysisDetailLevel', data.agentAnalysis?.controls?.detailLevel || 'standard', [{value:'standard',label:'STANDARD'},{value:'compact',label:'COMPACT'},{value:'expanded',label:'EXPANDED'}]),
       ].join('')),
       renderCard('Runtime', 'Cadence and sweep state', [
         row('Refresh interval', esc(`${data.runtime?.refreshIntervalMinutes ?? '?'} min`)),
@@ -107,6 +153,22 @@ async function boot(){
       ].join('')),
       renderCard('Operator notes', 'Honesty and roadmap boundaries', `<pre>${esc((data.notes || []).join('\n- ')).replace(/^/, '- ')}</pre>`),
     ].join('');
+    document.getElementById('saveBtn')?.addEventListener('click', async () => {
+      try {
+        await savePreferences();
+        status.textContent = `Saved operator settings at ${new Date().toLocaleTimeString()}`;
+      } catch (err) {
+        status.textContent = `Failed to save settings: ${err.message}`;
+      }
+    });
+    document.getElementById('exportBtn')?.addEventListener('click', async () => {
+      try {
+        await exportPreferences();
+        status.textContent = `Exported operator settings at ${new Date().toLocaleTimeString()}`;
+      } catch (err) {
+        status.textContent = `Failed to export settings: ${err.message}`;
+      }
+    });
   } catch (err) {
     status.textContent = `Failed to load settings: ${err.message}`;
   }

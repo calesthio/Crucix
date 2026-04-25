@@ -27,6 +27,7 @@ const MEMORY_DIR = join(RUNS_DIR, 'memory');
 const REVIEW_ACKS_PATH = join(RUNS_DIR, 'cluster-review-acks.json');
 const AGENT_ANALYSIS_VALIDATION_SCRIPT = join(ROOT, 'scripts/agent-analysis-validation-summary.mjs');
 const OPENSKY_STATE_PATH = join(ROOT, 'runs', 'cache', 'opensky-state.json');
+const OPERATOR_SETTINGS_PATH = process.env.OPERATOR_SETTINGS_PATH || join(ROOT, 'runs', 'operator-settings.json');
 
 // Ensure directories exist
 for (const dir of [RUNS_DIR, MEMORY_DIR, join(MEMORY_DIR, 'cold')]) {
@@ -83,6 +84,107 @@ function loadJsonFile(path, fallback) {
 function saveJsonFile(path, data) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
+}
+
+function operatorSettingsDefaults() {
+  return {
+    version: 'operator-settings-store-v1',
+    updatedAt: null,
+    preferences: {
+      layout: {
+        visualsMode: 'full',
+        mapMode: 'auto',
+        defaultRegion: 'world',
+        activeLayer: null,
+      },
+      sources: {
+        enabledCategories: [],
+        enabledSourceIds: [],
+      },
+      llm: {
+        newsModeDefault: 'auto',
+      },
+      agentAnalysis: {
+        detailLevel: 'standard',
+      },
+    },
+  };
+}
+
+function normalizeOperatorSettings(input = {}) {
+  const defaults = operatorSettingsDefaults();
+  const layout = input?.preferences?.layout || {};
+  const sources = input?.preferences?.sources || {};
+  const llm = input?.preferences?.llm || {};
+  const agentAnalysis = input?.preferences?.agentAnalysis || {};
+  const allowedRegions = ['world', 'americas', 'europe', 'middleEast', 'asiaPacific', 'africa'];
+  const allowedLayers = ['air', 'thermal', 'sdr', 'maritime', 'nuke', 'conflict', 'health', 'news', 'osint', 'space'];
+  const allowedMapModes = ['auto', 'flat', 'globe'];
+  const allowedVisualsModes = ['full', 'lite'];
+  const allowedLlmModes = ['auto', 'off', 'force'];
+  const allowedAnalysisDetails = ['standard', 'compact', 'expanded'];
+  return {
+    version: defaults.version,
+    updatedAt: input?.updatedAt || null,
+    preferences: {
+      layout: {
+        visualsMode: allowedVisualsModes.includes(layout.visualsMode) ? layout.visualsMode : defaults.preferences.layout.visualsMode,
+        mapMode: allowedMapModes.includes(layout.mapMode) ? layout.mapMode : defaults.preferences.layout.mapMode,
+        defaultRegion: allowedRegions.includes(layout.defaultRegion) ? layout.defaultRegion : defaults.preferences.layout.defaultRegion,
+        activeLayer: allowedLayers.includes(layout.activeLayer) ? layout.activeLayer : null,
+      },
+      sources: {
+        enabledCategories: Array.isArray(sources.enabledCategories) ? Array.from(new Set(sources.enabledCategories.map(value => String(value).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)) : [],
+        enabledSourceIds: Array.isArray(sources.enabledSourceIds) ? Array.from(new Set(sources.enabledSourceIds.map(value => String(value).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)) : [],
+      },
+      llm: {
+        newsModeDefault: allowedLlmModes.includes(llm.newsModeDefault) ? llm.newsModeDefault : defaults.preferences.llm.newsModeDefault,
+      },
+      agentAnalysis: {
+        detailLevel: allowedAnalysisDetails.includes(agentAnalysis.detailLevel) ? agentAnalysis.detailLevel : defaults.preferences.agentAnalysis.detailLevel,
+      },
+    },
+  };
+}
+
+function loadOperatorSettings() {
+  return normalizeOperatorSettings(loadJsonFile(OPERATOR_SETTINGS_PATH, operatorSettingsDefaults()));
+}
+
+function saveOperatorSettings(input = {}) {
+  const normalized = normalizeOperatorSettings(input);
+  const persisted = {
+    ...normalized,
+    updatedAt: new Date().toISOString(),
+  };
+  saveJsonFile(OPERATOR_SETTINGS_PATH, persisted);
+  return persisted;
+}
+
+function mergeOperatorSettingsPatch(patch = {}) {
+  const current = loadOperatorSettings();
+  const merged = {
+    ...current,
+    preferences: {
+      layout: {
+        ...current.preferences.layout,
+        ...(patch?.preferences?.layout || {}),
+      },
+      sources: {
+        ...current.preferences.sources,
+        ...(patch?.preferences?.sources || {}),
+      },
+      llm: {
+        ...current.preferences.llm,
+        ...(patch?.preferences?.llm || {}),
+      },
+      agentAnalysis: {
+        ...current.preferences.agentAnalysis,
+        ...(patch?.preferences?.agentAnalysis || {}),
+      },
+    },
+  };
+  return saveOperatorSettings(merged);
 }
 
 function isLocalRequest(req) {
@@ -2094,12 +2196,14 @@ if (discordAlerter.isConfigured) {
 
 // === Express Server ===
 const app = express();
+app.use(express.json({ limit: '1mb' }));
 app.use(express.static(join(ROOT, 'dashboard/public')));
 
 function injectDashboardRuntimeHtml(html = '') {
   const locale = getLocale();
+  const operatorSettings = loadOperatorSettings();
   const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
-  const runtimeScript = `<script>window.__CRUCIX_RUNTIME__ = ${JSON.stringify({ refreshIntervalMinutes: config.refreshIntervalMinutes, settingsUrl: '/settings' }).replace(/<\/script>/gi, '<\\/script>')};</script>`;
+  const runtimeScript = `<script>window.__CRUCIX_RUNTIME__ = ${JSON.stringify({ refreshIntervalMinutes: config.refreshIntervalMinutes, settingsUrl: '/settings', operatorSettings: operatorSettings.preferences }).replace(/<\/script>/gi, '<\\/script>')};</script>`;
   return html.replace('</head>', `${localeScript}\n${runtimeScript}\n</head>`);
 }
 
@@ -2413,12 +2517,20 @@ function buildOperatorSettingsContract(snapshot = null) {
   const sourceOps = buildOperatorSourceOps(activeSnapshot);
   const llmState = buildOperatorLlmStateContract(activeSnapshot || {}, { provider: config.llm.provider, model: llmProvider?.model || null });
   const runtimeConfig = buildRuntimeConfigContract();
+  const operatorSettings = loadOperatorSettings();
   const categories = Object.entries(sourceOps?.inventory?.byCategory || {})
     .map(([category, count]) => ({ category, count }))
     .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
   const lifecycleStates = Object.entries(sourceOps?.inventory?.byLifecycle || {})
     .map(([lifecycle, count]) => ({ lifecycle, count }))
     .sort((a, b) => b.count - a.count || a.lifecycle.localeCompare(b.lifecycle));
+  const sourceItems = Array.isArray(sourceOps?.inventory?.items) ? sourceOps.inventory.items.map(item => ({
+    id: item.id,
+    name: item.name,
+    category: item.category,
+    lifecycle: item.lifecycle,
+    liveState: item.liveState || null,
+  })) : [];
   const enabledAlerts = [
     config.telegram?.botToken && config.telegram?.chatId ? 'telegram' : null,
     config.discord?.botToken || config.discord?.webhookUrl ? 'discord' : null,
@@ -2427,7 +2539,7 @@ function buildOperatorSettingsContract(snapshot = null) {
   return {
     version: 'operator-settings-v1',
     generatedAt: new Date().toISOString(),
-    sections: ['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config'],
+    sections: ['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence'],
     layout: {
       current: 'default-terminal',
       available: [
@@ -2438,9 +2550,12 @@ function buildOperatorSettingsContract(snapshot = null) {
         { id: 'executive-briefing', label: 'Executive Briefing', status: 'planned' },
       ],
       controls: {
-        visualsMode: 'full',
-        mobileFlatMapDefault: true,
-        persistence: 'not-yet-persisted',
+        visualsMode: operatorSettings.preferences.layout.visualsMode,
+        mobileFlatMapDefault: operatorSettings.preferences.layout.mapMode !== 'globe',
+        mapMode: operatorSettings.preferences.layout.mapMode,
+        defaultRegion: operatorSettings.preferences.layout.defaultRegion,
+        activeLayer: operatorSettings.preferences.layout.activeLayer,
+        persistence: 'server-file',
       },
       mutability: {
         current: 'ui-session',
@@ -2454,10 +2569,14 @@ function buildOperatorSettingsContract(snapshot = null) {
       lifecycleStates,
       selection: {
         mode: 'all-enabled-by-config',
-        supportsPerSourceControl: false,
-        supportsCategoryFiltering: false,
-        nextSurface: 'planned-settings-control',
+        supportsPerSourceControl: true,
+        supportsCategoryFiltering: true,
+        nextSurface: 'settings-persistence-v1',
+        persistence: 'server-file',
+        enabledCategories: operatorSettings.preferences.sources.enabledCategories,
+        enabledSourceIds: operatorSettings.preferences.sources.enabledSourceIds,
       },
+      availableSources: sourceItems,
       health: {
         liveStateSummary: sourceOps?.inventory?.liveStateSummary || null,
       },
@@ -2469,6 +2588,7 @@ function buildOperatorSettingsContract(snapshot = null) {
       configured: Boolean(config.llm.provider),
       state: llmState,
       requestedModeOptions: ['auto', 'off', 'force'],
+      defaultMode: operatorSettings.preferences.llm.newsModeDefault,
       supportsProviderSwitchingFromUi: false,
       supportsModelEditingFromUi: false,
     },
@@ -2484,6 +2604,7 @@ function buildOperatorSettingsContract(snapshot = null) {
       controls: {
         publishMode: 'deterministic-with-llm-refinement-when-configured',
         deterministicFallbackAlwaysAvailable: true,
+        detailLevel: operatorSettings.preferences.agentAnalysis.detailLevel,
         horizonTuning: 'planned',
         tippingPointThresholdTuning: 'planned',
       },
@@ -2513,10 +2634,23 @@ function buildOperatorSettingsContract(snapshot = null) {
       validation: runtimeConfig.validation,
       driftSummary: runtimeConfig.driftSummary,
     },
+    persistence: {
+      version: operatorSettings.version,
+      updatedAt: operatorSettings.updatedAt,
+      path: OPERATOR_SETTINGS_PATH,
+      capabilities: {
+        serverFile: true,
+        export: true,
+        import: true,
+        writeApi: true,
+      },
+      persistedPreferences: operatorSettings.preferences,
+    },
     notes: [
       'This surface centralizes current operator-visible settings and runtime posture before write-back controls are added.',
       'Per-source selection, saved layouts, and UI-persisted settings are planned roadmap items, not active write paths yet.',
       'Runtime configuration is exposed as a versioned contract with defaults, effective values, validation, and drift summary.',
+      'Operator preference persistence currently applies layout visuals, map mode, region, and active layer directly, while LLM and agent-analysis preferences are stored safely for later deeper runtime enforcement.',
     ],
   };
 }
@@ -2544,6 +2678,21 @@ app.get('/api/settings', async (req, res) => {
   const snapshot = await ensureCurrentData();
   if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
   res.json(buildOperatorSettingsContract(snapshot));
+});
+
+app.get('/api/settings/export', requireDebugAccess, (req, res) => {
+  res.json(loadOperatorSettings());
+});
+
+app.put('/api/settings/operator', requireDebugAccess, (req, res) => {
+  const saved = mergeOperatorSettingsPatch(req.body || {});
+  res.json({ ok: true, settings: saved });
+});
+
+app.post('/api/settings/import', requireDebugAccess, (req, res) => {
+  const payload = req.body?.preferences ? req.body : { preferences: req.body || {} };
+  const saved = saveOperatorSettings(payload);
+  res.json({ ok: true, settings: saved });
 });
 
 app.get('/api/brief/compact', async (req, res) => {

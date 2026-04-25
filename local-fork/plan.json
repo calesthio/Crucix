@@ -652,7 +652,7 @@
           {
             "id": "effort-27.3",
             "title": "Persist operator settings safely so dashboard layout, source toggles, LLM mode, and agent-analysis preferences survive restarts and can be exported or restored",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-27.4",

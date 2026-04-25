@@ -26,11 +26,22 @@ const context = {
   },
   llmProvider: { model: 'qwen', isConfigured: true },
   currentLanguage: 'en',
+  OPERATOR_SETTINGS_PATH: '/tmp/test-operator-settings.json',
   currentData: null,
   lastSweepTime: '2026-04-25T20:00:00.000Z',
   sweepInProgress: false,
   sweepStartedAt: null,
   process: { env: {} },
+  loadOperatorSettings: () => ({
+    version: 'operator-settings-store-v1',
+    updatedAt: null,
+    preferences: {
+      layout: { visualsMode: 'full', mapMode: 'auto', defaultRegion: 'world', activeLayer: null },
+      sources: { enabledCategories: ['news'], enabledSourceIds: ['gdelt-global'] },
+      llm: { newsModeDefault: 'auto' },
+      agentAnalysis: { detailLevel: 'standard' },
+    },
+  }),
   buildOperatorSourceOps: snapshot => ({
     inventory: {
       total: 30,
@@ -38,6 +49,10 @@ const context = {
       byCategory: { social: 3, macro: 4, air: 2 },
       byLifecycle: { active: 29, shadow: 1 },
       liveStateSummary: { ok: 28, failed: 2 },
+      items: [
+        { id: 'gdelt-global', name: 'GDELT', category: 'news', lifecycle: 'active', liveState: 'ok' },
+        { id: 'opensky-network', name: 'OpenSky', category: 'air', lifecycle: 'active', liveState: 'ok' },
+      ],
     },
   }),
   buildOperatorLlmStateContract: () => ({ status: 'applied', label: 'LLM APPLIED' }),
@@ -85,7 +100,7 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   });
 
   assert.equal(contract.version, 'operator-settings-v1');
-  assert.equal(JSON.stringify(contract.sections), JSON.stringify(['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config']));
+  assert.equal(JSON.stringify(contract.sections), JSON.stringify(['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']));
   assert.equal(contract.layout.current, 'default-terminal');
   assert.equal(contract.layout.available.some(item => item.id === 'operator'), true);
   assert.equal(contract.sources.total, 30);
@@ -105,5 +120,11 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(Array.isArray(contract.config.contract.entries), true);
   assert.equal(Array.isArray(contract.config.contract.notes), true);
   assert.equal(contract.config.validation.valid, true);
+  assert.equal(contract.sources.selection.supportsPerSourceControl, true);
+  assert.equal(Array.isArray(contract.sources.availableSources), true);
+  assert.deepEqual(contract.sources.selection.enabledCategories, ['news']);
+  assert.deepEqual(contract.sources.selection.enabledSourceIds, ['gdelt-global']);
+  assert.equal(contract.persistence.capabilities.export, true);
+  assert.equal(contract.persistence.capabilities.writeApi, true);
   assert.match(contract.notes[0], /centralizes current operator-visible settings/i);
 });

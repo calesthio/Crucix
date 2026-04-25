@@ -411,10 +411,11 @@ let globeFailureReason = null;
 let softwareGlobeMode = false;
 let worldAtlasData = null;
 let flightsVisible = true;
-let lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true';
-let isFlat = shouldStartFlat();
-let currentRegion = 'world';
-let activeLayer = null;
+const persistedOperatorSettings = window.__CRUCIX_RUNTIME__?.operatorSettings || {};
+let lowPerfMode = (persistedOperatorSettings.layout?.visualsMode === 'lite') || localStorage.getItem('crucix_low_perf') === 'true';
+let isFlat = false;
+let currentRegion = persistedOperatorSettings.layout?.defaultRegion || 'world';
+let activeLayer = persistedOperatorSettings.layout?.activeLayer || null;
 let flatSvg, flatProjection, flatPath, flatG, flatZoom, flatW, flatH;
 
 const sensorLayerMeta = {
@@ -431,7 +432,14 @@ const sensorLayerMeta = {
 };
 
 function isLayerActive(layer){ return !activeLayer || activeLayer === layer; }
-function toggleSensorLayer(layer){ activeLayer = activeLayer === layer ? null : layer; renderLeftRail(); if(isFlat){ if(flatG){ flatG.selectAll('*').remove(); drawFlatMap(); } } else { plotMarkers(); } }
+function persistOperatorPreferences(patch){
+  fetch('/api/settings/operator', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ preferences: patch }),
+  }).catch(() => {});
+}
+function toggleSensorLayer(layer){ activeLayer = activeLayer === layer ? null : layer; persistOperatorPreferences({ layout: { activeLayer } }); renderLeftRail(); if(isFlat){ if(flatG){ flatG.selectAll('*').remove(); drawFlatMap(); } } else { plotMarkers(); } }
 function layerItemClass(layer){ return `layer-item${activeLayer===layer?' active':''}${activeLayer&&activeLayer!==layer?' dimmed':''}`; }
 function withLayerOpacity(color, layer){
   if (isLayerActive(layer)) return color;
@@ -560,7 +568,12 @@ const regionPOV = {
   africa: { lat: 5, lng: 20, altitude: 1.2 }
 };
 
+function getPreferredMapMode(){
+  return persistedOperatorSettings.layout?.mapMode || 'auto';
+}
+
 if(lowPerfMode) document.body.classList.add('low-perf');
+isFlat = getPreferredMapMode() === 'flat' ? true : getPreferredMapMode() === 'globe' ? false : shouldStartFlat();
 
 function openSettings(){
   const target = window.__CRUCIX_RUNTIME__?.settingsUrl || '/settings';
@@ -647,6 +660,7 @@ function markGlobeUnavailable(reason='3D LOAD FAILED · FLAT MODE'){
 function togglePerfMode(){
   lowPerfMode = !lowPerfMode;
   localStorage.setItem('crucix_low_perf', String(lowPerfMode));
+  persistOperatorPreferences({ layout: { visualsMode: lowPerfMode ? 'lite' : 'full' } });
   document.body.classList.toggle('low-perf', lowPerfMode);
   const perfStatus = document.getElementById('perfStatus');
   if(perfStatus) perfStatus.textContent = lowPerfMode ? 'LITE' : 'FULL';
@@ -1068,6 +1082,7 @@ const flatRegionBounds = {
 
 function toggleMapMode(){
   isFlat = !isFlat;
+  persistOperatorPreferences({ layout: { mapMode: isFlat ? 'flat' : 'globe' } });
   softwareGlobeMode = !isFlat && !canUse3D();
   updateMapModeControls();
   const globeEl = document.getElementById('globeViz');
@@ -1237,6 +1252,7 @@ const _origMapZoom = mapZoom;
 
 function setRegion(r){
   currentRegion = r;
+  persistOperatorPreferences({ layout: { defaultRegion: r } });
   document.querySelectorAll('.region-btn').forEach(b=>b.classList.toggle('active',b.dataset.region===r));
   closePopup();
   if((isFlat || softwareGlobeMode) && flatSvg && flatProjection){
