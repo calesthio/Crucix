@@ -1,0 +1,528 @@
+{
+  "version": "source-registry-v1",
+  "generatedAt": "2026-04-25T04:36:31.466Z",
+  "sources": [
+    {
+      "id": "acled",
+      "name": "ACLED",
+      "module": "apis/sources/acled.mjs",
+      "category": "conflict",
+      "trustClass": "high",
+      "evidenceMode": "curated-database",
+      "freshnessTargetMinutes": 1440,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "ads-b",
+      "name": "ADS-B",
+      "module": "apis/sources/adsb.mjs",
+      "category": "air",
+      "trustClass": "medium",
+      "evidenceMode": "live-sensor",
+      "freshnessTargetMinutes": 20,
+      "lifecycle": "active",
+      "operatorRole": "corroborator",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "bls",
+      "name": "BLS",
+      "module": "apis/sources/bls.mjs",
+      "category": "macro",
+      "trustClass": "high",
+      "evidenceMode": "official-api",
+      "freshnessTargetMinutes": 4320,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "bluesky",
+      "name": "Bluesky",
+      "module": "apis/sources/bluesky.mjs",
+      "category": "social",
+      "trustClass": "low",
+      "evidenceMode": "social",
+      "freshnessTargetMinutes": 60,
+      "lifecycle": "active",
+      "operatorRole": "exploratory",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "cisa-kev",
+      "name": "CISA-KEV",
+      "module": "apis/sources/cisa-kev.mjs",
+      "category": "cyber",
+      "trustClass": "high",
+      "evidenceMode": "official-feed",
+      "freshnessTargetMinutes": 1440,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "cloudflare-radar",
+      "name": "Cloudflare-Radar",
+      "module": "apis/sources/cloudflare-radar.mjs",
+      "category": "internet",
+      "trustClass": "high",
+      "evidenceMode": "provider-telemetry",
+      "freshnessTargetMinutes": 60,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "comtrade",
+      "name": "Comtrade",
+      "module": "apis/sources/comtrade.mjs",
+      "category": "trade",
+      "trustClass": "high",
+      "evidenceMode": "official-api",
+      "freshnessTargetMinutes": 10080,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "eia",
+      "name": "EIA",
+      "module": "apis/sources/eia.mjs",
+      "category": "energy",
+      "trustClass": "high",
+      "evidenceMode": "official-api",
+      "freshnessTargetMinutes": 1440,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "epa",
+      "name": "EPA",
+      "module": "apis/sources/epa.mjs",
+      "category": "environment",
+      "trustClass": "high",
+      "evidenceMode": "official-sensor",
+      "freshnessTargetMinutes": 180,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "firms",
+      "name": "FIRMS",
+      "module": "apis/sources/firms.mjs",
+      "category": "thermal",
+      "trustClass": "high",
+      "evidenceMode": "satellite",
+      "freshnessTargetMinutes": 30,
+      "lifecycle": "active",
+      "operatorRole": "anomaly-detector",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "fred",
+      "name": "FRED",
+      "module": "apis/sources/fred.mjs",
+      "category": "macro",
+      "trustClass": "high",
+      "evidenceMode": "official-api",
+      "freshnessTargetMinutes": 1440,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "gdelt",
+      "name": "GDELT",
+      "module": "apis/sources/gdelt.mjs",
+      "category": "news",
+      "trustClass": "medium",
+      "evidenceMode": "event-database",
+      "freshnessTargetMinutes": 30,
+      "lifecycle": "active",
+      "operatorRole": "corroborator",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "gscpi",
+      "name": "GSCPI",
+      "module": "apis/sources/gscpi.mjs",
+      "category": "macro",
+      "trustClass": "high",
+      "evidenceMode": "official-dataset",
+      "freshnessTargetMinutes": 10080,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "kiwisdr",
+      "name": "KiwiSDR",
+      "module": "apis/sources/kiwisdr.mjs",
+      "category": "sdr",
+      "trustClass": "medium",
+      "evidenceMode": "sensor-network",
+      "freshnessTargetMinutes": 180,
+      "lifecycle": "active",
+      "operatorRole": "corroborator",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "maritime",
+      "name": "Maritime",
+      "module": "apis/sources/ships.mjs",
+      "category": "maritime",
+      "trustClass": "medium",
+      "evidenceMode": "derived-osint",
+      "freshnessTargetMinutes": 60,
+      "lifecycle": "active",
+      "operatorRole": "context",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "noaa",
+      "name": "NOAA",
+      "module": "apis/sources/noaa.mjs",
+      "category": "weather",
+      "trustClass": "high",
+      "evidenceMode": "official-alerts",
+      "freshnessTargetMinutes": 60,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "ofac",
+      "name": "OFAC",
+      "module": "apis/sources/ofac.mjs",
+      "category": "sanctions",
+      "trustClass": "high",
+      "evidenceMode": "official-feed",
+      "freshnessTargetMinutes": 1440,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "opensanctions",
+      "name": "OpenSanctions",
+      "module": "apis/sources/opensanctions.mjs",
+      "category": "sanctions",
+      "trustClass": "high",
+      "evidenceMode": "curated-database",
+      "freshnessTargetMinutes": 1440,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "opensky",
+      "name": "OpenSky",
+      "module": "apis/sources/opensky.mjs",
+      "category": "air",
+      "trustClass": "high",
+      "evidenceMode": "live-sensor",
+      "freshnessTargetMinutes": 20,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "patents",
+      "name": "Patents",
+      "module": "apis/sources/patents.mjs",
+      "category": "technology",
+      "trustClass": "high",
+      "evidenceMode": "official-api",
+      "freshnessTargetMinutes": 10080,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "reddit",
+      "name": "Reddit",
+      "module": "apis/sources/reddit.mjs",
+      "category": "social",
+      "trustClass": "low",
+      "evidenceMode": "social",
+      "freshnessTargetMinutes": 60,
+      "lifecycle": "active",
+      "operatorRole": "exploratory",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "reliefweb",
+      "name": "ReliefWeb",
+      "module": "apis/sources/reliefweb.mjs",
+      "category": "humanitarian",
+      "trustClass": "high",
+      "evidenceMode": "curated-feed",
+      "freshnessTargetMinutes": 180,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "safecast",
+      "name": "Safecast",
+      "module": "apis/sources/safecast.mjs",
+      "category": "radiation",
+      "trustClass": "medium",
+      "evidenceMode": "sensor-network",
+      "freshnessTargetMinutes": 180,
+      "lifecycle": "active",
+      "operatorRole": "corroborator",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "space",
+      "name": "Space",
+      "module": "apis/sources/space.mjs",
+      "category": "space",
+      "trustClass": "medium",
+      "evidenceMode": "space-track",
+      "freshnessTargetMinutes": 360,
+      "lifecycle": "active",
+      "operatorRole": "corroborator",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "telegram",
+      "name": "Telegram",
+      "module": "apis/sources/telegram.mjs",
+      "category": "social",
+      "trustClass": "low",
+      "evidenceMode": "social",
+      "freshnessTargetMinutes": 30,
+      "lifecycle": "active",
+      "operatorRole": "exploratory",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "treasury",
+      "name": "Treasury",
+      "module": "apis/sources/treasury.mjs",
+      "category": "macro",
+      "trustClass": "high",
+      "evidenceMode": "official-api",
+      "freshnessTargetMinutes": 1440,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "usaspending",
+      "name": "USAspending",
+      "module": "apis/sources/usaspending.mjs",
+      "category": "procurement",
+      "trustClass": "high",
+      "evidenceMode": "official-api",
+      "freshnessTargetMinutes": 10080,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "who",
+      "name": "WHO",
+      "module": "apis/sources/who.mjs",
+      "category": "health",
+      "trustClass": "high",
+      "evidenceMode": "official-feed",
+      "freshnessTargetMinutes": 360,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "yfinance",
+      "name": "YFinance",
+      "module": "apis/sources/yfinance.mjs",
+      "category": "markets",
+      "trustClass": "medium",
+      "evidenceMode": "market-feed",
+      "freshnessTargetMinutes": 20,
+      "lifecycle": "active",
+      "operatorRole": "corroborator",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    }
+  ]
+}

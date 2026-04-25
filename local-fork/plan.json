@@ -520,12 +520,100 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-23",
+        "title": "Agent-managed source intelligence foundation",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-23.1",
+            "title": "Define a canonical source registry schema that supports active, candidate, shadow, rejected, and deprecated lifecycle states plus agent-review provenance",
+            "status": "completed"
+          },
+          {
+            "id": "effort-23.2",
+            "title": "Build a file-based source-ops workspace contract so OpenClaw subagents can read role/task packets and write structured discovery, grading, overlap, and pruning outputs without touching production admission directly",
+            "status": "pending"
+          },
+          {
+            "id": "effort-23.3",
+            "title": "Expose an operator-facing source inventory and source-ops needs surface showing lifecycle state, review status, promotion readiness, and current runtime coverage gaps",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-24",
+        "title": "Bounded subagent discovery and grading workflow",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-24.1",
+            "title": "Create bounded OpenClaw subagent role definitions and task templates for source discovery, validation, grading, overlap analysis, pruning review, and onboarding preparation",
+            "status": "pending"
+          },
+          {
+            "id": "effort-24.2",
+            "title": "Implement a structured source scorecard and explainable grading rubric so subagent-produced candidate evaluations are comparable and operator-reviewable",
+            "status": "pending"
+          },
+          {
+            "id": "effort-24.3",
+            "title": "Add overlap and uniqueness evaluation so candidate sources are judged on incremental corroboration value, duplication risk, and likely LLM utility rather than existence alone",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-25",
+        "title": "Shadow-mode source evaluation and promotion gates",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-25.1",
+            "title": "Add shadow-state handling so candidate sources can be observed and scored before they influence production operator output",
+            "status": "pending"
+          },
+          {
+            "id": "effort-25.2",
+            "title": "Define policy-driven lifecycle transitions that can auto-advance candidates through pre-production stages up to shadow while requiring human approval before active promotion",
+            "status": "pending"
+          },
+          {
+            "id": "effort-25.3",
+            "title": "Record pruning recommendations for noisy, redundant, expensive, or maintenance-heavy sources without auto-removing active production sources",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-26",
+        "title": "Source-role-aware fusion and performance measurement",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-26.1",
+            "title": "Classify sources by fusion role such as anchor, corroborator, anomaly detector, context, and exploratory so runtime evidence handling stops treating all feeds alike",
+            "status": "pending"
+          },
+          {
+            "id": "effort-26.2",
+            "title": "Feed source-role and source-quality metadata into LLM clustering and analysis paths so weak evidence is not treated like anchor evidence and better source mixes improve downstream reasoning",
+            "status": "pending"
+          },
+          {
+            "id": "effort-26.3",
+            "title": "Measure per-source contribution, overlap, noise, and operator impact so source additions can be validated against cluster quality, review pressure, tipping-point quality, and trust outcomes",
+            "status": "pending"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 69,
-    "activeCycleId": "2026-04-24-cycle-069",
-    "lastCompletedCycleId": "2026-04-24-cycle-069"
+    "sequence": 70,
+    "activeCycleId": "2026-04-24-cycle-070",
+    "lastCompletedCycleId": "2026-04-24-cycle-070"
   }
 }
