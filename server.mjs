@@ -2197,10 +2197,222 @@ function buildOperatorSourceOps(snapshot = null) {
   return buildSourceOpsSurface({ rootDir: ROOT, snapshot });
 }
 
+function buildRuntimeConfigContract() {
+  const env = process?.env || {};
+  const parseIntOr = (value, fallback) => {
+    const num = Number.parseInt(value, 10);
+    return Number.isFinite(num) ? num : fallback;
+  };
+  const boolFromPresence = value => Boolean(value);
+  const rootDefaultRefresh = 15;
+  const rootEffectiveRefresh = Number(config.refreshIntervalMinutes) || rootDefaultRefresh;
+  const defaults = {
+    port: 3117,
+    refreshIntervalMinutes: rootDefaultRefresh,
+    llm: {
+      provider: null,
+      apiKey: null,
+      model: null,
+      baseUrl: null,
+    },
+    telegram: {
+      botToken: null,
+      chatId: null,
+      botPollingInterval: 5000,
+      channels: null,
+    },
+    discord: {
+      botToken: null,
+      channelId: null,
+      guildId: null,
+      webhookUrl: null,
+    },
+    review: {
+      ackTtlHours: 72,
+      ackMaxEntries: 100,
+      repairArtifactMaxSamples: 12,
+      repairArtifactRetentionDays: 14,
+      repairArtifactMaxEntries: 50,
+      sweepWatchdogTimeoutMinutes: Math.max(rootDefaultRefresh * 2, 45),
+      sweepWatchdogPollSeconds: 30,
+    },
+    debugEndpoints: {
+      exposure: 'local-only',
+    },
+    freshnessPolicy: {
+      defaultFreshnessMinutes: 60,
+      sources: {},
+      areas: {},
+    },
+  };
+
+  const entries = [
+    { key: 'port', section: 'runtime', env: 'PORT', defaultValue: defaults.port, effectiveValue: config.port, sensitive: false },
+    { key: 'refreshIntervalMinutes', section: 'runtime', env: 'REFRESH_INTERVAL_MINUTES', defaultValue: defaults.refreshIntervalMinutes, effectiveValue: config.refreshIntervalMinutes, sensitive: false },
+    { key: 'llm.provider', section: 'llm', env: 'LLM_PROVIDER', defaultValue: defaults.llm.provider, effectiveValue: config.llm?.provider || null, sensitive: false },
+    { key: 'llm.apiKey', section: 'llm', env: 'LLM_API_KEY', defaultValue: defaults.llm.apiKey, effectiveValue: boolFromPresence(config.llm?.apiKey) ? '[configured]' : null, sensitive: true },
+    { key: 'llm.model', section: 'llm', env: 'LLM_MODEL', defaultValue: defaults.llm.model, effectiveValue: config.llm?.model || null, sensitive: false },
+    { key: 'llm.baseUrl', section: 'llm', env: 'OLLAMA_BASE_URL', defaultValue: defaults.llm.baseUrl, effectiveValue: config.llm?.baseUrl || null, sensitive: false },
+    { key: 'telegram.botToken', section: 'alerts', env: 'TELEGRAM_BOT_TOKEN', defaultValue: defaults.telegram.botToken, effectiveValue: boolFromPresence(config.telegram?.botToken) ? '[configured]' : null, sensitive: true },
+    { key: 'telegram.chatId', section: 'alerts', env: 'TELEGRAM_CHAT_ID', defaultValue: defaults.telegram.chatId, effectiveValue: boolFromPresence(config.telegram?.chatId) ? '[configured]' : null, sensitive: true },
+    { key: 'telegram.botPollingInterval', section: 'alerts', env: 'TELEGRAM_POLL_INTERVAL', defaultValue: defaults.telegram.botPollingInterval, effectiveValue: config.telegram?.botPollingInterval, sensitive: false },
+    { key: 'telegram.channels', section: 'alerts', env: 'TELEGRAM_CHANNELS', defaultValue: defaults.telegram.channels, effectiveValue: config.telegram?.channels || null, sensitive: false },
+    { key: 'discord.botToken', section: 'alerts', env: 'DISCORD_BOT_TOKEN', defaultValue: defaults.discord.botToken, effectiveValue: boolFromPresence(config.discord?.botToken) ? '[configured]' : null, sensitive: true },
+    { key: 'discord.channelId', section: 'alerts', env: 'DISCORD_CHANNEL_ID', defaultValue: defaults.discord.channelId, effectiveValue: config.discord?.channelId || null, sensitive: false },
+    { key: 'discord.guildId', section: 'alerts', env: 'DISCORD_GUILD_ID', defaultValue: defaults.discord.guildId, effectiveValue: config.discord?.guildId || null, sensitive: false },
+    { key: 'discord.webhookUrl', section: 'alerts', env: 'DISCORD_WEBHOOK_URL', defaultValue: defaults.discord.webhookUrl, effectiveValue: boolFromPresence(config.discord?.webhookUrl) ? '[configured]' : null, sensitive: true },
+    { key: 'review.ackTtlHours', section: 'review', env: 'REVIEW_ACK_TTL_HOURS', defaultValue: defaults.review.ackTtlHours, effectiveValue: config.review?.ackTtlHours, sensitive: false },
+    { key: 'review.ackMaxEntries', section: 'review', env: 'REVIEW_ACK_MAX_ENTRIES', defaultValue: defaults.review.ackMaxEntries, effectiveValue: config.review?.ackMaxEntries, sensitive: false },
+    { key: 'review.repairArtifactMaxSamples', section: 'review', env: 'REPAIR_ARTIFACT_MAX_SAMPLES', defaultValue: defaults.review.repairArtifactMaxSamples, effectiveValue: config.review?.repairArtifactMaxSamples, sensitive: false },
+    { key: 'review.repairArtifactRetentionDays', section: 'review', env: 'REPAIR_ARTIFACT_RETENTION_DAYS', defaultValue: defaults.review.repairArtifactRetentionDays, effectiveValue: config.review?.repairArtifactRetentionDays, sensitive: false },
+    { key: 'review.repairArtifactMaxEntries', section: 'review', env: 'REPAIR_ARTIFACT_MAX_ENTRIES', defaultValue: defaults.review.repairArtifactMaxEntries, effectiveValue: config.review?.repairArtifactMaxEntries, sensitive: false },
+    { key: 'review.sweepWatchdogTimeoutMinutes', section: 'review', env: 'SWEEP_WATCHDOG_TIMEOUT_MINUTES', defaultValue: defaults.review.sweepWatchdogTimeoutMinutes, effectiveValue: config.review?.sweepWatchdogTimeoutMinutes, sensitive: false },
+    { key: 'review.sweepWatchdogPollSeconds', section: 'review', env: 'SWEEP_WATCHDOG_POLL_SECONDS', defaultValue: defaults.review.sweepWatchdogPollSeconds, effectiveValue: config.review?.sweepWatchdogPollSeconds, sensitive: false },
+    { key: 'debugEndpoints.exposure', section: 'debug', env: 'DEBUG_ENDPOINT_EXPOSURE', defaultValue: defaults.debugEndpoints.exposure, effectiveValue: config.debugEndpoints?.exposure || 'local-only', sensitive: false },
+    { key: 'freshnessPolicy.defaultFreshnessMinutes', section: 'freshness', env: 'DEFAULT_FRESHNESS_MINUTES', defaultValue: defaults.freshnessPolicy.defaultFreshnessMinutes, effectiveValue: config.freshnessPolicy?.defaultFreshnessMinutes, sensitive: false },
+    { key: 'freshnessPolicy.sources.OpenSky.freshnessTargetMinutes', section: 'freshness', env: 'OPENSKY_FRESHNESS_MINUTES', defaultValue: null, effectiveValue: config.freshnessPolicy?.sources?.OpenSky?.freshnessTargetMinutes ?? null, sensitive: false },
+    { key: 'freshnessPolicy.sources.YFinance.freshnessTargetMinutes', section: 'freshness', env: 'YFINANCE_FRESHNESS_MINUTES', defaultValue: null, effectiveValue: config.freshnessPolicy?.sources?.YFinance?.freshnessTargetMinutes ?? null, sensitive: false },
+    { key: 'freshnessPolicy.sources.Telegram.freshnessTargetMinutes', section: 'freshness', env: 'TELEGRAM_FRESHNESS_MINUTES', defaultValue: null, effectiveValue: config.freshnessPolicy?.sources?.Telegram?.freshnessTargetMinutes ?? null, sensitive: false },
+    { key: 'freshnessPolicy.sources.GDELT.freshnessTargetMinutes', section: 'freshness', env: 'GDELT_FRESHNESS_MINUTES', defaultValue: null, effectiveValue: config.freshnessPolicy?.sources?.GDELT?.freshnessTargetMinutes ?? null, sensitive: false },
+    { key: 'freshnessPolicy.areas.air.freshnessWarnMinutes', section: 'freshness', env: 'AIR_FRESHNESS_WARN_MINUTES', defaultValue: null, effectiveValue: config.freshnessPolicy?.areas?.air?.freshnessWarnMinutes ?? null, sensitive: false },
+    { key: 'freshnessPolicy.areas.markets.freshnessWarnMinutes', section: 'freshness', env: 'MARKETS_FRESHNESS_WARN_MINUTES', defaultValue: null, effectiveValue: config.freshnessPolicy?.areas?.markets?.freshnessWarnMinutes ?? null, sensitive: false },
+    { key: 'freshnessPolicy.areas.telegram.freshnessWarnMinutes', section: 'freshness', env: 'TELEGRAM_FRESHNESS_WARN_MINUTES', defaultValue: null, effectiveValue: config.freshnessPolicy?.areas?.telegram?.freshnessWarnMinutes ?? null, sensitive: false },
+    { key: 'freshnessPolicy.areas.news.freshnessWarnMinutes', section: 'freshness', env: 'NEWS_FRESHNESS_WARN_MINUTES', defaultValue: null, effectiveValue: config.freshnessPolicy?.areas?.news?.freshnessWarnMinutes ?? null, sensitive: false },
+  ];
+
+  const normalizedEntries = entries.map(entry => {
+    const envPresent = Object.prototype.hasOwnProperty.call(env, entry.env) && env[entry.env] !== '';
+    const source = envPresent ? 'env' : 'default';
+    const drifted = entry.effectiveValue !== entry.defaultValue;
+    return {
+      ...entry,
+      source,
+      envPresent,
+      drifted,
+      envValuePreview: envPresent ? (entry.sensitive ? '[configured]' : String(env[entry.env])) : null,
+    };
+  });
+
+  const bySection = normalizedEntries.reduce((acc, entry) => {
+    if (!acc[entry.section]) acc[entry.section] = [];
+    acc[entry.section].push(entry);
+    return acc;
+  }, {});
+
+  const schema = {
+    version: 'runtime-config-schema-v1',
+    sections: ['runtime', 'llm', 'alerts', 'review', 'debug', 'freshness'],
+    allowedDebugExposure: ['local-only', 'open'],
+    llmProviders: ['anthropic', 'openai', 'gemini', 'codex', 'openrouter', 'minimax', 'mistral', 'ollama', 'grok', null],
+    invariants: {
+      portMin: 1,
+      portMax: 65535,
+      refreshIntervalMinutesMin: 1,
+      reviewAckTtlHoursMin: 1,
+      reviewAckMaxEntriesMin: 1,
+      sweepWatchdogTimeoutMinutesMin: 5,
+      sweepWatchdogPollSecondsMin: 5,
+      freshnessMinutesMin: 1,
+    },
+  };
+
+  const validation = {
+    valid: true,
+    issues: [],
+    warnings: [],
+  };
+
+  const effective = {
+    port: config.port,
+    refreshIntervalMinutes: config.refreshIntervalMinutes,
+    llm: {
+      provider: config.llm?.provider || null,
+      model: config.llm?.model || null,
+      baseUrl: config.llm?.baseUrl || null,
+      apiKeyConfigured: boolFromPresence(config.llm?.apiKey),
+    },
+    telegram: {
+      enabled: boolFromPresence(config.telegram?.botToken) && boolFromPresence(config.telegram?.chatId),
+      botPollingInterval: config.telegram?.botPollingInterval,
+      channelsConfigured: boolFromPresence(config.telegram?.channels),
+    },
+    discord: {
+      botEnabled: boolFromPresence(config.discord?.botToken),
+      webhookEnabled: boolFromPresence(config.discord?.webhookUrl),
+      guildIdConfigured: boolFromPresence(config.discord?.guildId),
+      channelIdConfigured: boolFromPresence(config.discord?.channelId),
+    },
+    review: {
+      ackTtlHours: config.review?.ackTtlHours,
+      ackMaxEntries: config.review?.ackMaxEntries,
+      repairArtifactMaxSamples: config.review?.repairArtifactMaxSamples,
+      repairArtifactRetentionDays: config.review?.repairArtifactRetentionDays,
+      repairArtifactMaxEntries: config.review?.repairArtifactMaxEntries,
+      sweepWatchdogTimeoutMinutes: config.review?.sweepWatchdogTimeoutMinutes,
+      sweepWatchdogPollSeconds: config.review?.sweepWatchdogPollSeconds,
+    },
+    debugEndpoints: {
+      exposure: config.debugEndpoints?.exposure || 'local-only',
+    },
+    freshnessPolicy: config.freshnessPolicy || {},
+  };
+
+  if (!Number.isInteger(effective.port) || effective.port < schema.invariants.portMin || effective.port > schema.invariants.portMax) {
+    validation.valid = false;
+    validation.issues.push({ key: 'port', message: 'Port must be an integer between 1 and 65535.' });
+  }
+  if (!Number.isInteger(effective.refreshIntervalMinutes) || effective.refreshIntervalMinutes < schema.invariants.refreshIntervalMinutesMin) {
+    validation.valid = false;
+    validation.issues.push({ key: 'refreshIntervalMinutes', message: 'Refresh interval must be at least 1 minute.' });
+  }
+  if (!schema.allowedDebugExposure.includes(effective.debugEndpoints.exposure)) {
+    validation.valid = false;
+    validation.issues.push({ key: 'debugEndpoints.exposure', message: 'Debug endpoint exposure must be local-only or open.' });
+  }
+  if (effective.llm.provider && !schema.llmProviders.includes(effective.llm.provider)) {
+    validation.valid = false;
+    validation.issues.push({ key: 'llm.provider', message: 'LLM provider is outside the supported provider set.' });
+  }
+  if (effective.llm.provider && !effective.llm.model) {
+    validation.warnings.push({ key: 'llm.model', message: 'LLM provider is configured without an explicit model override.' });
+  }
+  if (effective.llm.provider && !effective.llm.apiKeyConfigured && effective.llm.provider !== 'ollama') {
+    validation.warnings.push({ key: 'llm.apiKey', message: 'Remote LLM provider appears configured without an API key.' });
+  }
+  if (effective.telegram.enabled === false && boolFromPresence(config.telegram?.botToken) !== boolFromPresence(config.telegram?.chatId)) {
+    validation.warnings.push({ key: 'telegram', message: 'Telegram token and chat ID are not both configured, so Telegram alerting remains disabled.' });
+  }
+  if (effective.review.sweepWatchdogTimeoutMinutes < Math.max(effective.refreshIntervalMinutes * 2, 5)) {
+    validation.warnings.push({ key: 'review.sweepWatchdogTimeoutMinutes', message: 'Sweep watchdog timeout is tighter than twice the refresh interval and may trip during normal slow sweeps.' });
+  }
+
+  return {
+    version: 'runtime-config-v1',
+    generatedAt: new Date().toISOString(),
+    schema,
+    defaults,
+    effective,
+    validation,
+    driftSummary: {
+      totalEntries: normalizedEntries.length,
+      driftedEntries: normalizedEntries.filter(entry => entry.drifted).length,
+      envOverrides: normalizedEntries.filter(entry => entry.envPresent).length,
+      defaultedEntries: normalizedEntries.filter(entry => !entry.envPresent).length,
+    },
+    entries: normalizedEntries,
+    bySection,
+    notes: [
+      'Sensitive values are redacted to configured-state markers rather than raw secrets.',
+      'Drift here means the effective runtime value differs from the built-in default, usually because an env override is active.',
+    ],
+  };
+}
+
 function buildOperatorSettingsContract(snapshot = null) {
   const activeSnapshot = snapshot || currentData || {};
   const sourceOps = buildOperatorSourceOps(activeSnapshot);
   const llmState = buildOperatorLlmStateContract(activeSnapshot || {}, { provider: config.llm.provider, model: llmProvider?.model || null });
+  const runtimeConfig = buildRuntimeConfigContract();
   const categories = Object.entries(sourceOps?.inventory?.byCategory || {})
     .map(([category, count]) => ({ category, count }))
     .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
@@ -2215,7 +2427,7 @@ function buildOperatorSettingsContract(snapshot = null) {
   return {
     version: 'operator-settings-v1',
     generatedAt: new Date().toISOString(),
-    sections: ['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts'],
+    sections: ['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config'],
     layout: {
       current: 'default-terminal',
       available: [
@@ -2296,9 +2508,15 @@ function buildOperatorSettingsContract(snapshot = null) {
       telegramEnabled: Boolean(config.telegram?.botToken && config.telegram?.chatId),
       discordEnabled: Boolean(config.discord?.botToken || config.discord?.webhookUrl),
     },
+    config: {
+      contract: runtimeConfig,
+      validation: runtimeConfig.validation,
+      driftSummary: runtimeConfig.driftSummary,
+    },
     notes: [
       'This surface centralizes current operator-visible settings and runtime posture before write-back controls are added.',
       'Per-source selection, saved layouts, and UI-persisted settings are planned roadmap items, not active write paths yet.',
+      'Runtime configuration is exposed as a versioned contract with defaults, effective values, validation, and drift summary.',
     ],
   };
 }

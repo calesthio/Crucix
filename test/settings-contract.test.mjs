@@ -17,6 +17,7 @@ function extractChunk(startMarker, endMarker) {
 const context = {
   console,
   config: {
+    port: 3117,
     refreshIntervalMinutes: 15,
     llm: { provider: 'ollama', model: 'qwen', baseUrl: 'http://127.0.0.1:11434' },
     telegram: { botToken: 'x', chatId: 'y' },
@@ -29,6 +30,7 @@ const context = {
   lastSweepTime: '2026-04-25T20:00:00.000Z',
   sweepInProgress: false,
   sweepStartedAt: null,
+  process: { env: {} },
   buildOperatorSourceOps: snapshot => ({
     inventory: {
       total: 30,
@@ -45,13 +47,30 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(`
-  ${extractChunk('function buildOperatorSettingsContract(snapshot = null) {', '// API: current data')}
-  module.exports = { buildOperatorSettingsContract };
+  ${extractChunk('function buildRuntimeConfigContract() {', '// API: current data')}
+  module.exports = { buildRuntimeConfigContract, buildOperatorSettingsContract };
 `, context);
 
-const { buildOperatorSettingsContract } = context.module.exports;
+const { buildRuntimeConfigContract, buildOperatorSettingsContract } = context.module.exports;
 
-test('operator settings contract centralizes layout, source, llm, agent, runtime, and debug posture', () => {
+test('runtime config contract exposes defaults, effective values, validation, and drift summary', () => {
+  context.process.env = {
+    REFRESH_INTERVAL_MINUTES: '22',
+    LLM_PROVIDER: 'ollama',
+    DEBUG_ENDPOINT_EXPOSURE: 'local-only',
+  };
+  const contract = buildRuntimeConfigContract();
+  assert.equal(contract.version, 'runtime-config-v1');
+  assert.equal(contract.schema.version, 'runtime-config-schema-v1');
+  assert.equal(contract.effective.refreshIntervalMinutes, 15);
+  assert.equal(contract.validation.valid, true);
+  assert.equal(contract.entries.some(item => item.key === 'refreshIntervalMinutes'), true);
+  assert.equal(contract.driftSummary.envOverrides >= 1, true);
+  assert.equal(contract.driftSummary.totalEntries >= 10, true);
+  assert.match(contract.notes[0], /Sensitive values are redacted/i);
+});
+
+test('operator settings contract centralizes layout, source, llm, agent, runtime, debug, and config posture', () => {
   const contract = buildOperatorSettingsContract({
     agentAnalysis: {
       status: 'ready',
@@ -66,7 +85,7 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   });
 
   assert.equal(contract.version, 'operator-settings-v1');
-  assert.equal(JSON.stringify(contract.sections), JSON.stringify(['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts']));
+  assert.equal(JSON.stringify(contract.sections), JSON.stringify(['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config']));
   assert.equal(contract.layout.current, 'default-terminal');
   assert.equal(contract.layout.available.some(item => item.id === 'operator'), true);
   assert.equal(contract.sources.total, 30);
@@ -81,5 +100,10 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.debug.endpointExposure, 'local-only');
   assert.equal(contract.alerts.telegramEnabled, true);
   assert.equal(contract.alerts.discordEnabled, true);
+  assert.equal(contract.config.contract.version, 'runtime-config-v1');
+  assert.equal(typeof contract.config.driftSummary.driftedEntries, 'number');
+  assert.equal(Array.isArray(contract.config.contract.entries), true);
+  assert.equal(Array.isArray(contract.config.contract.notes), true);
+  assert.equal(contract.config.validation.valid, true);
   assert.match(contract.notes[0], /centralizes current operator-visible settings/i);
 });

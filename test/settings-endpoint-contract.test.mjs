@@ -76,7 +76,7 @@ test('booted /api/settings centralizes operator settings contract and /settings 
     },
   }, async ({ settingsUrl, pageUrl }) => {
     const settings = await waitFor(settingsUrl, payload => payload?.version === 'operator-settings-v1', 30000);
-    assert.deepEqual(settings.sections, ['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts']);
+    assert.deepEqual(settings.sections, ['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config']);
     assert.equal(settings.layout.current, 'default-terminal');
     assert.equal(settings.sources.total >= 1, true);
     assert.equal(Array.isArray(settings.sources.categories), true);
@@ -84,6 +84,9 @@ test('booted /api/settings centralizes operator settings contract and /settings 
     assert.equal(settings.llm.requestedModeOptions.includes('auto'), true);
     assert.equal(settings.runtime.refreshIntervalMinutes >= 1, true);
     assert.equal(settings.debug.endpointExposure, 'local-only');
+    assert.equal(settings.config.contract.version, 'runtime-config-v1');
+    assert.equal(settings.config.validation.valid, true);
+    assert.equal(settings.config.driftSummary.envOverrides >= 1, true);
 
     const page = await fetch(pageUrl).then(r => r.text());
     assert.match(page, /Settings control plane/i);

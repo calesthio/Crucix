@@ -97,6 +97,14 @@ async function boot(){
         row('Discord', esc(String(Boolean(data.alerts?.discordEnabled)))),
         (data.alerts?.enabled || []).length ? tags(data.alerts.enabled) : '',
       ].join('')),
+      renderCard('Runtime config', 'Defaults, effective values, and drift', [
+        row('Contract', esc(data.config?.contract?.version || 'unknown')),
+        row('Valid', esc(String(Boolean(data.config?.validation?.valid)))),
+        row('Drifted entries', esc(String(data.config?.driftSummary?.driftedEntries ?? 0))),
+        row('Env overrides', esc(String(data.config?.driftSummary?.envOverrides ?? 0))),
+        row('Defaulted entries', esc(String(data.config?.driftSummary?.defaultedEntries ?? 0))),
+        row('Warnings', esc(String((data.config?.validation?.warnings || []).length))),
+      ].join('')),
       renderCard('Operator notes', 'Honesty and roadmap boundaries', `<pre>${esc((data.notes || []).join('\n- ')).replace(/^/, '- ')}</pre>`),
     ].join('');
   } catch (err) {
