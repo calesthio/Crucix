@@ -1591,9 +1591,11 @@ function renderRight(){
 
   const analysis = D.agentAnalysis || {};
   const analysisMeta = D.agentAnalysisMeta || {};
+  const runtimeLlm = D.runtimeLlm || null;
   const analysisReview = `<div class="g-panel right-analysis-review">
-      <div class="sec-head"><h3>Analysis Review</h3><span class="badge">${cleanText(analysisLlmBadge(analysisMeta))}</span></div>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:8px">${cleanText(analysisLlmMetaLine(analysisMeta))}</div>
+      <div class="sec-head"><h3>Analysis Review</h3><span class="badge">${cleanText(runtimeLlm?.analysis?.label || analysisLlmBadge(analysisMeta))}</span></div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:6px">${cleanText(runtimeLlm?.analysis?.explanation || analysisLlmMetaLine(analysisMeta))}</div>
+      ${runtimeLlm ? `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:8px">Runtime LLM: ${cleanText(runtimeLlm.label)} • ${cleanText(runtimeLlm.summary || '')}</div>` : ''}
       <div style="font-size:10px;color:var(--dim);margin-bottom:8px">${(analysis.iMessageSummary||[]).slice(0,5).map(line=>`<div style="margin-bottom:4px">• ${cleanText(line)}</div>`).join('') || 'No analysis summary yet'}</div>
       <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">Review endpoint: <span style="color:var(--accent2)">/api/analysis/review</span></div>
     </div>`;

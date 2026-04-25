@@ -85,6 +85,10 @@ test('api health reflects custom freshness override env vars after boot', async 
     assert.equal(active.freshnessPolicy.activeEvidencePolicy.markets.freshnessWarnMinutes, 11);
     assert.equal(active.freshnessPolicy.activeEvidencePolicy.telegram.freshnessWarnMinutes, 13);
     assert.equal(active.freshnessPolicy.activeEvidencePolicy.news.freshnessWarnMinutes, 44);
+    assert.ok(active.runtimeLlm);
+    assert.match(active.runtimeLlm?.label || '', /^LLM /);
+    assert.ok(['unavailable', 'pending', 'applied', 'fallback', 'available'].includes(active.runtimeLlm?.status));
+    assert.match(active.runtimeLlm?.summary || '', /LLM/i);
   } finally {
     await stopChild(child);
   }

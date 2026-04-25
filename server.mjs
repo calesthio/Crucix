@@ -1451,6 +1451,108 @@ function buildAgentAnalysisMeta(overrides = {}) {
   };
 }
 
+function buildRuntimeLlmStatus(snapshot = {}, { provider = config.llm?.provider || null, model = llmProvider?.model || null } = {}) {
+  const configured = Boolean(provider);
+  const analysisMeta = snapshot.agentAnalysisMeta || {};
+  const ideasSource = snapshot.ideasSource || 'disabled';
+  const analysisAttempted = Boolean(analysisMeta.refinementAttemptId || analysisMeta.refinementStartedAt || analysisMeta.refinementCompletedAt || analysisMeta.refinementState === 'failed' || analysisMeta.refinementState === 'timed-out' || analysisMeta.refinementState === 'completed');
+  const analysisApplied = analysisMeta.source === 'llm';
+  const analysisPending = analysisMeta.refinementState === 'pending' || analysisMeta.refinementState === 'queued';
+  const analysisUnavailable = !configured || analysisMeta.error === 'llm-unavailable' || analysisMeta.refinementState === 'unavailable';
+  const analysisReason = analysisUnavailable
+    ? 'unavailable'
+    : analysisPending
+      ? 'pending'
+      : analysisApplied
+        ? 'applied'
+        : analysisAttempted || analysisMeta.source === 'deterministic'
+          ? 'fallback'
+          : 'deterministic';
+  const analysisExplanation = analysisUnavailable
+    ? 'Analysis refinement unavailable, deterministic analysis only.'
+    : analysisPending
+      ? 'Analysis refinement queued, deterministic draft currently published.'
+      : analysisApplied
+        ? `Analysis refinement applied${model ? ` via ${model}` : ''}.`
+        : analysisAttempted
+          ? `Analysis refinement attempted, deterministic fallback kept${analysisMeta.error ? ` (${analysisMeta.error})` : ''}.`
+          : `Deterministic analysis active${model ? `, ${model} configured but not used yet` : ''}.`;
+
+  const ideasApplied = ideasSource === 'llm';
+  const ideasPending = ideasSource === 'pending';
+  const ideasUnavailable = !configured || ideasSource === 'disabled';
+  const ideasReason = ideasUnavailable ? 'unavailable' : ideasPending ? 'pending' : ideasApplied ? 'applied' : 'fallback';
+  const ideasExplanation = ideasUnavailable
+    ? 'Ideas LLM unavailable, static ideas only.'
+    : ideasPending
+      ? 'Ideas generation still pending.'
+      : ideasApplied
+        ? `Ideas generated with LLM${model ? ` via ${model}` : ''}.`
+        : 'Ideas LLM attempted but fallback/static output remained active.';
+
+  const status = !configured
+    ? 'unavailable'
+    : analysisPending || ideasPending
+      ? 'pending'
+      : analysisApplied || ideasApplied
+        ? 'applied'
+        : analysisAttempted || ideasSource === 'llm-failed'
+          ? 'fallback'
+          : 'available';
+  const label = {
+    unavailable: 'LLM UNAVAILABLE',
+    pending: 'LLM PENDING',
+    applied: 'LLM APPLIED',
+    fallback: 'LLM FALLBACK',
+    available: 'LLM AVAILABLE',
+  }[status] || 'LLM STATUS';
+  const summary = !configured
+    ? 'LLM is not configured, deterministic analysis and static ideas are active.'
+    : analysisPending || ideasPending
+      ? 'LLM is configured, but published output still includes pending deterministic fallback.'
+      : analysisApplied || ideasApplied
+        ? 'LLM is configured and participated in the current published output.'
+        : analysisAttempted || ideasSource === 'llm-failed'
+          ? 'LLM is configured, but published output remains on deterministic or static fallback.'
+          : 'LLM is configured, but no current published surface required it yet.';
+
+  return {
+    configured,
+    provider,
+    model,
+    status,
+    label,
+    summary,
+    analysis: {
+      label: {
+        unavailable: 'LLM UNAVAILABLE',
+        pending: 'LLM PENDING',
+        applied: 'LLM APPLIED',
+        fallback: 'LLM FALLBACK',
+        deterministic: 'DETERMINISTIC ONLY',
+      }[analysisReason] || 'LLM STATUS',
+      reason: analysisReason,
+      configured,
+      attempted: analysisAttempted,
+      participated: analysisApplied,
+      explanation: analysisExplanation,
+    },
+    ideas: {
+      label: {
+        unavailable: 'LLM UNAVAILABLE',
+        pending: 'LLM PENDING',
+        applied: 'LLM APPLIED',
+        fallback: 'LLM FALLBACK',
+      }[ideasReason] || 'LLM STATUS',
+      reason: ideasReason,
+      configured,
+      attempted: configured && !ideasUnavailable,
+      participated: ideasApplied,
+      explanation: ideasExplanation,
+    },
+  };
+}
+
 async function runAgentAnalysisValidationSummary() {
   return await new Promise((resolve, reject) => {
     exec(`/opt/homebrew/opt/node/bin/node "${AGENT_ANALYSIS_VALIDATION_SCRIPT}" --json`, { cwd: ROOT, timeout: 120000 }, (error, stdout, stderr) => {
@@ -1799,7 +1901,10 @@ async function ensureCurrentData() {
 app.get('/api/data', async (req, res) => {
   const snapshot = await ensureCurrentData();
   if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
-  res.json(snapshot);
+  res.json({
+    ...snapshot,
+    runtimeLlm: buildRuntimeLlmStatus(snapshot),
+  });
 });
 
 app.get('/api/brief/compact', async (req, res) => {
@@ -1812,6 +1917,7 @@ app.get('/api/brief/compact', async (req, res) => {
     evidenceSummary: snapshot.evidenceSummary || null,
     newsSummary: buildNewsClusterSummary(snapshot),
     agentAnalysis: buildAgentAnalysisSummary(snapshot),
+    runtimeLlm: buildRuntimeLlmStatus(snapshot),
     topCorroborated: corroborated[0] || null,
     topSuspect: suspects[0] || null,
     corroboratedSignals: corroborated.slice(0, 5),
@@ -2071,6 +2177,7 @@ app.get('/api/health', (req, res) => {
     },
     llmEnabled: !!config.llm.provider,
     llmProvider: config.llm.provider,
+    runtimeLlm: buildRuntimeLlmStatus(currentData || {}, { provider: config.llm.provider, model: llmProvider?.model || null }),
     telegramEnabled: !!(config.telegram.botToken && config.telegram.chatId),
     refreshIntervalMinutes: config.refreshIntervalMinutes,
     language: currentLanguage,
