@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 
 const profile = JSON.parse(readFileSync(new URL('../source-ops/profile.json', import.meta.url), 'utf8'));
 const registry = JSON.parse(readFileSync(new URL('../source-ops/source-registry.seed.json', import.meta.url), 'utf8'));
@@ -9,6 +9,24 @@ const resultSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/resu
 const exampleTask = JSON.parse(readFileSync(new URL('../source-ops/tasks/example-discovery-task.json', import.meta.url), 'utf8'));
 const pendingQueue = JSON.parse(readFileSync(new URL('../source-ops/queue/pending.json', import.meta.url), 'utf8'));
 const reviewedQueue = JSON.parse(readFileSync(new URL('../source-ops/queue/reviewed.json', import.meta.url), 'utf8'));
+
+const roleFiles = {
+  discovery: '../source-ops/roles/discovery.md',
+  validation: '../source-ops/roles/validation.md',
+  grading: '../source-ops/roles/grading.md',
+  overlap: '../source-ops/roles/overlap.md',
+  pruning: '../source-ops/roles/pruning.md',
+  'onboarding-prep': '../source-ops/roles/onboarding-prep.md',
+};
+
+const taskTemplates = {
+  discovery: '../source-ops/tasks/example-discovery-task.json',
+  validation: '../source-ops/tasks/example-validation-task.json',
+  grading: '../source-ops/tasks/example-grading-task.json',
+  overlap: '../source-ops/tasks/example-overlap-task.json',
+  pruning: '../source-ops/tasks/example-pruning-task.json',
+  'onboarding-prep': '../source-ops/tasks/example-onboarding-prep-task.json',
+};
 
 function hasRequiredKeys(obj, required) {
   for (const key of required) assert.ok(key in obj, `missing required key ${key}`);
@@ -41,6 +59,27 @@ test('result schema and queue scaffolding exist for bounded subagent workflows',
   assert.equal(reviewedQueue.version, 'source-ops-queue-v1');
   assert.ok(Array.isArray(pendingQueue.tasks));
   assert.ok(Array.isArray(reviewedQueue.tasks));
+});
+
+test('every allowed role has a bounded role definition and task template', () => {
+  for (const role of profile.allowedRoles) {
+    const rolePath = new URL(roleFiles[role], import.meta.url);
+    const taskPath = new URL(taskTemplates[role], import.meta.url);
+    assert.ok(existsSync(rolePath), `missing role definition for ${role}`);
+    assert.ok(existsSync(taskPath), `missing task template for ${role}`);
+    const roleDoc = readFileSync(rolePath, 'utf8');
+    const task = JSON.parse(readFileSync(taskPath, 'utf8'));
+    assert.match(roleDoc, /## Mission/);
+    assert.match(roleDoc, /## Must do/);
+    assert.match(roleDoc, /## Must not do/);
+    assert.equal(task.version, 'source-ops-task-v1');
+    assert.equal(task.role, role);
+    hasRequiredKeys(task, taskSchema.required);
+    assert.equal(task.io.registryPath, profile.registryPath);
+    assert.equal(task.policy.contractMode, 'file-first');
+    assert.equal(task.policy.productionMutationsAllowed, false);
+    assert.equal(task.policy.activePromotionRequiresHumanApproval, true);
+  }
 });
 
 test('registry lifecycle policy and profile lifecycle policy agree on human approval boundary', () => {
