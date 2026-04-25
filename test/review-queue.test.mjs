@@ -38,6 +38,24 @@ vm.runInContext(`
 
 const { buildOperatorReviewQueue } = context.module.exports;
 
+test('buildOperatorReviewQueue marks empty-but-elevated queues explicitly', () => {
+  const queue = buildOperatorReviewQueue({
+    reviewItems: [],
+    dismissedItems: [],
+    stats: { chronicFailureCount: 2, recentFailureCount: 1 },
+    pressure: { pressuredRegionCount: 3 },
+  }, {
+    quality: { reviewMetrics: { lowConfidenceCount: 5, suspiciousNearDuplicateCount: 2 } },
+  });
+
+  assert.equal(queue.state, 'empty_elevated_metrics');
+  assert.equal(queue.totalItems, 0);
+  assert.equal(queue.hasElevatedMetrics, true);
+  assert.match(queue.summary, /metrics remain elevated/i);
+  assert.equal(queue.metrics.chronicFailureCount, 2);
+  assert.equal(queue.metrics.lowConfidenceCount, 5);
+});
+
 test('buildOperatorReviewQueue returns bounded actionable items with triage prioritization', () => {
   const review = {
     reviewItems: [

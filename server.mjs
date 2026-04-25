@@ -448,6 +448,8 @@ function attachClusterReviewStats(review = {}) {
 function buildOperatorReviewQueue(review = {}, { maxItems = 5, quality = null } = {}) {
   const items = Array.isArray(review.reviewItems) ? review.reviewItems : [];
   const metrics = quality?.reviewMetrics || {};
+  const stats = review?.stats || {};
+  const pressure = review?.pressure || {};
   const duplicateByRegion = new Map();
   for (const entry of Array.isArray(metrics.suspiciousNearDuplicates) ? metrics.suspiciousNearDuplicates : []) {
     const region = entry?.region || 'Unknown';
@@ -488,16 +490,41 @@ function buildOperatorReviewQueue(review = {}, { maxItems = 5, quality = null } 
     .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
     .slice(0, 4)
     .map(([reason, count]) => ({ reason, count }));
+  const hasElevatedMetrics = Boolean(
+    (stats?.chronicFailureCount || 0) > 0 ||
+    (stats?.recentFailureCount || 0) > 0 ||
+    (metrics?.lowConfidenceCount || 0) > 0 ||
+    (metrics?.suspiciousNearDuplicateCount || 0) > 0 ||
+    (pressure?.pressuredRegionCount || 0) > 0
+  );
+  const state = items.length > 0
+    ? 'active'
+    : hasElevatedMetrics
+      ? 'empty_elevated_metrics'
+      : 'empty_clear';
+  const emptyReason = state === 'empty_elevated_metrics'
+    ? 'No active review items, but review metrics remain elevated from recent or background conditions.'
+    : 'No active review items and no elevated review pressure is currently visible.';
   return {
+    state,
     totalItems: items.length,
     visibleItems: bounded.length,
     maxItems: Math.max(1, maxItems),
     hasMore: items.length > Math.max(1, maxItems),
     bounded: true,
+    hasElevatedMetrics,
+    emptyReason: items.length ? null : emptyReason,
     summary: items.length
       ? `${items.length} active review item${items.length === 1 ? '' : 's'} awaiting operator triage.`
-      : 'No active review items.',
+      : emptyReason,
     topReasons,
+    metrics: {
+      chronicFailureCount: stats?.chronicFailureCount || 0,
+      recentFailureCount: stats?.recentFailureCount || 0,
+      lowConfidenceCount: metrics?.lowConfidenceCount || 0,
+      suspiciousNearDuplicateCount: metrics?.suspiciousNearDuplicateCount || 0,
+      pressuredRegionCount: pressure?.pressuredRegionCount || 0,
+    },
     items: bounded.map(item => ({
       region: item.region || null,
       reason: item.reason || 'unknown',
