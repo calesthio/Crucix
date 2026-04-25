@@ -94,6 +94,7 @@ function operatorSettingsDefaults() {
       layout: {
         visualsMode: 'full',
         mapMode: 'auto',
+        displayMode: 'auto',
         defaultRegion: 'world',
         activeLayer: null,
       },
@@ -120,6 +121,7 @@ function normalizeOperatorSettings(input = {}) {
   const allowedRegions = ['world', 'americas', 'europe', 'middleEast', 'asiaPacific', 'africa'];
   const allowedLayers = ['air', 'thermal', 'sdr', 'maritime', 'nuke', 'conflict', 'health', 'news', 'osint', 'space'];
   const allowedMapModes = ['auto', 'flat', 'globe'];
+  const allowedDisplayModes = ['auto', 'narrow', 'desktop', 'wallboard'];
   const allowedVisualsModes = ['full', 'lite'];
   const allowedLlmModes = ['auto', 'off', 'force'];
   const allowedAnalysisDetails = ['standard', 'compact', 'expanded'];
@@ -130,6 +132,7 @@ function normalizeOperatorSettings(input = {}) {
       layout: {
         visualsMode: allowedVisualsModes.includes(layout.visualsMode) ? layout.visualsMode : defaults.preferences.layout.visualsMode,
         mapMode: allowedMapModes.includes(layout.mapMode) ? layout.mapMode : defaults.preferences.layout.mapMode,
+        displayMode: allowedDisplayModes.includes(layout.displayMode) ? layout.displayMode : defaults.preferences.layout.displayMode,
         defaultRegion: allowedRegions.includes(layout.defaultRegion) ? layout.defaultRegion : defaults.preferences.layout.defaultRegion,
         activeLayer: allowedLayers.includes(layout.activeLayer) ? layout.activeLayer : null,
       },
@@ -2561,6 +2564,8 @@ function buildOperatorSettingsContract(snapshot = null) {
         visualsMode: operatorSettings.preferences.layout.visualsMode,
         mobileFlatMapDefault: operatorSettings.preferences.layout.mapMode !== 'globe',
         mapMode: operatorSettings.preferences.layout.mapMode,
+        displayMode: operatorSettings.preferences.layout.displayMode,
+        availableDisplayModes: ['auto', 'narrow', 'desktop', 'wallboard'],
         defaultRegion: operatorSettings.preferences.layout.defaultRegion,
         activeLayer: operatorSettings.preferences.layout.activeLayer,
         persistence: 'server-file',

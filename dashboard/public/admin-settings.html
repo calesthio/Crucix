@@ -52,6 +52,7 @@ async function savePreferences(){
       layout: {
         visualsMode: document.getElementById('visualsMode')?.value || 'full',
         mapMode: document.getElementById('mapMode')?.value || 'auto',
+        displayMode: document.getElementById('displayMode')?.value || 'auto',
         defaultRegion: document.getElementById('defaultRegion')?.value || 'world',
         activeLayer: document.getElementById('activeLayer')?.value || null,
       },
@@ -106,6 +107,7 @@ async function boot(){
         row('Current', esc(data.layout?.current || 'unknown')),
         selectRow('Visuals mode', 'visualsMode', data.layout?.controls?.visualsMode || 'full', [{value:'full',label:'FULL'},{value:'lite',label:'LITE'}]),
         selectRow('Map mode', 'mapMode', data.layout?.controls?.mapMode || 'auto', [{value:'auto',label:'AUTO'},{value:'flat',label:'FLAT'},{value:'globe',label:'GLOBE'}]),
+        selectRow('Display mode', 'displayMode', data.layout?.controls?.displayMode || 'auto', [{value:'auto',label:'AUTO'},{value:'narrow',label:'NARROW'},{value:'desktop',label:'DESKTOP'},{value:'wallboard',label:'WALLBOARD'}]),
         selectRow('Default region', 'defaultRegion', data.layout?.controls?.defaultRegion || 'world', [{value:'world',label:'WORLD'},{value:'americas',label:'AMERICAS'},{value:'europe',label:'EUROPE'},{value:'middleEast',label:'MIDDLE EAST'},{value:'asiaPacific',label:'ASIA PACIFIC'},{value:'africa',label:'AFRICA'}]),
         selectRow('Active layer', 'activeLayer', data.layout?.controls?.activeLayer || '', [{value:'',label:'ALL'},{value:'air',label:'AIR'},{value:'thermal',label:'THERMAL'},{value:'sdr',label:'SDR'},{value:'maritime',label:'MARITIME'},{value:'nuke',label:'NUKE'},{value:'conflict',label:'CONFLICT'},{value:'health',label:'HEALTH'},{value:'news',label:'NEWS'},{value:'osint',label:'OSINT'},{value:'space',label:'SPACE'}]),
         row('Persistence', esc(data.layout?.controls?.persistence || 'unknown')),

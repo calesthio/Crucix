@@ -36,7 +36,7 @@ const context = {
     version: 'operator-settings-store-v1',
     updatedAt: null,
     preferences: {
-      layout: { visualsMode: 'full', mapMode: 'auto', defaultRegion: 'world', activeLayer: null },
+      layout: { visualsMode: 'full', mapMode: 'auto', displayMode: 'desktop', defaultRegion: 'world', activeLayer: null },
       sources: { enabledCategories: ['news'], enabledSourceIds: ['gdelt-global'] },
       llm: { newsModeDefault: 'auto' },
       agentAnalysis: { detailLevel: 'standard' },
@@ -102,6 +102,8 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.version, 'operator-settings-v1');
   assert.equal(JSON.stringify(contract.sections), JSON.stringify(['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']));
   assert.equal(contract.layout.current, 'default-terminal');
+  assert.equal(contract.layout.controls.displayMode, 'desktop');
+  assert.equal(Array.isArray(contract.layout.controls.availableDisplayModes), true);
   assert.equal(contract.layout.available.some(item => item.id === 'operator'), true);
   assert.equal(contract.sources.total, 30);
   assert.equal(contract.sources.active, 29);

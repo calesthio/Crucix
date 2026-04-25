@@ -669,7 +669,7 @@
           {
             "id": "effort-28.1",
             "title": "Replace the current brittle panel placement with a responsive layout system that properly fits the newer content windows and supports narrow, desktop, and wallboard display modes",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-28.2",

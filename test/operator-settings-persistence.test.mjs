@@ -71,7 +71,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         preferences: {
-          layout: { visualsMode: 'lite', mapMode: 'flat', defaultRegion: 'asiaPacific', activeLayer: 'news' },
+          layout: { visualsMode: 'lite', mapMode: 'flat', displayMode: 'wallboard', defaultRegion: 'asiaPacific', activeLayer: 'news' },
           sources: { enabledCategories: ['news', 'air'], enabledSourceIds: ['gdelt-global', 'opensky-network'] },
           llm: { newsModeDefault: 'force' },
           agentAnalysis: { detailLevel: 'expanded' },
@@ -85,6 +85,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
 
     const settings = await waitFor(settingsUrl, payload => payload?.layout?.controls?.visualsMode === 'lite', 30000);
     assert.equal(settings.layout.controls.mapMode, 'flat');
+    assert.equal(settings.layout.controls.displayMode, 'wallboard');
     assert.equal(settings.layout.controls.defaultRegion, 'asiaPacific');
     assert.equal(settings.layout.controls.activeLayer, 'news');
     assert.equal(settings.sources.selection.supportsPerSourceControl, true);
@@ -96,6 +97,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
 
     const exported = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/settings/export`);
     assert.equal(exported.preferences.layout.visualsMode, 'lite');
+    assert.equal(exported.preferences.layout.displayMode, 'wallboard');
     assert.equal(exported.preferences.layout.defaultRegion, 'asiaPacific');
     assert.deepEqual(exported.preferences.sources.enabledCategories, ['air', 'news']);
 
@@ -118,6 +120,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     const dashboard = await fetch(`http://127.0.0.1:${BASE_PORT}/`).then(r => r.text());
     assert.match(dashboard, /operatorSettings/);
     assert.match(dashboard, /"visualsMode":"lite"/);
+    assert.match(dashboard, /"displayMode":"wallboard"/);
     assert.match(dashboard, /"defaultRegion":"asiaPacific"/);
   } finally {
     await stopChild(child);

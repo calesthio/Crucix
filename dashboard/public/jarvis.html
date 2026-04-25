@@ -20,6 +20,25 @@
   --warn:#ffb84c;--danger:#ff5f63;--mono:'IBM Plex Mono',monospace;--sans:'Space Grotesk',sans-serif;
 }
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);overflow-x:hidden}
+body[data-layout-mode="narrow"] #main{padding:8px}
+body[data-layout-mode="narrow"] .grid{display:flex;flex-direction:column}
+body[data-layout-mode="narrow"] #centerCol{order:1}
+body[data-layout-mode="narrow"] #rightRail{order:2}
+body[data-layout-mode="narrow"] #leftRail{order:3}
+body[data-layout-mode="narrow"] .map-container{min-height:420px}
+body[data-layout-mode="narrow"] .lower .lp-ticker,body[data-layout-mode="narrow"] .lower .lp-osint,body[data-layout-mode="narrow"] .lower .lp-macro,body[data-layout-mode="narrow"] .lower .lp-ideas,body[data-layout-mode="narrow"] .lower .lp-analysis{flex:1 1 100%;max-width:none}
+body[data-layout-mode="narrow"] .metrics-row{grid-template-columns:repeat(2,1fr)}
+body[data-layout-mode="narrow"] .src-grid{grid-template-columns:repeat(2,1fr)}
+body[data-layout-mode="desktop"] .grid{grid-template-columns:240px minmax(0,1fr) 340px}
+body[data-layout-mode="wallboard"] #main{padding:8px 10px}
+body[data-layout-mode="wallboard"] .grid{grid-template-columns:220px minmax(0,1.3fr) 300px;gap:8px;min-height:calc(100vh - 86px)}
+body[data-layout-mode="wallboard"] .topbar{padding:10px 14px}
+body[data-layout-mode="wallboard"] .map-container{min-height:640px}
+body[data-layout-mode="wallboard"] .lower{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+body[data-layout-mode="wallboard"] .lower .lp-ticker,body[data-layout-mode="wallboard"] .lower .lp-osint,body[data-layout-mode="wallboard"] .lower .lp-macro,body[data-layout-mode="wallboard"] .lower .lp-ideas,body[data-layout-mode="wallboard"] .lower .lp-analysis,body[data-layout-mode="wallboard"] .lower .lower-wide{max-width:none;width:100%;flex:none}
+body[data-layout-mode="wallboard"] .lower .lp-macro{grid-column:span 2}
+body[data-layout-mode="wallboard"] .lower-wide{grid-column:1 / -1}
+body[data-layout-mode="wallboard"] .feed{max-height:calc(100vh - 130px)}
 .bg-grid{position:fixed;inset:0;pointer-events:none;opacity:0;
   background-image:linear-gradient(rgba(100,240,200,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(100,240,200,0.03) 1px,transparent 1px);
   background-size:60px 60px;mask-image:radial-gradient(ellipse at 50% 30%,black 20%,transparent 70%)}
@@ -416,6 +435,7 @@ let lowPerfMode = (persistedOperatorSettings.layout?.visualsMode === 'lite') || 
 let isFlat = false;
 let currentRegion = persistedOperatorSettings.layout?.defaultRegion || 'world';
 let activeLayer = persistedOperatorSettings.layout?.activeLayer || null;
+let currentLayoutMode = 'desktop';
 let flatSvg, flatProjection, flatPath, flatG, flatZoom, flatW, flatH;
 
 const sensorLayerMeta = {
@@ -571,8 +591,23 @@ const regionPOV = {
 function getPreferredMapMode(){
   return persistedOperatorSettings.layout?.mapMode || 'auto';
 }
+function getPreferredDisplayMode(){
+  return persistedOperatorSettings.layout?.displayMode || 'auto';
+}
+function resolveLayoutMode(){
+  const preferred = getPreferredDisplayMode();
+  if(preferred && preferred !== 'auto') return preferred;
+  if(window.innerWidth <= 1100) return 'narrow';
+  if(window.innerWidth >= 1700) return 'wallboard';
+  return 'desktop';
+}
+function applyLayoutMode(){
+  currentLayoutMode = resolveLayoutMode();
+  document.body.dataset.layoutMode = currentLayoutMode;
+}
 
 if(lowPerfMode) document.body.classList.add('low-perf');
+applyLayoutMode();
 isFlat = getPreferredMapMode() === 'flat' ? true : getPreferredMapMode() === 'globe' ? false : shouldStartFlat();
 
 function openSettings(){
@@ -697,6 +732,7 @@ function renderRegionControls(){
 
 function renderTopbar(){
   const mobile = isMobileLayout();
+  const layoutBadge = currentLayoutMode.toUpperCase();
   const ts = new Date(D.meta.timestamp);
   const d = ts.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}).toUpperCase();
   const timeStr = ts.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true});
@@ -716,6 +752,7 @@ function renderTopbar(){
       <span class="meta-pill">${t('dashboard.sweep','SWEEP')} <span class="v">${(D.meta.totalDurationMs/1000).toFixed(1)}s</span></span>
       <span class="meta-pill">${d} <span class="v">${timeStr}</span></span>
       <span class="meta-pill">${t('dashboard.sources','SOURCES')} <span class="v">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</span></span>
+      <span class="meta-pill">LAYOUT <span class="v">${layoutBadge}</span></span>
       ${D.delta?.summary ? `<span class="meta-pill">${t('dashboard.delta','DELTA')} <span class="v">${D.delta.summary.direction==='risk-off'?'&#x25B2; '+t('dashboard.riskOff','RISK-OFF'):D.delta.summary.direction==='risk-on'?'&#x25BC; '+t('dashboard.riskOn','RISK-ON'):'&#x25C6; '+t('dashboard.mixed','MIXED')}</span></span>` : ''}
       <button class="guide-btn" onclick="openSettings()">${t('dashboard.settingsBtn','Settings')}</button>
       <button class="guide-btn" onclick="openGlossary()">${t('dashboard.guideBtn','What Signals Mean')}</button>
@@ -1733,7 +1770,7 @@ function runBoot(){
   },[],4.0);
 }
 
-function isMobileLayout(){ return window.innerWidth <= 1100; }
+function isMobileLayout(){ return currentLayoutMode === 'narrow'; }
 
 function buildOsintPanel(panelClass='', maxHeight=260){
   const allPosts=[...D.tg.urgent,...D.tg.topPosts].sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
@@ -1818,8 +1855,10 @@ function refreshMapViewport(forceGlobeReflow=false){
 
 let lastResponsiveMobile = null;
 function syncResponsiveLayout(force=false){
+  const previousMode = currentLayoutMode;
+  applyLayoutMode();
   const mobileNow = isMobileLayout();
-  if(force || lastResponsiveMobile === null || mobileNow !== lastResponsiveMobile){
+  if(force || lastResponsiveMobile === null || mobileNow !== lastResponsiveMobile || previousMode !== currentLayoutMode){
     lastResponsiveMobile = mobileNow;
     renderTopbar();
     renderLeftRail();

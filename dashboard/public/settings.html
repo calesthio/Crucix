@@ -64,6 +64,7 @@ async function boot(){
         row('Current', esc(data.layout?.current || 'unknown')),
         row('Visuals mode', esc(data.layout?.controls?.visualsMode || 'unknown')),
         row('Map mode', esc(data.layout?.controls?.mapMode || 'unknown')),
+        row('Display mode', esc(data.layout?.controls?.displayMode || 'auto')),
         row('Default region', esc(data.layout?.controls?.defaultRegion || 'unknown')),
         row('Active layer', esc(data.layout?.controls?.activeLayer || 'all')),
         row('Persistence', esc(data.layout?.controls?.persistence || 'unknown')),
