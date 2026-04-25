@@ -21,6 +21,7 @@ const exampleGradingScorecard = JSON.parse(readFileSync(new URL('../source-ops/r
 const exampleOverlapAssessment = JSON.parse(readFileSync(new URL('../source-ops/results/overlap/example-overlap-maritime-001.json', import.meta.url), 'utf8'));
 const examplePruningAssessment = JSON.parse(readFileSync(new URL('../source-ops/results/pruning/example-pruning-social-001.json', import.meta.url), 'utf8'));
 const exampleLifecycleEvaluation = JSON.parse(readFileSync(new URL('../source-ops/results/onboarding-prep/example-lifecycle-evaluation-maritime-001.json', import.meta.url), 'utf8'));
+const exampleLifecycleBatch = JSON.parse(readFileSync(new URL('../source-ops/results/onboarding-prep/example-lifecycle-batch.json', import.meta.url), 'utf8'));
 const pendingQueue = JSON.parse(readFileSync(new URL('../source-ops/queue/pending.json', import.meta.url), 'utf8'));
 const reviewedQueue = JSON.parse(readFileSync(new URL('../source-ops/queue/reviewed.json', import.meta.url), 'utf8'));
 
@@ -196,4 +197,9 @@ test('registry lifecycle policy and profile lifecycle policy agree on human appr
   assert.equal(exampleLifecycleEvaluation.nextAllowedState, 'approved');
   assert.equal(exampleLifecycleEvaluation.recommendedAction, 'human-review');
   assert.equal(exampleLifecycleEvaluation.blocked, true);
+  assert.equal(exampleLifecycleBatch.version, 'source-lifecycle-batch-v1');
+  assert.equal(exampleLifecycleBatch.candidateCount, 1);
+  assert.equal(exampleLifecycleBatch.blockedCount, 1);
+  assert.equal(exampleLifecycleBatch.evaluations[0].candidateId, 'candidate-maritime-example-001');
+  assert.equal(exampleLifecycleBatch.evaluations[0].evaluation.nextAllowedState, 'approved');
 });

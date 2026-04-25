@@ -598,7 +598,7 @@
           {
             "id": "effort-25.6",
             "title": "Add evaluator support for batch candidate queues so source-ops can compute next allowed transitions and blockers for multiple candidate records at once",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -627,8 +627,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 80,
-    "activeCycleId": "2026-04-25-cycle-080",
-    "lastCompletedCycleId": "2026-04-25-cycle-080"
+    "sequence": 81,
+    "activeCycleId": "2026-04-25-cycle-081",
+    "lastCompletedCycleId": "2026-04-25-cycle-081"
   }
 }

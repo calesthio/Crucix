@@ -64,6 +64,11 @@ test('source ops surface summarizes contract, inventory, and needs from workspac
   assert.equal(surface.lifecycleEvaluation.nextAllowedState, 'approved');
   assert.equal(surface.lifecycleEvaluation.blocked, true);
   assert.ok(surface.lifecycleEvaluation.blockedReasons.includes('next state crosses human approval boundary'));
+  assert.equal(surface.lifecycleBatchEvaluation.version, 'source-lifecycle-batch-v1');
+  assert.equal(surface.lifecycleBatchEvaluation.candidateCount, 1);
+  assert.equal(surface.lifecycleBatchEvaluation.blockedCount, 1);
+  assert.equal(surface.lifecycleBatchEvaluation.evaluations[0].candidateId, 'candidate-maritime-example-001');
+  assert.equal(surface.lifecycleBatchEvaluation.evaluations[0].evaluation.recommendedAction, 'human-review');
   assert.equal(surface.shadow.items[0].promotionReadiness, 'shadow-ready');
   assert.equal(surface.lifecycleTransitions.stateCount, 9);
 });

@@ -1,0 +1,30 @@
+{
+  "version": "source-lifecycle-batch-v1",
+  "generatedAt": "2026-04-25T19:20:00Z",
+  "candidateCount": 1,
+  "queueTaskCount": 0,
+  "blockedCount": 1,
+  "advanceableCount": 0,
+  "evaluations": [
+    {
+      "candidateId": "candidate-maritime-example-001",
+      "name": "Candidate Maritime Example",
+      "lifecycle": "shadow",
+      "queueReferenced": false,
+      "evaluation": {
+        "currentState": "shadow",
+        "promotionReadiness": "shadow-ready",
+        "allowedNextStates": ["approved", "rejected", "deprecated"],
+        "agentMayAdvanceCurrentState": false,
+        "unmetRequirements": [],
+        "nextAllowedState": "approved",
+        "recommendedAction": "human-review",
+        "blocked": true,
+        "blockedReasons": [
+          "next state crosses human approval boundary",
+          "current state is not agent-advanceable"
+        ]
+      }
+    }
+  ]
+}
