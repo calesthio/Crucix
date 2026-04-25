@@ -2096,22 +2096,30 @@ if (discordAlerter.isConfigured) {
 const app = express();
 app.use(express.static(join(ROOT, 'dashboard/public')));
 
+function injectDashboardRuntimeHtml(html = '') {
+  const locale = getLocale();
+  const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
+  const runtimeScript = `<script>window.__CRUCIX_RUNTIME__ = ${JSON.stringify({ refreshIntervalMinutes: config.refreshIntervalMinutes, settingsUrl: '/settings' }).replace(/<\/script>/gi, '<\\/script>')};</script>`;
+  return html.replace('</head>', `${localeScript}\n${runtimeScript}\n</head>`);
+}
+
 // Serve loading page until first sweep completes, then the dashboard with injected locale
 app.get('/', (req, res) => {
   if (!currentData) {
     res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
   } else {
     const htmlPath = join(ROOT, 'dashboard/public/jarvis.html');
-    let html = readFileSync(htmlPath, 'utf-8');
-    
-    // Inject locale data into the HTML
-    const locale = getLocale();
-    const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
-    const runtimeScript = `<script>window.__CRUCIX_RUNTIME__ = ${JSON.stringify({ refreshIntervalMinutes: config.refreshIntervalMinutes }).replace(/<\/script>/gi, '<\\/script>')};</script>`;
-    html = html.replace('</head>', `${localeScript}\n${runtimeScript}\n</head>`);
-    
-    res.type('html').send(html);
+    const html = readFileSync(htmlPath, 'utf-8');
+    res.type('html').send(injectDashboardRuntimeHtml(html));
   }
+});
+
+app.get('/settings', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
+  const htmlPath = join(ROOT, 'dashboard/public/settings.html');
+  const html = readFileSync(htmlPath, 'utf-8');
+  res.type('html').send(injectDashboardRuntimeHtml(html));
 });
 
 function getSweepWatchdogSnapshot(nowMs = Date.now()) {
@@ -2189,6 +2197,112 @@ function buildOperatorSourceOps(snapshot = null) {
   return buildSourceOpsSurface({ rootDir: ROOT, snapshot });
 }
 
+function buildOperatorSettingsContract(snapshot = null) {
+  const activeSnapshot = snapshot || currentData || {};
+  const sourceOps = buildOperatorSourceOps(activeSnapshot);
+  const llmState = buildOperatorLlmStateContract(activeSnapshot || {}, { provider: config.llm.provider, model: llmProvider?.model || null });
+  const categories = Object.entries(sourceOps?.inventory?.byCategory || {})
+    .map(([category, count]) => ({ category, count }))
+    .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
+  const lifecycleStates = Object.entries(sourceOps?.inventory?.byLifecycle || {})
+    .map(([lifecycle, count]) => ({ lifecycle, count }))
+    .sort((a, b) => b.count - a.count || a.lifecycle.localeCompare(b.lifecycle));
+  const enabledAlerts = [
+    config.telegram?.botToken && config.telegram?.chatId ? 'telegram' : null,
+    config.discord?.botToken || config.discord?.webhookUrl ? 'discord' : null,
+  ].filter(Boolean);
+
+  return {
+    version: 'operator-settings-v1',
+    generatedAt: new Date().toISOString(),
+    sections: ['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts'],
+    layout: {
+      current: 'default-terminal',
+      available: [
+        { id: 'default-terminal', label: 'Default Terminal', status: 'active' },
+        { id: 'operator', label: 'Operator', status: 'planned' },
+        { id: 'diagnostics', label: 'Diagnostics', status: 'planned' },
+        { id: 'source-ops', label: 'Source Ops', status: 'planned' },
+        { id: 'executive-briefing', label: 'Executive Briefing', status: 'planned' },
+      ],
+      controls: {
+        visualsMode: 'full',
+        mobileFlatMapDefault: true,
+        persistence: 'not-yet-persisted',
+      },
+      mutability: {
+        current: 'ui-session',
+        presets: 'planned',
+      },
+    },
+    sources: {
+      total: sourceOps?.inventory?.total || 0,
+      active: sourceOps?.inventory?.active || 0,
+      categories,
+      lifecycleStates,
+      selection: {
+        mode: 'all-enabled-by-config',
+        supportsPerSourceControl: false,
+        supportsCategoryFiltering: false,
+        nextSurface: 'planned-settings-control',
+      },
+      health: {
+        liveStateSummary: sourceOps?.inventory?.liveStateSummary || null,
+      },
+    },
+    llm: {
+      provider: config.llm.provider || null,
+      model: llmProvider?.model || config.llm.model || null,
+      baseUrl: config.llm.baseUrl || null,
+      configured: Boolean(config.llm.provider),
+      state: llmState,
+      requestedModeOptions: ['auto', 'off', 'force'],
+      supportsProviderSwitchingFromUi: false,
+      supportsModelEditingFromUi: false,
+    },
+    agentAnalysis: {
+      current: activeSnapshot?.agentAnalysis ? {
+        status: activeSnapshot.agentAnalysis.status,
+        confidenceLabel: activeSnapshot.agentAnalysis.confidenceLabel,
+        source: activeSnapshot.agentAnalysisMeta?.source || 'deterministic',
+        refinementState: activeSnapshot.agentAnalysisMeta?.refinementState || 'not-requested',
+        refinementCompletion: activeSnapshot.agentAnalysisMeta?.refinementCompletion || null,
+        tippingPointCount: Array.isArray(activeSnapshot.agentAnalysis.tippingPoints) ? activeSnapshot.agentAnalysis.tippingPoints.length : 0,
+      } : null,
+      controls: {
+        publishMode: 'deterministic-with-llm-refinement-when-configured',
+        deterministicFallbackAlwaysAvailable: true,
+        horizonTuning: 'planned',
+        tippingPointThresholdTuning: 'planned',
+      },
+    },
+    runtime: {
+      refreshIntervalMinutes: config.refreshIntervalMinutes,
+      nextSweep: lastSweepTime
+        ? new Date(new Date(lastSweepTime).getTime() + config.refreshIntervalMinutes * 60000).toISOString()
+        : null,
+      sweepInProgress,
+      sweepStartedAt,
+      watchdog: getSweepWatchdogSnapshot(),
+      locale: currentLanguage,
+    },
+    debug: {
+      endpointExposure: config.debugEndpoints?.exposure || 'local-only',
+      endpointExposureOptions: ['local-only', 'open'],
+      localRequestRequiredByDefault: (config.debugEndpoints?.exposure || 'local-only') !== 'open',
+    },
+    alerts: {
+      enabled: enabledAlerts,
+      telegramEnabled: Boolean(config.telegram?.botToken && config.telegram?.chatId),
+      discordEnabled: Boolean(config.discord?.botToken || config.discord?.webhookUrl),
+    },
+    notes: [
+      'This surface centralizes current operator-visible settings and runtime posture before write-back controls are added.',
+      'Per-source selection, saved layouts, and UI-persisted settings are planned roadmap items, not active write paths yet.',
+    ],
+  };
+}
+
 // API: current data
 app.get('/api/data', async (req, res) => {
   const snapshot = await ensureCurrentData();
@@ -2206,6 +2320,12 @@ app.get('/api/data', async (req, res) => {
     sourceInventory: sourceOps.inventory,
     sourceOps,
   });
+});
+
+app.get('/api/settings', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  res.json(buildOperatorSettingsContract(snapshot));
 });
 
 app.get('/api/brief/compact', async (req, res) => {

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRUCIX Settings</title>
+<style>
+:root{--bg:#020408;--panel:rgba(6,14,22,.92);--border:rgba(100,240,200,.18);--text:#e8f4f0;--dim:#7b9a92;--accent:#64f0c8;--accent2:#44ccff;--warn:#ffb84c;--mono:ui-monospace,SFMono-Regular,Menlo,monospace;--sans:Inter,system-ui,sans-serif}
+*{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--sans)}
+body{padding:18px} a{color:var(--accent2)}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;padding:16px 18px;border:1px solid var(--border);background:var(--panel)}
+.kicker,.pill,.mini{font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em}.kicker{font-size:11px;color:var(--accent2)} h1{margin:6px 0 4px;font-size:28px} .sub{color:var(--dim);max-width:780px;line-height:1.45}
+.pill{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--border);font-size:11px;color:var(--dim)} .pill strong{color:var(--text)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.card{padding:14px 16px;border:1px solid var(--border);background:var(--panel)} .card h2{margin:0 0 10px;font-size:16px}.mini{font-size:10px;color:var(--dim)}
+.list{display:flex;flex-direction:column;gap:8px;margin-top:10px}.row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)}.row:first-child{border-top:0;padding-top:0}.key{color:var(--dim)}.val{text-align:right}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.tag{padding:4px 7px;border:1px solid rgba(100,240,200,.18);font-family:var(--mono);font-size:10px;color:var(--accent);background:rgba(100,240,200,.05)}
+.note{padding:12px 14px;border:1px solid rgba(255,184,76,.22);background:rgba(255,184,76,.08);color:#ffe3bd;line-height:1.45}
+pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.5 var(--mono);color:#cfe5de}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <div class="kicker">Crucix operator settings</div>
+      <h1>Settings control plane</h1>
+      <div class="sub">This page centralizes current layout posture, source selection state, LLM configuration, agent-analysis behavior, runtime cadence, and debug exposure. It is a truthful read surface first, before write-back controls are added.</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+      <a class="pill" href="/">Dashboard</a>
+      <a class="pill" href="/api/settings" target="_blank" rel="noreferrer">Raw JSON</a>
+    </div>
+  </div>
+  <div id="status" class="note">Loading settings…</div>
+  <div id="grid" class="grid" hidden></div>
+</div>
+<script>
+function esc(value){return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function row(key, value){return `<div class="row"><div class="key">${esc(key)}</div><div class="val">${value}</div></div>`;}
+function tags(items){return `<div class="tags">${items.map(item => `<span class="tag">${esc(item)}</span>`).join('')}</div>`;}
+function renderCard(title, subtitle, body){return `<section class="card"><div class="mini">${esc(subtitle)}</div><h2>${esc(title)}</h2>${body}</section>`;}
+async function boot(){
+  const status = document.getElementById('status');
+  const grid = document.getElementById('grid');
+  try {
+    const res = await fetch('/api/settings');
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    status.textContent = `Loaded ${data.version} at ${new Date(data.generatedAt).toLocaleString()}`;
+    grid.hidden = false;
+    const categories = (data.sources?.categories || []).map(item => `${item.category}: ${item.count}`);
+    const lifecycle = (data.sources?.lifecycleStates || []).map(item => `${item.lifecycle}: ${item.count}`);
+    const layouts = (data.layout?.available || []).map(item => `${item.id} (${item.status})`);
+    grid.innerHTML = [
+      renderCard('Layout', 'UI posture', [
+        row('Current', esc(data.layout?.current || 'unknown')),
+        row('Visuals mode', esc(data.layout?.controls?.visualsMode || 'unknown')),
+        row('Mobile flat map default', esc(String(Boolean(data.layout?.controls?.mobileFlatMapDefault)))),
+        row('Persistence', esc(data.layout?.controls?.persistence || 'unknown')),
+        tags(layouts),
+      ].join('')),
+      renderCard('Sources', 'Inventory and selection', [
+        row('Total', esc(data.sources?.total ?? 0)),
+        row('Active', esc(data.sources?.active ?? 0)),
+        row('Selection mode', esc(data.sources?.selection?.mode || 'unknown')),
+        row('Per-source controls', esc(String(Boolean(data.sources?.selection?.supportsPerSourceControl)))),
+        categories.length ? tags(categories) : '',
+        lifecycle.length ? tags(lifecycle) : '',
+      ].join('')),
+      renderCard('LLM', 'Provider and runtime state', [
+        row('Provider', esc(data.llm?.provider || 'disabled')),
+        row('Model', esc(data.llm?.model || 'none')),
+        row('Configured', esc(String(Boolean(data.llm?.configured)))),
+        row('State', esc(data.llm?.state?.label || data.llm?.state?.status || 'unknown')),
+        row('Modes', esc((data.llm?.requestedModeOptions || []).join(', '))),
+      ].join('')),
+      renderCard('Agent analysis', 'Published reasoning behavior', [
+        row('Status', esc(data.agentAnalysis?.current?.status || 'unavailable')),
+        row('Confidence', esc(data.agentAnalysis?.current?.confidenceLabel || 'n/a')),
+        row('Source', esc(data.agentAnalysis?.current?.source || 'n/a')),
+        row('Refinement', esc(data.agentAnalysis?.current?.refinementState || 'n/a')),
+        row('Publish mode', esc(data.agentAnalysis?.controls?.publishMode || 'unknown')),
+      ].join('')),
+      renderCard('Runtime', 'Cadence and sweep state', [
+        row('Refresh interval', esc(`${data.runtime?.refreshIntervalMinutes ?? '?'} min`)),
+        row('Sweep in progress', esc(String(Boolean(data.runtime?.sweepInProgress)))),
+        row('Next sweep', esc(data.runtime?.nextSweep || 'unknown')),
+        row('Locale', esc(data.runtime?.locale || 'unknown')),
+        row('Watchdog timeout', esc(`${data.runtime?.watchdog?.timeoutMinutes ?? '?'} min`)),
+      ].join('')),
+      renderCard('Debug and alerts', 'Exposure and routing', [
+        row('Debug exposure', esc(data.debug?.endpointExposure || 'unknown')),
+        row('Local-only by default', esc(String(Boolean(data.debug?.localRequestRequiredByDefault)))),
+        row('Telegram', esc(String(Boolean(data.alerts?.telegramEnabled)))),
+        row('Discord', esc(String(Boolean(data.alerts?.discordEnabled)))),
+        (data.alerts?.enabled || []).length ? tags(data.alerts.enabled) : '',
+      ].join('')),
+      renderCard('Operator notes', 'Honesty and roadmap boundaries', `<pre>${esc((data.notes || []).join('\n- ')).replace(/^/, '- ')}</pre>`),
+    ].join('');
+  } catch (err) {
+    status.textContent = `Failed to load settings: ${err.message}`;
+  }
+}
+boot();
+</script>
+</body>
+</html>

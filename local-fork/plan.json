@@ -568,7 +568,7 @@
       {
         "id": "epic-25",
         "title": "Shadow-mode source evaluation and promotion gates",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-25.1",
@@ -605,7 +605,7 @@
       {
         "id": "epic-26",
         "title": "Source-role-aware fusion and performance measurement",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-26.1",
@@ -633,12 +633,223 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-27",
+        "title": "Operator settings and configuration control plane",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-27.1",
+            "title": "Create a dedicated settings surface that centralizes layout preferences, source selection, LLM provider/model controls, agent-analysis behavior, refresh cadence, and debug exposure into one operator-facing control plane",
+            "status": "completed"
+          },
+          {
+            "id": "effort-27.2",
+            "title": "Define a versioned Crucix runtime configuration contract with schema validation, sane defaults, effective-config reporting, and boot-time drift checks across file, env, and live runtime state",
+            "status": "pending"
+          },
+          {
+            "id": "effort-27.3",
+            "title": "Persist operator settings safely so dashboard layout, source toggles, LLM mode, and agent-analysis preferences survive restarts and can be exported or restored",
+            "status": "pending"
+          },
+          {
+            "id": "effort-27.4",
+            "title": "Add role-separated admin controls and local-safe access boundaries so sensitive settings, debug surfaces, and runtime controls are not mixed with read-only operator views",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-28",
+        "title": "Dashboard layout overhaul and operator workspace UX",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-28.1",
+            "title": "Replace the current brittle panel placement with a responsive layout system that properly fits the newer content windows and supports narrow, desktop, and wallboard display modes",
+            "status": "pending"
+          },
+          {
+            "id": "effort-28.2",
+            "title": "Add panel resizing, collapsing, pinning, and priority ordering so high-value windows stay usable without manual DOM surgery when the dashboard grows",
+            "status": "pending"
+          },
+          {
+            "id": "effort-28.3",
+            "title": "Create saved workspace presets such as operator, diagnostics, source-ops, and executive briefing layouts with quick switching between them",
+            "status": "pending"
+          },
+          {
+            "id": "effort-28.4",
+            "title": "Separate live operator views, diagnostics, and administration into clearer information architecture so the dashboard stops mixing operations with debug clutter",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-29",
+        "title": "Runtime control, restart safety, and sweep reliability",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-29.1",
+            "title": "Add a dev-safe restart helper with PID or port ownership sanity checks so local validation cycles stop binding to stale `3117` listeners and can prove which instance is live",
+            "status": "pending"
+          },
+          {
+            "id": "effort-29.2",
+            "title": "Detect, classify, and recover stuck sweep or synthesis jobs so `/api/health` does not remain indefinitely in `sweepInProgress` when LLM paths hang or fail to complete cleanly",
+            "status": "pending"
+          },
+          {
+            "id": "effort-29.3",
+            "title": "Expose runtime process controls and last-success state so operators can see current sweep stage, last good refresh, active PID identity, and bounded restart or stop actions",
+            "status": "pending"
+          },
+          {
+            "id": "effort-29.4",
+            "title": "Add timeout, cancellation, retry, and completion telemetry for deferred LLM and synthesis work so slow, hung, and failed jobs are operationally distinguishable",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-30",
+        "title": "Source operations console and lifecycle controls",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-30.1",
+            "title": "Build an operator-facing source management console for source enable-disable controls, category filtering, role grouping, and per-source selection without editing raw files",
+            "status": "pending"
+          },
+          {
+            "id": "effort-30.2",
+            "title": "Add source lifecycle actions for candidate, shadow, active, quarantine, and prune recommendations with visible policy blockers and human-approval boundaries",
+            "status": "pending"
+          },
+          {
+            "id": "effort-30.3",
+            "title": "Expose source health history, freshness thresholds, failure-class trends, and one-click quarantine or suppression controls for noisy or broken sources",
+            "status": "pending"
+          },
+          {
+            "id": "effort-30.4",
+            "title": "Turn source performance measurement into an operator workflow surface with attribution explanations, confidence caveats, and validation views tied to cluster quality and trust outcomes",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-31",
+        "title": "LLM and agent operations console",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-31.1",
+            "title": "Create an LLM operations page that exposes provider health, active model, fallback chain, forced heuristic or forced LLM modes, and recent failure reasons",
+            "status": "pending"
+          },
+          {
+            "id": "effort-31.2",
+            "title": "Expose prompt-debug, parse-failure, and reasoning-surface validation details for clustering and analysis paths without requiring direct file inspection",
+            "status": "pending"
+          },
+          {
+            "id": "effort-31.3",
+            "title": "Add agent-analysis tuning controls for tipping-point thresholds, publish policy, deterministic fallback mode, and horizon behavior so output can be tuned without code edits",
+            "status": "pending"
+          },
+          {
+            "id": "effort-31.4",
+            "title": "Add operator-visible cost, latency, and completion telemetry for LLM-backed clustering and analysis so expensive or degraded paths can be diagnosed quickly",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-32",
+        "title": "Operator review workflow, diagnostics, and reasoning repair",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-32.1",
+            "title": "Turn review queues and low-confidence diagnostics into direct operator workflows with acknowledge, snooze, suppress, promote, and quarantine actions plus audit trail capture",
+            "status": "pending"
+          },
+          {
+            "id": "effort-32.2",
+            "title": "Add cluster repair helpers that explain why a cluster is weak and support bounded merge, split, placement-correction, and suppression actions",
+            "status": "pending"
+          },
+          {
+            "id": "effort-32.3",
+            "title": "Expose attribution uncertainty and alias-collision diagnostics so inferred runtime-source mappings, duplicate publisher aliases, and double-count risks are visible to operators",
+            "status": "pending"
+          },
+          {
+            "id": "effort-32.4",
+            "title": "Add noise-suppression controls for duplicate bursts, repetitive low-value events, and source-specific suppression rules that can be reviewed and tuned from the UI",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-33",
+        "title": "Deployment hardening, persistence, and external operations",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-33.1",
+            "title": "Add startup and deployment hardening with environment validation, secret sanity checks, graceful shutdown, and process-manager-friendly health semantics",
+            "status": "pending"
+          },
+          {
+            "id": "effort-33.2",
+            "title": "Persist runtime history for source health, review pressure, LLM failures, and performance trends in a proper local datastore instead of only transient in-memory surfaces",
+            "status": "pending"
+          },
+          {
+            "id": "effort-33.3",
+            "title": "Add configurable alert routing and escalation for stale sweeps, source failures, elevated review pressure, and degraded inference paths",
+            "status": "pending"
+          },
+          {
+            "id": "effort-33.4",
+            "title": "Support config and state export-import plus operator audit history so deployments can be backed up, restored, or reviewed without manual file archaeology",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-34",
+        "title": "Contract validation and payload integrity expansion",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-34.1",
+            "title": "Add schema-level validation helpers for source-ops artifacts so example task packets, scorecards, overlap assessments, pruning outputs, lifecycle envelopes, and related artifacts are checked against their JSON schemas instead of only spot-checking fields in tests",
+            "status": "pending"
+          },
+          {
+            "id": "effort-34.2",
+            "title": "Expand contract tests for UI-facing and operator-facing payloads so dashboard, health, analysis, brief, settings, and admin surfaces cannot silently drift",
+            "status": "pending"
+          },
+          {
+            "id": "effort-34.3",
+            "title": "Add effective-runtime payload validation and served-page smoke checks so HTML-backed dashboard surfaces are validated as delivered, not just as source files",
+            "status": "pending"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 85,
-    "activeCycleId": "2026-04-25-cycle-085",
-    "lastCompletedCycleId": "2026-04-25-cycle-085"
+    "sequence": 87,
+    "activeCycleId": "2026-04-25-cycle-087",
+    "lastCompletedCycleId": "2026-04-25-cycle-087"
   }
 }
