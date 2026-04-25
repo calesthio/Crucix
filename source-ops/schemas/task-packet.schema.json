@@ -57,6 +57,15 @@
         "schemaPath": { "type": "string", "minLength": 1 },
         "rubricPath": { "type": "string", "minLength": 1 }
       }
+    },
+    "pruning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaPath", "rubricPath"],
+      "properties": {
+        "schemaPath": { "type": "string", "minLength": 1 },
+        "rubricPath": { "type": "string", "minLength": 1 }
+      }
     }
   }
 }

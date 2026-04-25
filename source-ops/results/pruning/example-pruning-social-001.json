@@ -1,0 +1,83 @@
+{
+  "version": "source-pruning-v1",
+  "targetId": "reddit",
+  "generatedAt": "2026-04-25T17:58:00Z",
+  "summary": "Reddit appears useful enough to retain for exploratory social context, but its noise and duplication profile justify human review before any downgrade or deprecation decision.",
+  "cohort": {
+    "category": "social",
+    "comparedAgainst": [
+      {
+        "name": "Bluesky",
+        "reason": "Comparable low-trust social source in the same exploratory cohort.",
+        "operatorRole": "exploratory",
+        "trustClass": "low"
+      },
+      {
+        "name": "Telegram",
+        "reason": "Another noisy exploratory social source with overlapping incident chatter patterns.",
+        "operatorRole": "exploratory",
+        "trustClass": "low"
+      },
+      {
+        "name": "GDELT",
+        "reason": "Higher-structure corroborator that already captures some downstream social-amplified events.",
+        "operatorRole": "corroborator",
+        "trustClass": "medium"
+      }
+    ]
+  },
+  "dimensionScores": [
+    {
+      "dimension": "noise-pressure",
+      "score": 4,
+      "weight": 0.3,
+      "weightedScore": 1.2,
+      "reasoning": "Exploratory social chatter can raise review burden and weak-signal clutter when not tightly filtered.",
+      "evidence": ["low-trust exploratory role", "social chatter variability"]
+    },
+    {
+      "dimension": "duplication-burden",
+      "score": 3,
+      "weight": 0.25,
+      "weightedScore": 0.75,
+      "reasoning": "Some event discovery overlap exists with Bluesky, Telegram, and news/event sources, but not enough to justify automatic removal.",
+      "evidence": ["overlap with exploratory social feeds", "partial downstream event coverage"]
+    },
+    {
+      "dimension": "maintenance-cost",
+      "score": 2,
+      "weight": 0.2,
+      "weightedScore": 0.4,
+      "reasoning": "Current maintenance burden appears moderate rather than severe compared with sources that require brittle auth or frequent break-fix work.",
+      "evidence": ["no extreme auth churn noted", "manageable integration surface"]
+    },
+    {
+      "dimension": "operator-value-retention",
+      "score": 3,
+      "weight": 0.15,
+      "weightedScore": 0.45,
+      "reasoning": "Some exploratory discovery value would remain via Bluesky, Telegram, and GDELT if Reddit were later reduced, but the replacement is incomplete.",
+      "evidence": ["alternative exploratory feeds exist", "coverage substitution incomplete"]
+    },
+    {
+      "dimension": "safe-actionability",
+      "score": 4,
+      "weight": 0.1,
+      "weightedScore": 0.4,
+      "reasoning": "A human-review recommendation is safe because it preserves the active source while documenting noise and duplication concerns explicitly.",
+      "evidence": ["recommendation-only path", "no production mutation proposed"]
+    }
+  ],
+  "weightedTotal": 3.2,
+  "recommendation": "human-review",
+  "confidence": "medium",
+  "productionGuardrails": {
+    "productionMutationProposed": false,
+    "humanReviewRequired": true,
+    "autoRemovalAllowed": false,
+    "notes": "Active production sources remain recommendation-only under pruning review."
+  },
+  "blockingIssues": [
+    "Need per-source contribution and review-pressure telemetry before recommending an actual downgrade or deprecation path."
+  ]
+}

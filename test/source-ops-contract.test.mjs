@@ -8,13 +8,17 @@ const taskSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/task-p
 const resultSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/result-envelope.schema.json', import.meta.url), 'utf8'));
 const scorecardSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/scorecard.schema.json', import.meta.url), 'utf8'));
 const overlapSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/overlap-assessment.schema.json', import.meta.url), 'utf8'));
+const pruningSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/pruning-assessment.schema.json', import.meta.url), 'utf8'));
 const gradingRubric = JSON.parse(readFileSync(new URL('../source-ops/grading-rubric.json', import.meta.url), 'utf8'));
 const overlapRubric = JSON.parse(readFileSync(new URL('../source-ops/overlap-rubric.json', import.meta.url), 'utf8'));
+const pruningRubric = JSON.parse(readFileSync(new URL('../source-ops/pruning-rubric.json', import.meta.url), 'utf8'));
 const exampleTask = JSON.parse(readFileSync(new URL('../source-ops/tasks/example-discovery-task.json', import.meta.url), 'utf8'));
 const exampleGradingTask = JSON.parse(readFileSync(new URL('../source-ops/tasks/example-grading-task.json', import.meta.url), 'utf8'));
 const exampleOverlapTask = JSON.parse(readFileSync(new URL('../source-ops/tasks/example-overlap-task.json', import.meta.url), 'utf8'));
+const examplePruningTask = JSON.parse(readFileSync(new URL('../source-ops/tasks/example-pruning-task.json', import.meta.url), 'utf8'));
 const exampleGradingScorecard = JSON.parse(readFileSync(new URL('../source-ops/results/grading/example-grading-scorecard.json', import.meta.url), 'utf8'));
 const exampleOverlapAssessment = JSON.parse(readFileSync(new URL('../source-ops/results/overlap/example-overlap-maritime-001.json', import.meta.url), 'utf8'));
+const examplePruningAssessment = JSON.parse(readFileSync(new URL('../source-ops/results/pruning/example-pruning-social-001.json', import.meta.url), 'utf8'));
 const pendingQueue = JSON.parse(readFileSync(new URL('../source-ops/queue/pending.json', import.meta.url), 'utf8'));
 const reviewedQueue = JSON.parse(readFileSync(new URL('../source-ops/queue/reviewed.json', import.meta.url), 'utf8'));
 
@@ -95,6 +99,22 @@ test('overlap contract includes structured assessment artifacts and explainable 
   assert.equal(exampleOverlapAssessment.dimensionScores.length, overlapRubric.dimensions.length);
   assert.equal(exampleOverlapAssessment.overlap.incrementalCoverage, 'high');
   assert.equal(exampleOverlapAssessment.recommendation, 'shadow');
+});
+
+test('pruning contract includes structured assessment artifacts and active-source guardrails', () => {
+  assert.equal(profile.pruningSchemaPath, 'source-ops/schemas/pruning-assessment.schema.json');
+  assert.equal(profile.pruningRubricPath, 'source-ops/pruning-rubric.json');
+  assert.equal(examplePruningTask.pruning.schemaPath, profile.pruningSchemaPath);
+  assert.equal(examplePruningTask.pruning.rubricPath, profile.pruningRubricPath);
+  assert.equal(pruningSchema.properties.version.const, 'source-pruning-v1');
+  assert.equal(pruningRubric.version, 'source-pruning-rubric-v1');
+  assert.equal(pruningRubric.dimensions.length, 5);
+  assert.equal(Number(pruningRubric.dimensions.reduce((sum, item) => sum + item.weight, 0).toFixed(4)), 1);
+  assert.equal(examplePruningAssessment.version, 'source-pruning-v1');
+  assert.equal(examplePruningAssessment.dimensionScores.length, pruningRubric.dimensions.length);
+  assert.equal(examplePruningAssessment.recommendation, 'human-review');
+  assert.equal(examplePruningAssessment.productionGuardrails.productionMutationProposed, false);
+  assert.equal(examplePruningAssessment.productionGuardrails.autoRemovalAllowed, false);
 });
 
 test('result schema and queue scaffolding exist for bounded subagent workflows', () => {

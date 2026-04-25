@@ -583,6 +583,11 @@
           {
             "id": "effort-25.3",
             "title": "Record pruning recommendations for noisy, redundant, expensive, or maintenance-heavy sources without auto-removing active production sources",
+            "status": "completed"
+          },
+          {
+            "id": "effort-25.4",
+            "title": "Add a lifecycle policy evaluator that consumes candidate records plus scorecard and overlap artifacts and emits the exact next allowed transition or blocking reason",
             "status": "pending"
           }
         ]
@@ -612,8 +617,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 77,
-    "activeCycleId": "2026-04-25-cycle-077",
-    "lastCompletedCycleId": "2026-04-25-cycle-077"
+    "sequence": 78,
+    "activeCycleId": "2026-04-25-cycle-078",
+    "lastCompletedCycleId": "2026-04-25-cycle-078"
   }
 }

@@ -12,6 +12,10 @@
     "registryPath": "source-ops/source-registry.seed.json",
     "outputPath": "source-ops/results/pruning/example-pruning-social-001.json"
   },
+  "pruning": {
+    "schemaPath": "source-ops/schemas/pruning-assessment.schema.json",
+    "rubricPath": "source-ops/pruning-rubric.json"
+  },
   "policy": {
     "contractMode": "file-first",
     "productionMutationsAllowed": false,
