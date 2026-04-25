@@ -58,14 +58,16 @@ async function withBootedServer({ port, env }, fn) {
     await waitFor(healthUrl, json => Boolean(json?.sourceOps?.inventory?.total), 30000);
     return await fn({
       settingsUrl: `http://127.0.0.1:${port}/api/settings`,
+      adminSettingsUrl: `http://127.0.0.1:${port}/api/settings/admin`,
       pageUrl: `http://127.0.0.1:${port}/settings`,
+      adminPageUrl: `http://127.0.0.1:${port}/admin/settings`,
     });
   } finally {
     await stopChild(child);
   }
 }
 
-test('booted /api/settings centralizes operator settings contract and /settings serves the UI shell', async () => {
+test('booted operator and admin settings surfaces stay role-separated with local-safe admin controls', async () => {
   await withBootedServer({
     port: BASE_PORT,
     env: {
@@ -74,7 +76,7 @@ test('booted /api/settings centralizes operator settings contract and /settings 
       OLLAMA_BASE_URL: 'http://127.0.0.1:11434',
       DEBUG_ENDPOINT_EXPOSURE: 'local-only',
     },
-  }, async ({ settingsUrl, pageUrl }) => {
+  }, async ({ settingsUrl, adminSettingsUrl, pageUrl, adminPageUrl }) => {
     const settings = await waitFor(settingsUrl, payload => payload?.version === 'operator-settings-v1', 30000);
     assert.deepEqual(settings.sections, ['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']);
     assert.equal(settings.layout.current, 'default-terminal');
@@ -89,11 +91,25 @@ test('booted /api/settings centralizes operator settings contract and /settings 
     assert.equal(settings.config.driftSummary.envOverrides >= 1, true);
     assert.equal(settings.sources.selection.supportsPerSourceControl, true);
     assert.equal(Array.isArray(settings.sources.availableSources), true);
-    assert.equal(settings.persistence.capabilities.export, true);
-    assert.equal(settings.persistence.capabilities.writeApi, true);
+    assert.equal(settings.persistence.capabilities.export, false);
+    assert.equal(settings.persistence.capabilities.writeApi, false);
+    assert.equal(settings.access.role, 'operator');
+    assert.equal(settings.access.localAdminRequired, true);
+
+    const admin = await waitFor(adminSettingsUrl, payload => payload?.version === 'admin-settings-v1', 30000);
+    assert.equal(admin.persistence.capabilities.export, true);
+    assert.equal(admin.persistence.capabilities.writeApi, true);
+    assert.equal(admin.access.role, 'admin');
+    assert.equal(admin.admin.boundaries.requiresLocalRequest, true);
 
     const page = await fetch(pageUrl).then(r => r.text());
-    assert.match(page, /Settings control plane/i);
-    assert.match(page, /\/api\/settings/);
+    assert.match(page, /read-only operator view/i);
+    assert.doesNotMatch(page, /id="saveBtn"/i);
+    assert.doesNotMatch(page, /id="exportBtn"/i);
+
+    const adminPage = await fetch(adminPageUrl).then(r => r.text());
+    assert.match(adminPage, /Local control plane/i);
+    assert.match(adminPage, /id="saveBtn"/i);
+    assert.match(adminPage, /id="exportBtn"/i);
   });
 });

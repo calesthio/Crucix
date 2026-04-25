@@ -15,3 +15,4 @@ The operator settings, layout overhaul, runtime reliability, source-ops console,
 - Endpoint-level contract coverage for reasoning metadata on `/api/analysis` and `/api/brief/news` was promoted into `local-fork/plan.json` as Epic 26, effort 26.4 on 2026-04-25.
 - Direct per-cluster source provenance or cluster-to-runtime-source attribution was promoted into `local-fork/plan.json` as Epic 26, effort 26.5 on 2026-04-25 and completed in cycle 086.
 - Add a revision or ETag-style concurrency token to the operator settings store and write API so the settings UI can detect stale listeners, conflicting saves, and restore drift instead of blindly last-write-wins. Added to backlog on 2026-04-25 after cycle 089.
+- Add an explicit local admin nonce or CSRF-style confirmation token for `/api/settings/operator` and `/api/settings/import` so browser-originated local writes are not relying on network locality alone. Added to backlog on 2026-04-25 after cycle 090.

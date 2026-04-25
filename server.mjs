@@ -2226,6 +2226,14 @@ app.get('/settings', async (req, res) => {
   res.type('html').send(injectDashboardRuntimeHtml(html));
 });
 
+app.get('/admin/settings', requireDebugAccess, async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
+  const htmlPath = join(ROOT, 'dashboard/public/admin-settings.html');
+  const html = readFileSync(htmlPath, 'utf-8');
+  res.type('html').send(injectDashboardRuntimeHtml(html));
+});
+
 function getSweepWatchdogSnapshot(nowMs = Date.now()) {
   const startedAtMs = sweepStartedAt ? new Date(sweepStartedAt).getTime() : null;
   const active = Boolean(sweepInProgress && startedAtMs);
@@ -2637,6 +2645,40 @@ function buildOperatorSettingsContract(snapshot = null) {
     persistence: {
       version: operatorSettings.version,
       updatedAt: operatorSettings.updatedAt,
+      path: null,
+      capabilities: {
+        serverFile: true,
+        export: false,
+        import: false,
+        writeApi: false,
+      },
+      persistedPreferences: operatorSettings.preferences,
+    },
+    access: {
+      role: 'operator',
+      mode: 'read-only',
+      adminSurface: '/admin/settings',
+      adminApi: '/api/settings/admin',
+      localAdminRequired: true,
+    },
+    notes: [
+      'This surface centralizes current operator-visible settings and runtime posture.',
+      'Operator settings is intentionally a read-only operator surface; local-only admin controls live under /admin/settings so sensitive writes and debug-adjacent actions are separated from normal viewing.',
+      'Runtime configuration is exposed as a versioned contract with defaults, effective values, validation, and drift summary.',
+      'Operator preference persistence currently applies layout visuals, map mode, region, and active layer directly, while LLM and agent-analysis preferences are stored safely for later deeper runtime enforcement.',
+    ],
+  };
+}
+
+function buildAdminSettingsContract(snapshot = null) {
+  const operator = buildOperatorSettingsContract(snapshot);
+  const operatorSettings = loadOperatorSettings();
+  return {
+    ...operator,
+    version: 'admin-settings-v1',
+    sections: [...operator.sections, 'admin'],
+    persistence: {
+      ...operator.persistence,
       path: OPERATOR_SETTINGS_PATH,
       capabilities: {
         serverFile: true,
@@ -2646,11 +2688,26 @@ function buildOperatorSettingsContract(snapshot = null) {
       },
       persistedPreferences: operatorSettings.preferences,
     },
+    access: {
+      role: 'admin',
+      mode: 'local-write',
+      operatorSurface: '/settings',
+      localAdminRequired: true,
+    },
+    admin: {
+      controls: {
+        exportEndpoint: '/api/settings/export',
+        importEndpoint: '/api/settings/import',
+        writeEndpoint: '/api/settings/operator',
+      },
+      boundaries: {
+        requiresLocalRequest: true,
+        debugExposure: config.debugEndpoints?.exposure || 'local-only',
+      },
+    },
     notes: [
-      'This surface centralizes current operator-visible settings and runtime posture before write-back controls are added.',
-      'Per-source selection, saved layouts, and UI-persisted settings are planned roadmap items, not active write paths yet.',
-      'Runtime configuration is exposed as a versioned contract with defaults, effective values, validation, and drift summary.',
-      'Operator preference persistence currently applies layout visuals, map mode, region, and active layer directly, while LLM and agent-analysis preferences are stored safely for later deeper runtime enforcement.',
+      ...operator.notes,
+      'Admin settings is a local-only surface intended for persisted writes, export, import, and other debug-adjacent control-plane actions.',
     ],
   };
 }
@@ -2678,6 +2735,12 @@ app.get('/api/settings', async (req, res) => {
   const snapshot = await ensureCurrentData();
   if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
   res.json(buildOperatorSettingsContract(snapshot));
+});
+
+app.get('/api/settings/admin', requireDebugAccess, async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  res.json(buildAdminSettingsContract(snapshot));
 });
 
 app.get('/api/settings/export', requireDebugAccess, (req, res) => {

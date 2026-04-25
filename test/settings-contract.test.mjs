@@ -63,10 +63,10 @@ const context = {
 vm.createContext(context);
 vm.runInContext(`
   ${extractChunk('function buildRuntimeConfigContract() {', '// API: current data')}
-  module.exports = { buildRuntimeConfigContract, buildOperatorSettingsContract };
+  module.exports = { buildRuntimeConfigContract, buildOperatorSettingsContract, buildAdminSettingsContract };
 `, context);
 
-const { buildRuntimeConfigContract, buildOperatorSettingsContract } = context.module.exports;
+const { buildRuntimeConfigContract, buildOperatorSettingsContract, buildAdminSettingsContract } = context.module.exports;
 
 test('runtime config contract exposes defaults, effective values, validation, and drift summary', () => {
   context.process.env = {
@@ -124,7 +124,22 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(Array.isArray(contract.sources.availableSources), true);
   assert.deepEqual(contract.sources.selection.enabledCategories, ['news']);
   assert.deepEqual(contract.sources.selection.enabledSourceIds, ['gdelt-global']);
-  assert.equal(contract.persistence.capabilities.export, true);
-  assert.equal(contract.persistence.capabilities.writeApi, true);
+  assert.equal(contract.persistence.capabilities.export, false);
+  assert.equal(contract.persistence.capabilities.writeApi, false);
+  assert.equal(contract.access.role, 'operator');
+  assert.equal(contract.access.localAdminRequired, true);
   assert.match(contract.notes[0], /centralizes current operator-visible settings/i);
+});
+
+test('admin settings contract exposes local-write controls separately from operator view', () => {
+  const contract = buildAdminSettingsContract();
+  assert.equal(contract.version, 'admin-settings-v1');
+  assert.equal(contract.persistence.capabilities.export, true);
+  assert.equal(contract.persistence.capabilities.import, true);
+  assert.equal(contract.persistence.capabilities.writeApi, true);
+  assert.equal(contract.persistence.path, '/tmp/test-operator-settings.json');
+  assert.equal(contract.access.role, 'admin');
+  assert.equal(contract.access.mode, 'local-write');
+  assert.equal(contract.admin.boundaries.requiresLocalRequest, true);
+  assert.equal(contract.admin.controls.writeEndpoint, '/api/settings/operator');
 });

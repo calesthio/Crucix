@@ -637,7 +637,7 @@
       {
         "id": "epic-27",
         "title": "Operator settings and configuration control plane",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-27.1",
@@ -657,7 +657,7 @@
           {
             "id": "effort-27.4",
             "title": "Add role-separated admin controls and local-safe access boundaries so sensitive settings, debug surfaces, and runtime controls are not mixed with read-only operator views",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
