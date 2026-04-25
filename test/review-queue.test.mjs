@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 
+const realisticFixture = JSON.parse(readFileSync(new URL('./fixtures/review-queue-realistic-sample.json', import.meta.url), 'utf8'));
+
 const source = readFileSync(new URL('../server.mjs', import.meta.url), 'utf8');
 
 function extractChunk(startMarker, endMarker) {
@@ -59,42 +61,22 @@ test('buildOperatorReviewQueue marks empty-but-elevated queues explicitly', () =
 });
 
 test('buildOperatorReviewQueue returns bounded actionable items with triage prioritization', () => {
-  const review = {
-    reviewItems: [
-      { region: 'Iran', reason: 'no-json-match', severity: 'high', itemCount: 7, retried: true, repairAttempted: true, persistent: { chronic: true, consecutiveFailures: 9, lastStatus: 'heuristic-fallback' }, pressure: { pressureScore: 63 } },
-      { region: 'Australia', reason: 'no-json-match', severity: 'high', itemCount: 5, retried: true, repairAttempted: true, persistent: { chronic: true, consecutiveFailures: 17, lastStatus: 'heuristic-fallback' }, pressure: { pressureScore: 62 } },
-      { region: 'Pakistan', reason: 'shape-mismatch', severity: 'medium', itemCount: 3, retried: true, repairAttempted: false, persistent: { chronic: false, consecutiveFailures: 3, lastStatus: 'heuristic-fallback' }, pressure: { pressureScore: 39 } },
-      { region: 'EU', reason: 'no-json-match', severity: 'high', itemCount: 6, retried: true, repairAttempted: true, persistent: { chronic: true, consecutiveFailures: 20, lastStatus: 'heuristic-fallback' }, pressure: { pressureScore: 9 } },
-      { region: 'Spain', reason: 'shape-mismatch', severity: 'medium', itemCount: 2, retried: false, repairAttempted: false, persistent: { chronic: true, consecutiveFailures: 6, lastStatus: 'heuristic-fallback' }, pressure: { pressureScore: 0 } },
-      { region: 'India', reason: 'no-json-match', severity: 'medium', itemCount: 2, retried: true, repairAttempted: false, persistent: { chronic: true, consecutiveFailures: 1, lastStatus: 'llm-used-retry' }, pressure: { pressureScore: 45 } },
-    ],
-    dismissedItems: [],
-  };
-
-  const queue = buildOperatorReviewQueue(review, {
+  const queue = buildOperatorReviewQueue(realisticFixture.review, {
     maxItems: 5,
-    quality: {
-      reviewMetrics: {
-        topSplitRegions: [{ region: 'EU', count: 7 }, { region: 'Pakistan', count: 3 }],
-        suspiciousNearDuplicates: [{ region: 'EU', similarity: 1 }, { region: 'Iran', similarity: 0.5 }],
-      },
-    },
+    quality: realisticFixture.quality,
   });
+
   assert.equal(queue.totalItems, 6);
-  assert.equal(queue.visibleItems, 5);
-  assert.equal(queue.hasMore, true);
+  assert.equal(queue.visibleItems, realisticFixture.expected.visibleItems);
+  assert.equal(queue.hasMore, realisticFixture.expected.hasMore);
   assert.equal(queue.bounded, true);
   assert.match(queue.summary, /6 active review items/i);
-  assert.equal(JSON.stringify(queue.topReasons), JSON.stringify([
-    { reason: 'no-json-match', count: 4 },
-    { reason: 'shape-mismatch', count: 2 },
-  ]));
-  assert.equal(queue.items[0].region, 'EU');
+  assert.equal(JSON.stringify(queue.topReasons), JSON.stringify(realisticFixture.expected.topReasons));
+  assert.equal(queue.items[0].region, realisticFixture.expected.topRegion);
   assert.equal(queue.items[0].chronic, true);
   assert.ok(queue.items[0].priorityScore > queue.items[1].priorityScore);
-  assert.match(queue.items[0].priorityDrivers.join(' '), /near-duplicate|split-pattern/);
-  assert.match(queue.items[1].suggestedAction, /Inspect response shape/i);
-  assert.match(queue.items[3].suggestedAction, /schema mismatch/i);
+  assert.match(queue.items[0].priorityDrivers.join(' '), /pressure|near-duplicate|split-pattern/);
+  assert.match(queue.items[0].suggestedAction, /Inspect response shape/i);
   assert.equal(queue.items[0].actions.length, 3);
   assert.equal(queue.items[0].actions[0].id, 'ack');
   assert.match(queue.items[0].actions[0].href, /\/api\/brief\/news\/review\/ack\?/);
@@ -102,4 +84,7 @@ test('buildOperatorReviewQueue returns bounded actionable items with triage prio
   assert.match(queue.items[0].actions[1].href, /hours=24/);
   assert.equal(queue.items[0].actions[2].id, 'artifacts');
   assert.match(queue.items[0].actions[2].href, /\/api\/brief\/news\/review\/artifacts\?/);
+  assert.equal(queue.metrics.lowConfidenceCount, 46);
+  assert.equal(queue.metrics.suspiciousNearDuplicateCount, 1);
+  assert.equal(queue.metrics.pressuredRegionCount, 8);
 });

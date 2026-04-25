@@ -517,15 +517,15 @@
           {
             "id": "effort-22.1",
             "title": "Capture sampled high-pressure queue fixtures or snapshots from real runs so prioritization tuning can be validated against realistic operator cases",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 68,
-    "activeCycleId": "2026-04-24-cycle-068",
-    "lastCompletedCycleId": "2026-04-24-cycle-068"
+    "sequence": 69,
+    "activeCycleId": "2026-04-24-cycle-069",
+    "lastCompletedCycleId": "2026-04-24-cycle-069"
   }
 }

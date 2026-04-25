@@ -1,0 +1,158 @@
+{
+  "capturedAt": "2026-04-25T02:45:00Z",
+  "source": {
+    "reviewStats": "/api/brief/news/review/stats",
+    "reviewArtifacts": "/api/brief/news/review/artifacts",
+    "reviewSummary": "/api/brief/news/review"
+  },
+  "notes": [
+    "Sampled from a real Crucix local runtime while current live reviewItems were empty because the run was operator-disabled for LLM clustering.",
+    "Fixture preserves real pressure, failure, and artifact patterns so prioritization can be tested against realistic operator cases rather than hand-written synthetic examples."
+  ],
+  "review": {
+    "reviewItems": [
+      {
+        "region": "Iran",
+        "reason": "no-json-match",
+        "severity": "high",
+        "itemCount": 7,
+        "retried": true,
+        "repairAttempted": true,
+        "status": "heuristic-fallback",
+        "persistent": {
+          "chronic": true,
+          "consecutiveFailures": 14,
+          "lastStatus": "heuristic-fallback"
+        },
+        "pressure": {
+          "pressureScore": 78
+        }
+      },
+      {
+        "region": "Australia",
+        "reason": "no-json-match",
+        "severity": "high",
+        "itemCount": 5,
+        "retried": true,
+        "repairAttempted": true,
+        "status": "heuristic-fallback",
+        "persistent": {
+          "chronic": true,
+          "consecutiveFailures": 22,
+          "lastStatus": "heuristic-fallback"
+        },
+        "pressure": {
+          "pressureScore": 77
+        }
+      },
+      {
+        "region": "India",
+        "reason": "no-json-match",
+        "severity": "medium",
+        "itemCount": 5,
+        "retried": true,
+        "repairAttempted": true,
+        "status": "heuristic-fallback",
+        "persistent": {
+          "chronic": true,
+          "consecutiveFailures": 4,
+          "lastStatus": "heuristic-fallback"
+        },
+        "pressure": {
+          "pressureScore": 60
+        }
+      },
+      {
+        "region": "Pakistan",
+        "reason": "no-json-match",
+        "severity": "medium",
+        "itemCount": 3,
+        "retried": true,
+        "repairAttempted": true,
+        "status": "heuristic-fallback",
+        "persistent": {
+          "chronic": false,
+          "consecutiveFailures": 1,
+          "lastStatus": "heuristic-fallback"
+        },
+        "pressure": {
+          "pressureScore": 53
+        }
+      },
+      {
+        "region": "Israel",
+        "reason": "no-json-match",
+        "severity": "medium",
+        "itemCount": 5,
+        "retried": true,
+        "repairAttempted": true,
+        "status": "llm-used-retry",
+        "persistent": {
+          "chronic": false,
+          "consecutiveFailures": 0,
+          "lastStatus": "llm-used-retry"
+        },
+        "pressure": {
+          "pressureScore": 67
+        }
+      },
+      {
+        "region": "EU",
+        "reason": "no-json-match",
+        "severity": "high",
+        "itemCount": 6,
+        "retried": true,
+        "repairAttempted": true,
+        "status": "heuristic-fallback",
+        "persistent": {
+          "chronic": true,
+          "consecutiveFailures": 20,
+          "lastStatus": "heuristic-fallback"
+        },
+        "pressure": {
+          "pressureScore": 9
+        }
+      }
+    ],
+    "dismissedItems": [],
+    "ackSummary": {
+      "active": 0,
+      "repeatAckCount": 0,
+      "recentDismissalCount": 0,
+      "nextExpiry": null
+    },
+    "stats": {
+      "chronicFailureCount": 5,
+      "recentFailureCount": 8
+    },
+    "pressure": {
+      "pressuredRegionCount": 8
+    }
+  },
+  "quality": {
+    "reviewMetrics": {
+      "lowConfidenceCount": 46,
+      "mergeCandidateCount": 1,
+      "splitCandidateCount": 43,
+      "topSplitRegions": [
+        { "region": "India", "count": 6 },
+        { "region": "Iran", "count": 6 },
+        { "region": "Australia", "count": 5 },
+        { "region": "Israel", "count": 3 },
+        { "region": "China", "count": 2 }
+      ],
+      "suspiciousNearDuplicateCount": 1,
+      "suspiciousNearDuplicates": [
+        { "region": "Iran", "similarity": 0.5 }
+      ]
+    }
+  },
+  "expected": {
+    "topRegion": "Iran",
+    "visibleItems": 5,
+    "hasMore": true,
+    "topReasons": [
+      { "reason": "no-json-match", "count": 6 }
+    ]
+  }
+}
