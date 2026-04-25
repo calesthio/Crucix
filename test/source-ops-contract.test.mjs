@@ -19,6 +19,7 @@ const examplePruningTask = JSON.parse(readFileSync(new URL('../source-ops/tasks/
 const exampleGradingScorecard = JSON.parse(readFileSync(new URL('../source-ops/results/grading/example-grading-scorecard.json', import.meta.url), 'utf8'));
 const exampleOverlapAssessment = JSON.parse(readFileSync(new URL('../source-ops/results/overlap/example-overlap-maritime-001.json', import.meta.url), 'utf8'));
 const examplePruningAssessment = JSON.parse(readFileSync(new URL('../source-ops/results/pruning/example-pruning-social-001.json', import.meta.url), 'utf8'));
+const exampleLifecycleEvaluation = JSON.parse(readFileSync(new URL('../source-ops/results/onboarding-prep/example-lifecycle-evaluation-maritime-001.json', import.meta.url), 'utf8'));
 const pendingQueue = JSON.parse(readFileSync(new URL('../source-ops/queue/pending.json', import.meta.url), 'utf8'));
 const reviewedQueue = JSON.parse(readFileSync(new URL('../source-ops/queue/reviewed.json', import.meta.url), 'utf8'));
 
@@ -176,4 +177,8 @@ test('registry lifecycle policy and profile lifecycle policy agree on human appr
   assert.equal(transitionPolicy.states.shadow.agentMayAdvance, false);
   assert.deepEqual(transitionPolicy.states.graded.allowedNextStates, ['shadow', 'rejected', 'deprecated']);
   assert.deepEqual(transitionPolicy.promotionReadinessGuards.active, ['human-review-required']);
+  assert.equal(exampleLifecycleEvaluation.version, 'source-lifecycle-evaluation-v1');
+  assert.equal(exampleLifecycleEvaluation.currentState, 'shadow');
+  assert.equal(exampleLifecycleEvaluation.nextAllowedState, 'approved');
+  assert.equal(exampleLifecycleEvaluation.blocked, true);
 });

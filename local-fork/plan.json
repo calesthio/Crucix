@@ -588,6 +588,11 @@
           {
             "id": "effort-25.4",
             "title": "Add a lifecycle policy evaluator that consumes candidate records plus scorecard and overlap artifacts and emits the exact next allowed transition or blocking reason",
+            "status": "completed"
+          },
+          {
+            "id": "effort-25.5",
+            "title": "Add a shared source-ops action taxonomy so result envelopes, pruning assessments, and policy evaluators use one canonical set of recommendation labels",
             "status": "pending"
           }
         ]
@@ -617,8 +622,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 78,
-    "activeCycleId": "2026-04-25-cycle-078",
-    "lastCompletedCycleId": "2026-04-25-cycle-078"
+    "sequence": 79,
+    "activeCycleId": "2026-04-25-cycle-079",
+    "lastCompletedCycleId": "2026-04-25-cycle-079"
   }
 }

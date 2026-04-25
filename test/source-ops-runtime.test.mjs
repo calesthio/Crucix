@@ -56,6 +56,10 @@ test('source ops surface summarizes contract, inventory, and needs from workspac
   assert.equal(surface.examplePruning.comparedSourceCount, 3);
   assert.equal(surface.examplePruning.productionGuardrails.productionMutationProposed, false);
   assert.equal(surface.examplePruning.productionGuardrails.autoRemovalAllowed, false);
+  assert.equal(surface.lifecycleEvaluation.currentState, 'shadow');
+  assert.equal(surface.lifecycleEvaluation.nextAllowedState, 'approved');
+  assert.equal(surface.lifecycleEvaluation.blocked, true);
+  assert.ok(surface.lifecycleEvaluation.blockedReasons.includes('next state crosses human approval boundary'));
   assert.equal(surface.shadow.items[0].promotionReadiness, 'shadow-ready');
   assert.equal(surface.lifecycleTransitions.stateCount, 9);
 });
