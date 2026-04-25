@@ -1101,6 +1101,35 @@ function summarizeClusterReviewMetrics(clusters = []) {
   };
 }
 
+function buildReasoningSourceContext(snapshot = {}) {
+  const sourceOps = snapshot?.sourceOps || (typeof buildSourceOpsSurface === 'function' && typeof ROOT === 'string'
+    ? buildSourceOpsSurface({ rootDir: ROOT, snapshot })
+    : null);
+  const fusionRoles = sourceOps?.fusionRoles;
+  const inventory = sourceOps?.inventory;
+  if (!fusionRoles || !inventory) return null;
+  return {
+    totalSources: fusionRoles.total,
+    trustMix: inventory.byTrustClass || null,
+    anchorCount: fusionRoles.byRole?.anchor || 0,
+    corroboratorCount: fusionRoles.byRole?.corroborator || 0,
+    anomalyDetectorCount: fusionRoles.byRole?.['anomaly-detector'] || 0,
+    contextCount: fusionRoles.byRole?.context || 0,
+    exploratoryCount: fusionRoles.byRole?.exploratory || 0,
+    anchorTrustMix: fusionRoles.byRoleAndTrust?.anchor || null,
+    exploratoryTrustMix: fusionRoles.byRoleAndTrust?.exploratory || null,
+    guidance: {
+      groundingPriority: ['anchor', 'corroborator', 'anomaly-detector', 'context', 'exploratory'],
+      cautionRoles: ['exploratory'],
+      notes: [
+        'Anchor evidence should carry more grounding weight than exploratory or context-only feeds.',
+        'Exploratory sources are discovery inputs, not direct confirmation.',
+        'Anomaly-detector sources are escalation cues that should be confirmed with anchor or corroborator evidence when possible.',
+      ],
+    },
+  };
+}
+
 function buildNewsClusterSummary(snapshot = {}) {
   const clusters = Array.isArray(snapshot.newsClusters) ? snapshot.newsClusters : [];
   const top = clusters[0] || null;
@@ -1146,6 +1175,7 @@ function buildNewsClusterSummary(snapshot = {}) {
       placementBasis: cluster.placementBasis || null,
       placementClass: cluster.placementClass || null,
     })),
+    sourceReasoning: buildReasoningSourceContext(snapshot),
     llm: snapshot.newsLlmDebug ? attachClusterPressureStats({
       requestedMode: snapshot.newsLlmDebug.requestedMode || 'auto',
       provider: snapshot.newsLlmDebug.provider || null,
@@ -1270,9 +1300,40 @@ function normalizeAgentAnalysis(input = {}) {
       resolutionNote: clampText(item?.resolutionNote || '', 220) || null,
       invalidationOrClearSignal: clampText(item?.invalidationOrClearSignal || '', 220) || null,
     })).filter(item => item.title && item.condition && item.expectedImpact),
+    sourceReasoning: input?.sourceReasoning && typeof input.sourceReasoning === 'object' ? {
+      totalSources: Number(input.sourceReasoning.totalSources) || 0,
+      trustMix: input.sourceReasoning.trustMix && typeof input.sourceReasoning.trustMix === 'object' ? {
+        high: Number(input.sourceReasoning.trustMix.high) || 0,
+        medium: Number(input.sourceReasoning.trustMix.medium) || 0,
+        low: Number(input.sourceReasoning.trustMix.low) || 0,
+        unknown: Number(input.sourceReasoning.trustMix.unknown) || 0,
+      } : null,
+      anchorCount: Number(input.sourceReasoning.anchorCount) || 0,
+      corroboratorCount: Number(input.sourceReasoning.corroboratorCount) || 0,
+      anomalyDetectorCount: Number(input.sourceReasoning.anomalyDetectorCount) || 0,
+      contextCount: Number(input.sourceReasoning.contextCount) || 0,
+      exploratoryCount: Number(input.sourceReasoning.exploratoryCount) || 0,
+      anchorTrustMix: input.sourceReasoning.anchorTrustMix && typeof input.sourceReasoning.anchorTrustMix === 'object' ? {
+        high: Number(input.sourceReasoning.anchorTrustMix.high) || 0,
+        medium: Number(input.sourceReasoning.anchorTrustMix.medium) || 0,
+        low: Number(input.sourceReasoning.anchorTrustMix.low) || 0,
+        unknown: Number(input.sourceReasoning.anchorTrustMix.unknown) || 0,
+      } : null,
+      exploratoryTrustMix: input.sourceReasoning.exploratoryTrustMix && typeof input.sourceReasoning.exploratoryTrustMix === 'object' ? {
+        high: Number(input.sourceReasoning.exploratoryTrustMix.high) || 0,
+        medium: Number(input.sourceReasoning.exploratoryTrustMix.medium) || 0,
+        low: Number(input.sourceReasoning.exploratoryTrustMix.low) || 0,
+        unknown: Number(input.sourceReasoning.exploratoryTrustMix.unknown) || 0,
+      } : null,
+      guidance: input.sourceReasoning.guidance && typeof input.sourceReasoning.guidance === 'object' ? {
+        groundingPriority: Array.isArray(input.sourceReasoning.guidance.groundingPriority) ? input.sourceReasoning.guidance.groundingPriority.slice(0, 5) : [],
+        cautionRoles: Array.isArray(input.sourceReasoning.guidance.cautionRoles) ? input.sourceReasoning.guidance.cautionRoles.slice(0, 3) : [],
+        notes: Array.isArray(input.sourceReasoning.guidance.notes) ? input.sourceReasoning.guidance.notes.slice(0, 4).map(note => clampText(note, 180)) : [],
+      } : null,
+    } : null,
     evidenceSummary: (Array.isArray(input?.evidenceSummary) ? input.evidenceSummary : []).slice(0, 6).map(item => ({
       text: clampText(item?.text || '', 220),
-      kind: normalizeEnum(item?.kind, ['current', 'trend', 'health', 'delta'], 'current'),
+      kind: normalizeEnum(item?.kind, ['current', 'trend', 'health', 'delta', 'source-mix'], 'current'),
       evidenceRefs: normalizeEvidenceRefs(item?.evidenceRefs),
     })).filter(item => item.text),
     caveats: (Array.isArray(input?.caveats) ? input.caveats : []).slice(0, 6).map(item => ({
@@ -1379,6 +1440,7 @@ function buildDeterministicAgentAnalysis(snapshot = {}) {
     });
   }
 
+  const sourceReasoning = buildReasoningSourceContext(snapshot);
   const caveats = [];
   if (primary.status !== 'ready') caveats.push({ text: 'Trend history is still thin, so outlook confidence is constrained.', level: 'warning' });
   if (staleCurrent) caveats.push({ text: 'Current snapshot is stale relative to retained trend memory, so current-picture conclusions are degraded.', level: 'critical' });
@@ -1411,10 +1473,12 @@ function buildDeterministicAgentAnalysis(snapshot = {}) {
     outlook,
     risks,
     tippingPoints: activeHighTippingPoints,
+    sourceReasoning,
     evidenceSummary: [
       { text: `Current sweep shows ${snapshot.suspectSignals?.length || 0} suspect and ${snapshot.corroboratedSignals?.length || 0} corroborated signals.`, kind: 'current', evidenceRefs },
       { text: `${primary.hours || 24}h trend window has ${primary.runCount || 0} runs with urgent tempo ${primary.urgentTempo?.current || 0}.`, kind: 'trend', evidenceRefs: [{ type: 'trend', id: `trend-${primary.hours || 24}h`, label: `${primary.hours || 24}h trend window` }] },
       { text: `Source health currently reports ${health.failed || 0} failed and ${health.degraded || 0} degraded sources.`, kind: 'health', evidenceRefs: [{ type: 'source-health', id: 'source-health', label: 'Current source health summary' }] },
+      ...(sourceReasoning ? [{ text: `Reasoning source mix: ${sourceReasoning.anchorCount} anchors, ${sourceReasoning.corroboratorCount} corroborators, ${sourceReasoning.anomalyDetectorCount} anomaly detectors, ${sourceReasoning.exploratoryCount} exploratory sources.`, kind: 'source-mix', evidenceRefs: [{ type: 'source-health', id: 'source-fusion-roles', label: 'Source fusion-role summary' }] }] : []),
     ],
     caveats,
     trendWindowSummary: {
@@ -1496,6 +1560,7 @@ function compactAgentAnalysisContext(snapshot = {}, fallback = null) {
   if (suspects.length) sections.push(`SUSPECTS:\n- ${suspects.join('\n- ')}`);
   if (corroborated.length) sections.push(`CORROBORATED:\n- ${corroborated.join('\n- ')}`);
   if (news?.topCluster) sections.push(`TOP_NEWS: ${news.topCluster.headline} | ${news.topCluster.region} | ${news.topCluster.storyCount} stories | ${news.topCluster.sourceCount} sources | quality=${news.topCluster.confidenceLabel || news.topCluster.quality || 'unknown'}`);
+  if (news?.sourceReasoning) sections.push(`SOURCE_CONTEXT: anchors=${news.sourceReasoning.anchorCount}, corroborators=${news.sourceReasoning.corroboratorCount}, anomalyDetectors=${news.sourceReasoning.anomalyDetectorCount}, context=${news.sourceReasoning.contextCount}, exploratory=${news.sourceReasoning.exploratoryCount}; trust high=${news.sourceReasoning.trustMix?.high || 0}, medium=${news.sourceReasoning.trustMix?.medium || 0}, low=${news.sourceReasoning.trustMix?.low || 0}; caution=${(news.sourceReasoning.guidance?.cautionRoles || []).join(',') || 'none'}`);
   if (primary) sections.push(`TREND_${primary.hours}H: urgent=${primary.urgentTempo?.current || 0}, suspect=${primary.signals?.suspectCurrent || 0}, corroborated=${primary.signals?.corroboratedCurrent || 0}, failedSources=${primary.sourceHealth?.currentFailed || 0}, vix=${primary.marketRegime?.vix?.current ?? 'n/a'}, brent=${primary.commodityDrift?.energy?.brentCurrent ?? 'n/a'}`);
   if (snapshot.delta?.summary) sections.push(`DELTA: direction=${snapshot.delta.summary.direction}, changes=${snapshot.delta.summary.totalChanges}, critical=${snapshot.delta.summary.criticalChanges}`);
   if (snapshot.baseline6h?.summary?.headline) sections.push(`BASELINE6H: ${snapshot.baseline6h.summary.headline}`);
@@ -1575,6 +1640,7 @@ function buildAgentAnalysisSummary(snapshot = {}) {
   return {
     status: analysis.status,
     confidenceLabel: analysis.confidenceLabel,
+    sourceReasoning: analysis.sourceReasoning || null,
     source: snapshot.agentAnalysisMeta?.source || 'deterministic',
     refinementState: snapshot.agentAnalysisMeta?.refinementState || 'not-requested',
     outlook: analysis.outlook.slice(0, 2),

@@ -14,7 +14,7 @@ function between(startNeedle, endNeedle) {
 
 const code = [
   between('function signalId', 'function touchSelection'),
-  between('function buildNewsClusterSummary', 'const ANALYSIS_STALE_CURRENT_MS'),
+  between('function buildReasoningSourceContext', 'const ANALYSIS_STALE_CURRENT_MS'),
   between('function buildIMessengerBrief', 'function buildBriefSections'),
   'module.exports = { buildIMessengerBrief };',
 ].join('\n');
@@ -29,6 +29,8 @@ const context = {
   attachClusterPressureStats: (v) => v,
   attachClusterReviewStats: (v) => v,
   annotateReview: (v) => v,
+  buildSourceOpsSurface: () => null,
+  ROOT: '/tmp',
 };
 vm.createContext(context);
 vm.runInContext(code, context);

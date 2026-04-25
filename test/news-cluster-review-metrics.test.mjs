@@ -15,10 +15,10 @@ function extractChunk(startNeedle, endNeedle) {
 const code = [
   extractChunk('function summarizeClusterReviewMetrics(clusters = []) {', 'function buildNewsClusterSummary(snapshot = {}) {'),
   extractChunk('function buildNewsClusterSummary(snapshot = {}) {', 'function compactAgentAnalysisContext(snapshot = {}, fallback = null) {'),
-  'module.exports = { summarizeClusterReviewMetrics, buildNewsClusterSummary };',
+  'module.exports = { summarizeClusterReviewMetrics, buildNewsClusterSummary, buildReasoningSourceContext };',
 ].join('\n');
 
-const context = { module: { exports: {} }, exports: {}, console };
+const context = { module: { exports: {} }, exports: {}, console, buildSourceOpsSurface: () => null, ROOT: '/tmp' };
 vm.createContext(context);
 vm.runInContext(code, context);
 const { summarizeClusterReviewMetrics, buildNewsClusterSummary } = context.module.exports;
@@ -48,4 +48,27 @@ test('buildNewsClusterSummary exposes review metrics on quality summary', () => 
   assert.equal(summary.quality.reviewMetrics.lowConfidenceCount, 2);
   assert.equal(summary.quality.reviewMetrics.mergeCandidateCount, 1);
   assert.equal(summary.quality.reviewMetrics.splitCandidateCount, 1);
+});
+
+test('buildNewsClusterSummary carries source reasoning context when source ops metadata exists', () => {
+  const summary = buildNewsClusterSummary({
+    newsClusters: [
+      { id: 'a', headline: 'A', region: 'Iran', storyCount: 3, sourceCount: 2, quality: 'medium', confidenceLabel: 'moderate', qualityFlags: ['heuristic-only'] },
+    ],
+    sourceOps: {
+      inventory: { byTrustClass: { high: 18, medium: 9, low: 3, unknown: 0 } },
+      fusionRoles: {
+        total: 30,
+        byRole: { anchor: 18, corroborator: 5, 'anomaly-detector': 3, context: 1, exploratory: 3 },
+        byRoleAndTrust: {
+          anchor: { high: 18, medium: 0, low: 0, unknown: 0 },
+          exploratory: { high: 0, medium: 0, low: 3, unknown: 0 },
+        },
+      },
+    },
+  });
+  assert.equal(summary.sourceReasoning.totalSources, 30);
+  assert.equal(summary.sourceReasoning.anchorCount, 18);
+  assert.equal(summary.sourceReasoning.exploratoryCount, 3);
+  assert.equal(summary.sourceReasoning.guidance.cautionRoles.includes('exploratory'), true);
 });

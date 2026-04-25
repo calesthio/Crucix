@@ -22,10 +22,12 @@ function loadHarness({ llmConfigured = true, now = '2026-04-24T18:00:00.000Z' } 
     memory: { getTrendSummary: () => ({ windows: [] }) },
     lastSweepTime: null,
     sweepInProgress: false,
+    buildSourceOpsSurface: () => null,
+    ROOT: '/tmp',
   };
   vm.createContext(context);
   vm.runInContext(`
-    ${extractChunk('function buildNewsClusterSummary(snapshot = {}) {', 'function compactAgentAnalysisContext(snapshot = {}, fallback = null) {')}
+    ${extractChunk('function buildReasoningSourceContext(snapshot = {}) {', 'function compactAgentAnalysisContext(snapshot = {}, fallback = null) {')}
     globalThis.__agentHarness = {
       buildDeterministicAgentAnalysis,
       reconcileTippingPointLifecycle,
@@ -90,6 +92,35 @@ test('stale current snapshot degrades analysis even with rich trend memory', () 
     assert.equal(analysis.status, 'degraded');
     assert.equal(analysis.confidenceLabel, 'low');
     assert.ok(analysis.caveats.some(item => /stale relative to retained trend memory/i.test(item.text)));
+  } finally {
+    harness.restore();
+  }
+});
+
+test('deterministic analysis carries source reasoning context when source ops metadata is present', () => {
+  const harness = loadHarness({ llmConfigured: true });
+  try {
+    const analysis = harness.buildDeterministicAgentAnalysis({
+      meta: { timestamp: '2026-04-24T17:55:00.000Z' },
+      trendSummary: { generatedAt: '2026-04-24T17:55:00.000Z', windows: [makeTrendWindow()] },
+      healthSummary: { failed: 0, degraded: 0 },
+      suspectSignals: [],
+      corroboratedSignals: [],
+      sourceOps: {
+        inventory: { byTrustClass: { high: 18, medium: 9, low: 3, unknown: 0 } },
+        fusionRoles: {
+          total: 30,
+          byRole: { anchor: 18, corroborator: 5, 'anomaly-detector': 3, context: 1, exploratory: 3 },
+          byRoleAndTrust: {
+            anchor: { high: 18, medium: 0, low: 0, unknown: 0 },
+            exploratory: { high: 0, medium: 0, low: 3, unknown: 0 },
+          },
+        },
+      },
+    });
+    assert.equal(analysis.sourceReasoning.anchorCount, 18);
+    assert.equal(analysis.sourceReasoning.exploratoryCount, 3);
+    assert.ok(analysis.evidenceSummary.some(item => item.kind === 'source-mix'));
   } finally {
     harness.restore();
   }

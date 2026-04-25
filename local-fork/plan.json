@@ -615,7 +615,7 @@
           {
             "id": "effort-26.2",
             "title": "Feed source-role and source-quality metadata into LLM clustering and analysis paths so weak evidence is not treated like anchor evidence and better source mixes improve downstream reasoning",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-26.3",
@@ -627,8 +627,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 82,
-    "activeCycleId": "2026-04-25-cycle-082",
-    "lastCompletedCycleId": "2026-04-25-cycle-082"
+    "sequence": 83,
+    "activeCycleId": "2026-04-25-cycle-083",
+    "lastCompletedCycleId": "2026-04-25-cycle-083"
   }
 }
