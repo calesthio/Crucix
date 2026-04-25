@@ -1,6 +1,6 @@
 {
   "version": "source-ops-profile-v1",
-  "generatedAt": "2026-04-25T04:38:00Z",
+  "generatedAt": "2026-04-25T17:35:00Z",
   "registryPath": "source-ops/source-registry.seed.json",
   "taskSchemaPath": "source-ops/schemas/task-packet.schema.json",
   "resultSchemaPath": "source-ops/schemas/result-envelope.schema.json",
@@ -8,10 +8,18 @@
   "gradingRubricPath": "source-ops/grading-rubric.json",
   "overlapSchemaPath": "source-ops/schemas/overlap-assessment.schema.json",
   "overlapRubricPath": "source-ops/overlap-rubric.json",
+  "lifecycleTransitionPolicyPath": "source-ops/lifecycle-transition-policy.json",
   "approvalPolicy": {
     "contractMode": "file-first",
     "preProductionAutoAdvanceMax": "shadow",
     "activePromotionRequiresHumanApproval": true
+  },
+  "transitionPolicy": {
+    "defaultEntryState": "candidate",
+    "autoAdvanceEnabled": true,
+    "agentMayAutoAdvanceTo": ["researched", "graded", "shadow"],
+    "humanApprovalRequiredFor": ["approved", "active", "degraded"],
+    "policySource": "source-ops/lifecycle-transition-policy.json"
   },
   "shadowPolicy": {
     "productionInfluenceBlocked": true,

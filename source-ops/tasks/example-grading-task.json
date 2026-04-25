@@ -19,6 +19,8 @@
   "policy": {
     "contractMode": "file-first",
     "productionMutationsAllowed": false,
-    "activePromotionRequiresHumanApproval": true
+    "activePromotionRequiresHumanApproval": true,
+    "preProductionAutoAdvanceMax": "shadow",
+    "lifecycleTransitionPolicyPath": "source-ops/lifecycle-transition-policy.json"
   }
 }

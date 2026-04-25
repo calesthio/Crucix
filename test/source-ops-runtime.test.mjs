@@ -10,6 +10,8 @@ test('source ops surface summarizes contract, inventory, and needs from workspac
   assert.equal(surface.contract.contractMode, 'file-first');
   assert.equal(surface.contract.preProductionAutoAdvanceMax, 'shadow');
   assert.equal(surface.contract.activePromotionRequiresHumanApproval, true);
+  assert.equal(surface.contract.lifecycleTransitionPolicyPath, 'source-ops/lifecycle-transition-policy.json');
+  assert.deepEqual(surface.contract.transitionPolicy.agentMayAutoAdvanceTo, ['researched', 'graded', 'shadow']);
   assert.ok(surface.contract.allowedRoles.includes('discovery'));
   assert.equal(surface.inventory.version, 'source-registry-v1');
   assert.equal(surface.inventory.total, 30);
@@ -32,7 +34,13 @@ test('source ops surface summarizes contract, inventory, and needs from workspac
   assert.equal(surface.shadow.readyForHumanReview, 1);
   assert.equal(surface.shadow.blockedFromProduction, 1);
   assert.equal(surface.shadow.items[0].productionInfluenceBlocked, true);
+  assert.deepEqual(surface.shadow.items[0].eligibleNextStates, ['approved', 'rejected', 'deprecated']);
   assert.equal(surface.contract.shadowPolicy.productionInfluenceBlocked, true);
+  assert.equal(surface.lifecycleTransitions.version, 'source-lifecycle-transition-policy-v1');
+  assert.equal(surface.lifecycleTransitions.preProductionAutoAdvanceMax, 'shadow');
+  assert.equal(surface.lifecycleTransitions.activePromotionRequiresHumanApproval, true);
+  assert.deepEqual(surface.lifecycleTransitions.autoAdvanceStates, ['candidate', 'researched', 'graded', 'deprecated', 'rejected']);
+  assert.ok(surface.lifecycleTransitions.humanApprovalBoundaryStates.includes('shadow'));
   assert.equal(surface.exampleScorecard.version, 'source-scorecard-v1');
   assert.equal(surface.exampleScorecard.recommendation, 'shadow');
   assert.equal(surface.exampleScorecard.promotionReadiness, 'shadow-ready');
@@ -41,6 +49,7 @@ test('source ops surface summarizes contract, inventory, and needs from workspac
   assert.equal(surface.exampleOverlap.overlap.incrementalCoverage, 'high');
   assert.equal(surface.exampleOverlap.comparedSourceCount, 4);
   assert.equal(surface.shadow.items[0].promotionReadiness, 'shadow-ready');
+  assert.equal(surface.lifecycleTransitions.stateCount, 9);
 });
 
 test('source ops surface attaches live source-health state when snapshot health entries exist', () => {

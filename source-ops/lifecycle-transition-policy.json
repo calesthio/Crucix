@@ -1,0 +1,65 @@
+{
+  "version": "source-lifecycle-transition-policy-v1",
+  "generatedAt": "2026-04-25T17:35:00Z",
+  "contractMode": "file-first",
+  "defaultEntryState": "candidate",
+  "preProductionAutoAdvanceMax": "shadow",
+  "activePromotionRequiresHumanApproval": true,
+  "states": {
+    "candidate": {
+      "allowedNextStates": ["researched", "rejected", "deprecated"],
+      "agentMayAdvance": true,
+      "requirements": ["candidate-recorded", "basic-validation-complete"]
+    },
+    "researched": {
+      "allowedNextStates": ["graded", "rejected", "deprecated"],
+      "agentMayAdvance": true,
+      "requirements": ["validation-complete", "evidence-captured"]
+    },
+    "graded": {
+      "allowedNextStates": ["shadow", "rejected", "deprecated"],
+      "agentMayAdvance": true,
+      "requirements": ["grading-scorecard-complete", "promotion-readiness-recorded"]
+    },
+    "shadow": {
+      "allowedNextStates": ["approved", "rejected", "deprecated"],
+      "agentMayAdvance": false,
+      "requirements": ["overlap-assessment-complete", "production-influence-blocked", "shadow-observation-recorded"]
+    },
+    "approved": {
+      "allowedNextStates": ["active", "deprecated"],
+      "agentMayAdvance": false,
+      "requirements": ["human-approval-recorded"]
+    },
+    "active": {
+      "allowedNextStates": ["degraded", "deprecated"],
+      "agentMayAdvance": false,
+      "requirements": ["human-approval-recorded", "production-onboarding-complete"]
+    },
+    "degraded": {
+      "allowedNextStates": ["active", "deprecated"],
+      "agentMayAdvance": false,
+      "requirements": ["operator-review-recorded"]
+    },
+    "deprecated": {
+      "allowedNextStates": [],
+      "agentMayAdvance": true,
+      "requirements": ["deprecation-rationale-recorded"]
+    },
+    "rejected": {
+      "allowedNextStates": [],
+      "agentMayAdvance": true,
+      "requirements": ["rejection-rationale-recorded"]
+    }
+  },
+  "promotionReadinessGuards": {
+    "shadow": ["shadow-ready"],
+    "approved": ["shadow-ready", "human-review-required"],
+    "active": ["human-review-required"]
+  },
+  "operatorExpectations": {
+    "shadow": "Shadow candidates remain excluded from production influence and are visible through source-ops-only surfaces until a human approves further promotion.",
+    "approved": "Approved candidates may be staged for production onboarding but must not become active without explicit human approval recorded in the workflow.",
+    "active": "Active promotion is a human-controlled boundary. Agents may prepare files and recommendations but may not activate production sources directly."
+  }
+}

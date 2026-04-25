@@ -31,11 +31,13 @@
     "policy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["contractMode", "productionMutationsAllowed", "activePromotionRequiresHumanApproval"],
+      "required": ["contractMode", "productionMutationsAllowed", "activePromotionRequiresHumanApproval", "preProductionAutoAdvanceMax", "lifecycleTransitionPolicyPath"],
       "properties": {
         "contractMode": { "type": "string", "const": "file-first" },
         "productionMutationsAllowed": { "type": "boolean", "const": false },
-        "activePromotionRequiresHumanApproval": { "type": "boolean", "const": true }
+        "activePromotionRequiresHumanApproval": { "type": "boolean", "const": true },
+        "preProductionAutoAdvanceMax": { "type": "string", "const": "shadow" },
+        "lifecycleTransitionPolicyPath": { "type": "string", "minLength": 1 }
       }
     },
     "grading": {

@@ -1,6 +1,6 @@
 {
   "version": "source-registry-v1",
-  "generatedAt": "2026-04-25T16:15:00Z",
+  "generatedAt": "2026-04-25T17:35:00Z",
   "sources": [
     {
       "id": "acled",
@@ -548,6 +548,7 @@
         "overlapRef": "source-ops/results/overlap/example-overlap-maritime-001.json",
         "lastObservedAt": null,
         "promotionReadiness": "shadow-ready",
+        "eligibleNextStates": ["approved", "rejected", "deprecated"],
         "notes": "Shadow candidate is visible only through source-ops runtime surfaces and remains excluded from production source policy."
       }
     }

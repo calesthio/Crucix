@@ -45,6 +45,9 @@ test('source ops profile aligns with the chosen file-first and human-gated promo
   assert.equal(profile.approvalPolicy.contractMode, 'file-first');
   assert.equal(profile.approvalPolicy.preProductionAutoAdvanceMax, 'shadow');
   assert.equal(profile.approvalPolicy.activePromotionRequiresHumanApproval, true);
+  assert.equal(profile.transitionPolicy.defaultEntryState, 'candidate');
+  assert.equal(profile.transitionPolicy.policySource, 'source-ops/lifecycle-transition-policy.json');
+  assert.deepEqual(profile.transitionPolicy.agentMayAutoAdvanceTo, ['researched', 'graded', 'shadow']);
   assert.equal(profile.shadowPolicy.productionInfluenceBlocked, true);
   assert.equal(profile.shadowPolicy.minimumPromotionReadiness, 'shadow-ready');
   assert.equal(profile.discipline.productionMutationsAllowed, false);
@@ -60,6 +63,8 @@ test('example source ops task packet matches the workspace contract', () => {
   assert.equal(exampleTask.policy.contractMode, 'file-first');
   assert.equal(exampleTask.policy.productionMutationsAllowed, false);
   assert.equal(exampleTask.policy.activePromotionRequiresHumanApproval, true);
+  assert.equal(exampleTask.policy.preProductionAutoAdvanceMax, 'shadow');
+  assert.equal(exampleTask.policy.lifecycleTransitionPolicyPath, profile.lifecycleTransitionPolicyPath);
   assert.equal(exampleTask.io.registryPath, profile.registryPath);
 });
 
@@ -109,6 +114,7 @@ test('shadow registry entries stay pre-production and retain explicit score refe
     assert.ok(source.shadow.scorecardRef);
     assert.ok(source.shadow.overlapRef);
     assert.equal(source.shadow.promotionReadiness, 'shadow-ready');
+    assert.deepEqual(source.shadow.eligibleNextStates, ['approved', 'rejected', 'deprecated']);
   }
 });
 
@@ -130,15 +136,24 @@ test('every allowed role has a bounded role definition and task template', () =>
     assert.equal(task.policy.contractMode, 'file-first');
     assert.equal(task.policy.productionMutationsAllowed, false);
     assert.equal(task.policy.activePromotionRequiresHumanApproval, true);
+    assert.equal(task.policy.preProductionAutoAdvanceMax, 'shadow');
+    assert.equal(task.policy.lifecycleTransitionPolicyPath, profile.lifecycleTransitionPolicyPath);
   }
 });
 
 test('registry lifecycle policy and profile lifecycle policy agree on human approval boundary', () => {
   const lifecycleStates = new Set(profile.lifecyclePolicy.states);
+  const transitionPolicy = JSON.parse(readFileSync(new URL('../source-ops/lifecycle-transition-policy.json', import.meta.url), 'utf8'));
   for (const source of registry.sources) {
     assert.ok(lifecycleStates.has(source.lifecycle), `unknown lifecycle state ${source.lifecycle}`);
   }
   assert.ok(profile.lifecyclePolicy.agentWritableStates.includes('shadow'));
   assert.ok(profile.lifecyclePolicy.humanApprovalRequiredFor.includes('active'));
   assert.ok(registry.sources.some(source => source.lifecycle === 'shadow'));
+  assert.equal(transitionPolicy.version, 'source-lifecycle-transition-policy-v1');
+  assert.equal(transitionPolicy.preProductionAutoAdvanceMax, 'shadow');
+  assert.equal(transitionPolicy.activePromotionRequiresHumanApproval, true);
+  assert.equal(transitionPolicy.states.shadow.agentMayAdvance, false);
+  assert.deepEqual(transitionPolicy.states.graded.allowedNextStates, ['shadow', 'rejected', 'deprecated']);
+  assert.deepEqual(transitionPolicy.promotionReadinessGuards.active, ['human-review-required']);
 });

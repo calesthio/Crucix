@@ -63,6 +63,10 @@
               "overlapRef": { "type": "string", "minLength": 1 },
               "lastObservedAt": { "type": ["string", "null"], "format": "date-time" },
               "promotionReadiness": { "type": ["string", "null"], "enum": ["not-ready", "research-needed", "shadow-ready", "human-review-required", null] },
+              "eligibleNextStates": {
+                "type": ["array", "null"],
+                "items": { "type": "string", "enum": ["approved", "rejected", "deprecated"] }
+              },
               "notes": { "type": ["string", "null"] }
             }
           }
