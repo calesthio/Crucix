@@ -97,6 +97,7 @@ function operatorSettingsDefaults() {
         displayMode: 'auto',
         defaultRegion: 'world',
         activeLayer: null,
+        panels: {},
       },
       sources: {
         enabledCategories: [],
@@ -125,6 +126,7 @@ function normalizeOperatorSettings(input = {}) {
   const allowedVisualsModes = ['full', 'lite'];
   const allowedLlmModes = ['auto', 'off', 'force'];
   const allowedAnalysisDetails = ['standard', 'compact', 'expanded'];
+  const allowedPanelSizes = ['compact', 'normal', 'wide'];
   return {
     version: defaults.version,
     updatedAt: input?.updatedAt || null,
@@ -135,6 +137,12 @@ function normalizeOperatorSettings(input = {}) {
         displayMode: allowedDisplayModes.includes(layout.displayMode) ? layout.displayMode : defaults.preferences.layout.displayMode,
         defaultRegion: allowedRegions.includes(layout.defaultRegion) ? layout.defaultRegion : defaults.preferences.layout.defaultRegion,
         activeLayer: allowedLayers.includes(layout.activeLayer) ? layout.activeLayer : null,
+        panels: Object.fromEntries(Object.entries(layout.panels && typeof layout.panels === 'object' ? layout.panels : {}).map(([key, value]) => [key, {
+          collapsed: Boolean(value?.collapsed),
+          pinned: Boolean(value?.pinned),
+          priority: Math.max(0, Math.min(99, Number.isFinite(Number(value?.priority)) ? Number(value.priority) : 50)),
+          size: allowedPanelSizes.includes(value?.size) ? value.size : 'normal',
+        }])),
       },
       sources: {
         enabledCategories: Array.isArray(sources.enabledCategories) ? Array.from(new Set(sources.enabledCategories.map(value => String(value).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)) : [],
@@ -2568,6 +2576,7 @@ function buildOperatorSettingsContract(snapshot = null) {
         availableDisplayModes: ['auto', 'narrow', 'desktop', 'wallboard'],
         defaultRegion: operatorSettings.preferences.layout.defaultRegion,
         activeLayer: operatorSettings.preferences.layout.activeLayer,
+        panelPreferences: operatorSettings.preferences.layout.panels || {},
         persistence: 'server-file',
       },
       mutability: {

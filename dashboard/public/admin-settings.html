@@ -55,6 +55,7 @@ async function savePreferences(){
         displayMode: document.getElementById('displayMode')?.value || 'auto',
         defaultRegion: document.getElementById('defaultRegion')?.value || 'world',
         activeLayer: document.getElementById('activeLayer')?.value || null,
+        panels: window.__CRUCIX_PANEL_PREFS__ || {},
       },
       sources: {
         enabledCategories: Array.from(document.querySelectorAll('input[name="enabledCategories"]:checked')).map(el => el.value),

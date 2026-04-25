@@ -674,7 +674,7 @@
           {
             "id": "effort-28.2",
             "title": "Add panel resizing, collapsing, pinning, and priority ordering so high-value windows stay usable without manual DOM surgery when the dashboard grows",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-28.3",
