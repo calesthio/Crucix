@@ -18,6 +18,7 @@ import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
 import { buildSixHourBaseline } from './lib/baseline-sixhour.mjs';
 import { getFreshnessPolicy } from './lib/freshness-policy.mjs';
+import { buildSourceOpsSurface } from './lib/source-ops-runtime.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -2116,6 +2117,10 @@ async function ensureCurrentData() {
   return syncSnapshotRuntimeFreshness(currentData);
 }
 
+function buildOperatorSourceOps(snapshot = null) {
+  return buildSourceOpsSurface({ rootDir: ROOT, snapshot });
+}
+
 // API: current data
 app.get('/api/data', async (req, res) => {
   const snapshot = await ensureCurrentData();
@@ -2124,11 +2129,14 @@ app.get('/api/data', async (req, res) => {
     ? attachClusterReviewStats(annotateReview(snapshot.newsLlmDebug.review))
     : { reviewItems: [], dismissedItems: [], activeCount: 0, dismissedCount: 0, ackSummary: reviewAckStats(), stats: summarizeClusterReviewStats() };
   const llmState = buildOperatorLlmStateContract(snapshot);
+  const sourceOps = buildOperatorSourceOps(snapshot);
   res.json({
     ...snapshot,
     llmState,
     runtimeLlm: llmState.runtimeLlm,
     reviewQueue: buildOperatorReviewQueue(review, { quality: snapshot.newsClusterQuality || null }),
+    sourceInventory: sourceOps.inventory,
+    sourceOps,
   });
 });
 
@@ -2138,6 +2146,7 @@ app.get('/api/brief/compact', async (req, res) => {
   const corroborated = attachSignalIds('corroborated', snapshot.corroboratedSignals || []);
   const suspects = attachSignalIds('suspect', snapshot.suspectSignals || []);
   const llmState = buildOperatorLlmStateContract(snapshot);
+  const sourceOps = buildOperatorSourceOps(snapshot);
   res.json({
     text: buildIMessengerBrief(snapshot),
     evidenceSummary: snapshot.evidenceSummary || null,
@@ -2145,6 +2154,13 @@ app.get('/api/brief/compact', async (req, res) => {
     agentAnalysis: buildAgentAnalysisSummary(snapshot),
     llmState,
     runtimeLlm: llmState.runtimeLlm,
+    sourceInventory: {
+      total: sourceOps.inventory.total,
+      byLifecycle: sourceOps.inventory.byLifecycle,
+      byCategory: sourceOps.inventory.byCategory,
+      liveStateSummary: sourceOps.inventory.liveStateSummary,
+    },
+    sourceOpsNeeds: sourceOps.needs,
     topCorroborated: corroborated[0] || null,
     topSuspect: suspects[0] || null,
     corroboratedSignals: corroborated.slice(0, 5),
@@ -2416,6 +2432,7 @@ app.get('/api/health', (req, res) => {
         fallback: Boolean(currentData.airMeta.fallback),
       }
     : readOpenSkyRuntimeState();
+  const sourceOps = buildOperatorSourceOps(currentData || null);
   res.json({
     status: 'ok',
     uptime: Math.floor((Date.now() - startTime) / 1000),
@@ -2437,6 +2454,8 @@ app.get('/api/health', (req, res) => {
       activeSourceHealthPolicy: currentData?.healthSummary?.policy || null,
       activeEvidencePolicy: currentData?.evidenceSummary?.policy || null,
     },
+    sourceInventory: sourceOps.inventory,
+    sourceOps,
     llmEnabled: !!config.llm.provider,
     llmProvider: config.llm.provider,
     llmState: buildOperatorLlmStateContract(currentData || {}, { provider: config.llm.provider, model: llmProvider?.model || null }),
