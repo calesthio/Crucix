@@ -474,12 +474,58 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-20",
+        "title": "LLM operator-state contract hardening",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-20.1",
+            "title": "Centralize a normalized operator-facing LLM state enum and explanation block in API payloads so dashboard and briefing surfaces consume one shared contract",
+            "status": "completed"
+          },
+          {
+            "id": "effort-20.2",
+            "title": "Separate per-surface LLM supportability from participation so configured, static-by-design, not-invoked, and unavailable states do not collapse into one operator label",
+            "status": "pending"
+          },
+          {
+            "id": "effort-20.3",
+            "title": "Add a booted-server validation matrix for dashboard and API operator-state combinations under controlled runtime scenarios",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-21",
+        "title": "Operator review queue direct actions",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-21.1",
+            "title": "Add first-class operator queue actions such as ack, snooze, and jump-to-artifact links so the review queue becomes directly actionable",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-22",
+        "title": "Realistic queue fixtures and prioritization validation",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-22.1",
+            "title": "Capture sampled high-pressure queue fixtures or snapshots from real runs so prioritization tuning can be validated against realistic operator cases",
+            "status": "pending"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 64,
-    "activeCycleId": "2026-04-24-cycle-064",
-    "lastCompletedCycleId": "2026-04-24-cycle-064"
+    "sequence": 65,
+    "activeCycleId": "2026-04-24-cycle-065",
+    "lastCompletedCycleId": "2026-04-24-cycle-065"
   }
 }

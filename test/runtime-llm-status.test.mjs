@@ -25,10 +25,10 @@ const context = {
 vm.createContext(context);
 vm.runInContext(`
   ${extractChunk('function buildAgentAnalysisMeta(overrides = {}) {', 'async function runAgentAnalysisValidationSummary() {')}
-  module.exports = { buildAgentAnalysisMeta, buildRuntimeLlmStatus };
+  module.exports = { buildAgentAnalysisMeta, buildRuntimeLlmStatus, buildOperatorLlmStateContract };
 `, context);
 
-const { buildAgentAnalysisMeta, buildRuntimeLlmStatus } = context.module.exports;
+const { buildAgentAnalysisMeta, buildRuntimeLlmStatus, buildOperatorLlmStateContract } = context.module.exports;
 
 test('runtime LLM status reports fallback when configured analysis falls back after a parse failure', () => {
   const status = buildRuntimeLlmStatus({
@@ -74,4 +74,20 @@ test('runtime LLM status reports applied when either analysis or ideas used the 
   assert.equal(status.analysis.participated, true);
   assert.equal(status.ideas.participated, true);
   assert.match(status.summary, /participated in the current published output/i);
+});
+
+test('operator LLM state contract wraps runtime state in a versioned shared payload', () => {
+  const contract = buildOperatorLlmStateContract({
+    agentAnalysisMeta: buildAgentAnalysisMeta({ source: 'llm', refinementState: 'completed', refinementCompletion: 'llm-applied' }),
+    ideasSource: 'disabled',
+  }, { provider: 'ollama', model: 'qwen' });
+
+  assert.equal(contract.version, 'llm-operator-state-v1');
+  assert.equal(contract.status, 'applied');
+  assert.equal(contract.label, 'LLM APPLIED');
+  assert.equal(contract.provider, 'ollama');
+  assert.equal(contract.model, 'qwen');
+  assert.equal(contract.surfaces.analysis.label, 'LLM APPLIED');
+  assert.equal(contract.surfaces.ideas.label, 'LLM UNAVAILABLE');
+  assert.equal(contract.runtimeLlm.status, contract.status);
 });

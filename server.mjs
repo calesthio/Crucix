@@ -1661,6 +1661,24 @@ function buildRuntimeLlmStatus(snapshot = {}, { provider = config.llm?.provider 
   };
 }
 
+function buildOperatorLlmStateContract(snapshot = {}, options = {}) {
+  const runtimeLlm = buildRuntimeLlmStatus(snapshot, options);
+  return {
+    version: 'llm-operator-state-v1',
+    status: runtimeLlm.status,
+    label: runtimeLlm.label,
+    summary: runtimeLlm.summary,
+    configured: runtimeLlm.configured,
+    provider: runtimeLlm.provider,
+    model: runtimeLlm.model,
+    surfaces: {
+      analysis: runtimeLlm.analysis,
+      ideas: runtimeLlm.ideas,
+    },
+    runtimeLlm,
+  };
+}
+
 async function runAgentAnalysisValidationSummary() {
   return await new Promise((resolve, reject) => {
     exec(`/opt/homebrew/opt/node/bin/node "${AGENT_ANALYSIS_VALIDATION_SCRIPT}" --json`, { cwd: ROOT, timeout: 120000 }, (error, stdout, stderr) => {
@@ -2012,9 +2030,11 @@ app.get('/api/data', async (req, res) => {
   const review = snapshot?.newsLlmDebug?.review
     ? attachClusterReviewStats(annotateReview(snapshot.newsLlmDebug.review))
     : { reviewItems: [], dismissedItems: [], activeCount: 0, dismissedCount: 0, ackSummary: reviewAckStats(), stats: summarizeClusterReviewStats() };
+  const llmState = buildOperatorLlmStateContract(snapshot);
   res.json({
     ...snapshot,
-    runtimeLlm: buildRuntimeLlmStatus(snapshot),
+    llmState,
+    runtimeLlm: llmState.runtimeLlm,
     reviewQueue: buildOperatorReviewQueue(review, { quality: snapshot.newsClusterQuality || null }),
   });
 });
@@ -2024,12 +2044,14 @@ app.get('/api/brief/compact', async (req, res) => {
   if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
   const corroborated = attachSignalIds('corroborated', snapshot.corroboratedSignals || []);
   const suspects = attachSignalIds('suspect', snapshot.suspectSignals || []);
+  const llmState = buildOperatorLlmStateContract(snapshot);
   res.json({
     text: buildIMessengerBrief(snapshot),
     evidenceSummary: snapshot.evidenceSummary || null,
     newsSummary: buildNewsClusterSummary(snapshot),
     agentAnalysis: buildAgentAnalysisSummary(snapshot),
-    runtimeLlm: buildRuntimeLlmStatus(snapshot),
+    llmState,
+    runtimeLlm: llmState.runtimeLlm,
     topCorroborated: corroborated[0] || null,
     topSuspect: suspects[0] || null,
     corroboratedSignals: corroborated.slice(0, 5),
@@ -2291,7 +2313,8 @@ app.get('/api/health', (req, res) => {
     },
     llmEnabled: !!config.llm.provider,
     llmProvider: config.llm.provider,
-    runtimeLlm: buildRuntimeLlmStatus(currentData || {}, { provider: config.llm.provider, model: llmProvider?.model || null }),
+    llmState: buildOperatorLlmStateContract(currentData || {}, { provider: config.llm.provider, model: llmProvider?.model || null }),
+    runtimeLlm: buildOperatorLlmStateContract(currentData || {}, { provider: config.llm.provider, model: llmProvider?.model || null }).runtimeLlm,
     telegramEnabled: !!(config.telegram.botToken && config.telegram.chatId),
     refreshIntervalMinutes: config.refreshIntervalMinutes,
     language: currentLanguage,
