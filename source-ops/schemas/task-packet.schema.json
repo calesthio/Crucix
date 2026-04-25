@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "crucix/source-ops/task-packet.schema.json",
+  "title": "Crucix Source Ops Task Packet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "taskId", "role", "objective", "scope", "io", "policy"],
+  "properties": {
+    "version": { "type": "string", "const": "source-ops-task-v1" },
+    "taskId": { "type": "string", "minLength": 1 },
+    "role": { "type": "string", "enum": ["discovery", "validation", "grading", "overlap", "pruning", "onboarding-prep"] },
+    "objective": { "type": "string", "minLength": 1 },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "targetCategory": { "type": ["string", "null"] },
+        "targetRegions": { "type": "array", "items": { "type": "string" } },
+        "mustCompareAgainst": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "io": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registryPath", "outputPath"],
+      "properties": {
+        "registryPath": { "type": "string", "minLength": 1 },
+        "outputPath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractMode", "productionMutationsAllowed", "activePromotionRequiresHumanApproval"],
+      "properties": {
+        "contractMode": { "type": "string", "const": "file-first" },
+        "productionMutationsAllowed": { "type": "boolean", "const": false },
+        "activePromotionRequiresHumanApproval": { "type": "boolean", "const": true }
+      }
+    }
+  }
+}

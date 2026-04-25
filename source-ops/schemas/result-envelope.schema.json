@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "crucix/source-ops/result-envelope.schema.json",
+  "title": "Crucix Source Ops Result Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "taskId", "role", "status", "summary", "recommendations"],
+  "properties": {
+    "version": { "type": "string", "const": "source-ops-result-v1" },
+    "taskId": { "type": "string", "minLength": 1 },
+    "role": { "type": "string", "enum": ["discovery", "validation", "grading", "overlap", "pruning", "onboarding-prep"] },
+    "status": { "type": "string", "enum": ["completed", "blocked", "needs-review"] },
+    "summary": { "type": "string", "minLength": 1 },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["action", "target", "rationale"],
+        "properties": {
+          "action": { "type": "string", "enum": ["research", "grade", "shadow", "reject", "deprecate", "prepare-onboarding"] },
+          "target": { "type": "string", "minLength": 1 },
+          "rationale": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
