@@ -1,0 +1,47 @@
+{
+  "version": "source-overlap-rubric-v1",
+  "generatedAt": "2026-04-25T16:00:00Z",
+  "dimensions": [
+    {
+      "id": "incremental-corroboration",
+      "label": "Incremental corroboration value",
+      "question": "Does the candidate add independent evidence or just repeat the same upstream picture already covered by current sources?",
+      "weight": 0.35
+    },
+    {
+      "id": "duplication-risk",
+      "label": "Duplication risk",
+      "question": "How likely is the candidate to increase review pressure or operator noise by duplicating already-covered events, entities, or feeds?",
+      "weight": 0.25
+    },
+    {
+      "id": "coverage-expansion",
+      "label": "Coverage expansion",
+      "question": "Does the candidate extend Crucix into a runtime gap by region, modality, entities, or cadence?",
+      "weight": 0.2
+    },
+    {
+      "id": "llm-utility",
+      "label": "Likely LLM utility",
+      "question": "Will the candidate improve clustering, analysis, or operator explanation quality with structured, attributable fields?",
+      "weight": 0.2
+    }
+  ],
+  "interpretation": {
+    "weightedTotal": {
+      "highIncrementalValueMin": 4,
+      "shadowWorthinessMin": 3.2,
+      "rejectForRedundancyMax": 2.4
+    },
+    "duplicationRisk": {
+      "high": ["high", "very-high"],
+      "acceptableMax": "medium"
+    }
+  },
+  "operatorExpectations": [
+    "Name the compared production sources explicitly.",
+    "Explain whether the candidate adds new collection paths, not just new branding.",
+    "Call out likely review-pressure or duplicate-cluster impact.",
+    "Tie recommendations back to runtime needs when relevant."
+  ]
+}

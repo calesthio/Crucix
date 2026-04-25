@@ -12,6 +12,10 @@
     "registryPath": "source-ops/source-registry.seed.json",
     "outputPath": "source-ops/results/overlap/example-overlap-maritime-001.json"
   },
+  "overlap": {
+    "schemaPath": "source-ops/schemas/overlap-assessment.schema.json",
+    "rubricPath": "source-ops/overlap-rubric.json"
+  },
   "policy": {
     "contractMode": "file-first",
     "productionMutationsAllowed": false,

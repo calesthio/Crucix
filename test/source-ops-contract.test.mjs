@@ -7,10 +7,14 @@ const registry = JSON.parse(readFileSync(new URL('../source-ops/source-registry.
 const taskSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/task-packet.schema.json', import.meta.url), 'utf8'));
 const resultSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/result-envelope.schema.json', import.meta.url), 'utf8'));
 const scorecardSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/scorecard.schema.json', import.meta.url), 'utf8'));
+const overlapSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/overlap-assessment.schema.json', import.meta.url), 'utf8'));
 const gradingRubric = JSON.parse(readFileSync(new URL('../source-ops/grading-rubric.json', import.meta.url), 'utf8'));
+const overlapRubric = JSON.parse(readFileSync(new URL('../source-ops/overlap-rubric.json', import.meta.url), 'utf8'));
 const exampleTask = JSON.parse(readFileSync(new URL('../source-ops/tasks/example-discovery-task.json', import.meta.url), 'utf8'));
 const exampleGradingTask = JSON.parse(readFileSync(new URL('../source-ops/tasks/example-grading-task.json', import.meta.url), 'utf8'));
+const exampleOverlapTask = JSON.parse(readFileSync(new URL('../source-ops/tasks/example-overlap-task.json', import.meta.url), 'utf8'));
 const exampleGradingScorecard = JSON.parse(readFileSync(new URL('../source-ops/results/grading/example-grading-scorecard.json', import.meta.url), 'utf8'));
+const exampleOverlapAssessment = JSON.parse(readFileSync(new URL('../source-ops/results/overlap/example-overlap-maritime-001.json', import.meta.url), 'utf8'));
 const pendingQueue = JSON.parse(readFileSync(new URL('../source-ops/queue/pending.json', import.meta.url), 'utf8'));
 const reviewedQueue = JSON.parse(readFileSync(new URL('../source-ops/queue/reviewed.json', import.meta.url), 'utf8'));
 
@@ -69,6 +73,21 @@ test('grading contract includes shared rubric and scorecard artifacts', () => {
   assert.equal(exampleGradingScorecard.version, 'source-scorecard-v1');
   assert.equal(exampleGradingScorecard.dimensionScores.length, gradingRubric.dimensions.length);
   assert.equal(exampleGradingScorecard.recommendation, 'shadow');
+});
+
+test('overlap contract includes structured assessment artifacts and explainable rubric', () => {
+  assert.equal(profile.overlapSchemaPath, 'source-ops/schemas/overlap-assessment.schema.json');
+  assert.equal(profile.overlapRubricPath, 'source-ops/overlap-rubric.json');
+  assert.equal(exampleOverlapTask.overlap.schemaPath, profile.overlapSchemaPath);
+  assert.equal(exampleOverlapTask.overlap.rubricPath, profile.overlapRubricPath);
+  assert.equal(overlapSchema.properties.version.const, 'source-overlap-v1');
+  assert.equal(overlapRubric.version, 'source-overlap-rubric-v1');
+  assert.equal(overlapRubric.dimensions.length, 4);
+  assert.equal(Number(overlapRubric.dimensions.reduce((sum, item) => sum + item.weight, 0).toFixed(4)), 1);
+  assert.equal(exampleOverlapAssessment.version, 'source-overlap-v1');
+  assert.equal(exampleOverlapAssessment.dimensionScores.length, overlapRubric.dimensions.length);
+  assert.equal(exampleOverlapAssessment.overlap.incrementalCoverage, 'high');
+  assert.equal(exampleOverlapAssessment.recommendation, 'shadow');
 });
 
 test('result schema and queue scaffolding exist for bounded subagent workflows', () => {
