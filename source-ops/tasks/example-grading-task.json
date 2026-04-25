@@ -2,7 +2,7 @@
   "version": "source-ops-task-v1",
   "taskId": "example-grading-social-001",
   "role": "grading",
-  "objective": "Grade a researched social-source candidate for signal quality, corroboration value, and promotion readiness.",
+  "objective": "Grade a researched social-source candidate for signal quality, corroboration value, and promotion readiness using the shared source scorecard and rubric.",
   "scope": {
     "targetCategory": "social",
     "targetRegions": ["global"],
@@ -11,6 +11,10 @@
   "io": {
     "registryPath": "source-ops/source-registry.seed.json",
     "outputPath": "source-ops/results/grading/example-grading-social-001.json"
+  },
+  "grading": {
+    "scorecardSchemaPath": "source-ops/schemas/scorecard.schema.json",
+    "rubricPath": "source-ops/grading-rubric.json"
   },
   "policy": {
     "contractMode": "file-first",

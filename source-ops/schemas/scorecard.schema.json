@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "crucix/source-ops/scorecard.schema.json",
+  "title": "Crucix Source Ops Scorecard",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "candidateId",
+    "generatedAt",
+    "summary",
+    "dimensionScores",
+    "weightedTotal",
+    "recommendation",
+    "promotionReadiness"
+  ],
+  "properties": {
+    "version": { "type": "string", "const": "source-scorecard-v1" },
+    "candidateId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "minLength": 1 },
+    "summary": { "type": "string", "minLength": 1 },
+    "dimensionScores": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["dimension", "score", "weight", "weightedScore", "reasoning"],
+        "properties": {
+          "dimension": { "type": "string", "minLength": 1 },
+          "score": { "type": "integer", "minimum": 1, "maximum": 5 },
+          "weight": { "type": "number", "exclusiveMinimum": 0 },
+          "weightedScore": { "type": "number", "minimum": 0 },
+          "reasoning": { "type": "string", "minLength": 1 },
+          "evidence": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "weightedTotal": { "type": "number", "minimum": 0, "maximum": 5 },
+    "recommendation": {
+      "type": "string",
+      "enum": ["reject", "research", "grade", "shadow", "prepare-onboarding"]
+    },
+    "promotionReadiness": {
+      "type": "string",
+      "enum": ["not-ready", "research-needed", "shadow-ready", "onboarding-ready"]
+    },
+    "blockingIssues": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    }
+  }
+}

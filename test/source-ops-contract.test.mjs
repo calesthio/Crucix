@@ -6,7 +6,11 @@ const profile = JSON.parse(readFileSync(new URL('../source-ops/profile.json', im
 const registry = JSON.parse(readFileSync(new URL('../source-ops/source-registry.seed.json', import.meta.url), 'utf8'));
 const taskSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/task-packet.schema.json', import.meta.url), 'utf8'));
 const resultSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/result-envelope.schema.json', import.meta.url), 'utf8'));
+const scorecardSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/scorecard.schema.json', import.meta.url), 'utf8'));
+const gradingRubric = JSON.parse(readFileSync(new URL('../source-ops/grading-rubric.json', import.meta.url), 'utf8'));
 const exampleTask = JSON.parse(readFileSync(new URL('../source-ops/tasks/example-discovery-task.json', import.meta.url), 'utf8'));
+const exampleGradingTask = JSON.parse(readFileSync(new URL('../source-ops/tasks/example-grading-task.json', import.meta.url), 'utf8'));
+const exampleGradingScorecard = JSON.parse(readFileSync(new URL('../source-ops/results/grading/example-grading-scorecard.json', import.meta.url), 'utf8'));
 const pendingQueue = JSON.parse(readFileSync(new URL('../source-ops/queue/pending.json', import.meta.url), 'utf8'));
 const reviewedQueue = JSON.parse(readFileSync(new URL('../source-ops/queue/reviewed.json', import.meta.url), 'utf8'));
 
@@ -51,6 +55,20 @@ test('example source ops task packet matches the workspace contract', () => {
   assert.equal(exampleTask.policy.productionMutationsAllowed, false);
   assert.equal(exampleTask.policy.activePromotionRequiresHumanApproval, true);
   assert.equal(exampleTask.io.registryPath, profile.registryPath);
+});
+
+test('grading contract includes shared rubric and scorecard artifacts', () => {
+  assert.equal(profile.scorecardSchemaPath, 'source-ops/schemas/scorecard.schema.json');
+  assert.equal(profile.gradingRubricPath, 'source-ops/grading-rubric.json');
+  assert.equal(exampleGradingTask.grading.scorecardSchemaPath, profile.scorecardSchemaPath);
+  assert.equal(exampleGradingTask.grading.rubricPath, profile.gradingRubricPath);
+  assert.equal(scorecardSchema.properties.version.const, 'source-scorecard-v1');
+  assert.equal(gradingRubric.version, 'source-grading-rubric-v1');
+  assert.equal(gradingRubric.dimensions.length, 6);
+  assert.equal(Number(gradingRubric.dimensions.reduce((sum, item) => sum + item.weight, 0).toFixed(4)), 1);
+  assert.equal(exampleGradingScorecard.version, 'source-scorecard-v1');
+  assert.equal(exampleGradingScorecard.dimensionScores.length, gradingRubric.dimensions.length);
+  assert.equal(exampleGradingScorecard.recommendation, 'shadow');
 });
 
 test('result schema and queue scaffolding exist for bounded subagent workflows', () => {

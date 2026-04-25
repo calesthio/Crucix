@@ -19,6 +19,12 @@ test('source ops surface summarizes contract, inventory, and needs from workspac
   assert.equal(surface.needs.total, 2);
   assert.equal(surface.needs.highPriority, 2);
   assert.ok(surface.needs.byCategory.maritime >= 1);
+  assert.equal(surface.grading.version, 'source-grading-rubric-v1');
+  assert.equal(surface.grading.dimensionCount, 6);
+  assert.equal(surface.grading.totalWeight, 1);
+  assert.equal(surface.exampleScorecard.version, 'source-scorecard-v1');
+  assert.equal(surface.exampleScorecard.recommendation, 'shadow');
+  assert.equal(surface.exampleScorecard.promotionReadiness, 'shadow-ready');
 });
 
 test('source ops surface attaches live source-health state when snapshot health entries exist', () => {

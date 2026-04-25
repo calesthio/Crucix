@@ -37,6 +37,15 @@
         "productionMutationsAllowed": { "type": "boolean", "const": false },
         "activePromotionRequiresHumanApproval": { "type": "boolean", "const": true }
       }
+    },
+    "grading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scorecardSchemaPath", "rubricPath"],
+      "properties": {
+        "scorecardSchemaPath": { "type": "string", "minLength": 1 },
+        "rubricPath": { "type": "string", "minLength": 1 }
+      }
     }
   }
 }
