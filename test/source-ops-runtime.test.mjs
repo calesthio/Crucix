@@ -12,8 +12,11 @@ test('source ops surface summarizes contract, inventory, and needs from workspac
   assert.equal(surface.contract.activePromotionRequiresHumanApproval, true);
   assert.ok(surface.contract.allowedRoles.includes('discovery'));
   assert.equal(surface.inventory.version, 'source-registry-v1');
-  assert.equal(surface.inventory.total, 29);
+  assert.equal(surface.inventory.total, 30);
   assert.equal(surface.inventory.active, 29);
+  assert.equal(surface.inventory.productionActive, 29);
+  assert.equal(surface.inventory.preProduction, 1);
+  assert.equal(surface.inventory.byLifecycle.shadow, 1);
   assert.ok(surface.inventory.byCategory.social >= 1);
   assert.ok(surface.inventory.byOperatorRole.anchor >= 1);
   assert.equal(surface.needs.total, 2);
@@ -25,6 +28,11 @@ test('source ops surface summarizes contract, inventory, and needs from workspac
   assert.equal(surface.overlap.version, 'source-overlap-rubric-v1');
   assert.equal(surface.overlap.dimensionCount, 4);
   assert.equal(surface.overlap.totalWeight, 1);
+  assert.equal(surface.shadow.total, 1);
+  assert.equal(surface.shadow.readyForHumanReview, 1);
+  assert.equal(surface.shadow.blockedFromProduction, 1);
+  assert.equal(surface.shadow.items[0].productionInfluenceBlocked, true);
+  assert.equal(surface.contract.shadowPolicy.productionInfluenceBlocked, true);
   assert.equal(surface.exampleScorecard.version, 'source-scorecard-v1');
   assert.equal(surface.exampleScorecard.recommendation, 'shadow');
   assert.equal(surface.exampleScorecard.promotionReadiness, 'shadow-ready');
@@ -32,6 +40,7 @@ test('source ops surface summarizes contract, inventory, and needs from workspac
   assert.equal(surface.exampleOverlap.recommendation, 'shadow');
   assert.equal(surface.exampleOverlap.overlap.incrementalCoverage, 'high');
   assert.equal(surface.exampleOverlap.comparedSourceCount, 4);
+  assert.equal(surface.shadow.items[0].promotionReadiness, 'shadow-ready');
 });
 
 test('source ops surface attaches live source-health state when snapshot health entries exist', () => {

@@ -45,6 +45,8 @@ test('source ops profile aligns with the chosen file-first and human-gated promo
   assert.equal(profile.approvalPolicy.contractMode, 'file-first');
   assert.equal(profile.approvalPolicy.preProductionAutoAdvanceMax, 'shadow');
   assert.equal(profile.approvalPolicy.activePromotionRequiresHumanApproval, true);
+  assert.equal(profile.shadowPolicy.productionInfluenceBlocked, true);
+  assert.equal(profile.shadowPolicy.minimumPromotionReadiness, 'shadow-ready');
   assert.equal(profile.discipline.productionMutationsAllowed, false);
   assert.ok(profile.allowedRoles.includes('discovery'));
   assert.ok(profile.allowedRoles.includes('grading'));
@@ -98,6 +100,18 @@ test('result schema and queue scaffolding exist for bounded subagent workflows',
   assert.ok(Array.isArray(reviewedQueue.tasks));
 });
 
+test('shadow registry entries stay pre-production and retain explicit score references', () => {
+  const shadowSources = registry.sources.filter(source => source.lifecycle === 'shadow');
+  assert.ok(shadowSources.length >= 1);
+  for (const source of shadowSources) {
+    assert.equal(source.enabledByDefault, false);
+    assert.equal(source.shadow.productionInfluenceBlocked, true);
+    assert.ok(source.shadow.scorecardRef);
+    assert.ok(source.shadow.overlapRef);
+    assert.equal(source.shadow.promotionReadiness, 'shadow-ready');
+  }
+});
+
 test('every allowed role has a bounded role definition and task template', () => {
   for (const role of profile.allowedRoles) {
     const rolePath = new URL(roleFiles[role], import.meta.url);
@@ -126,4 +140,5 @@ test('registry lifecycle policy and profile lifecycle policy agree on human appr
   }
   assert.ok(profile.lifecyclePolicy.agentWritableStates.includes('shadow'));
   assert.ok(profile.lifecyclePolicy.humanApprovalRequiredFor.includes('active'));
+  assert.ok(registry.sources.some(source => source.lifecycle === 'shadow'));
 });

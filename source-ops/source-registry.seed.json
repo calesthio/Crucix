@@ -1,6 +1,6 @@
 {
   "version": "source-registry-v1",
-  "generatedAt": "2026-04-25T04:36:31.466Z",
+  "generatedAt": "2026-04-25T16:15:00Z",
   "sources": [
     {
       "id": "acled",
@@ -522,6 +522,33 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      }
+    },
+    {
+      "id": "candidate-maritime-example-001",
+      "name": "Candidate Maritime Example",
+      "module": "source-ops/candidates/candidate-maritime-example-001",
+      "category": "maritime",
+      "trustClass": "medium",
+      "evidenceMode": "structured-feed",
+      "freshnessTargetMinutes": 60,
+      "lifecycle": "shadow",
+      "operatorRole": "corroborator",
+      "enabledByDefault": false,
+      "review": {
+        "status": "agent-reviewed",
+        "provenance": "source-ops/results/grading/example-grading-scorecard.json + source-ops/results/overlap/example-overlap-maritime-001.json",
+        "lastReviewedAt": "2026-04-25T16:15:00Z",
+        "notes": "Example shadow candidate retained in source-ops only. It must not influence production operator output before human approval."
+      },
+      "shadow": {
+        "productionInfluenceBlocked": true,
+        "observationMode": "source-ops-only",
+        "scorecardRef": "source-ops/results/grading/example-grading-scorecard.json",
+        "overlapRef": "source-ops/results/overlap/example-overlap-maritime-001.json",
+        "lastObservedAt": null,
+        "promotionReadiness": "shadow-ready",
+        "notes": "Shadow candidate is visible only through source-ops runtime surfaces and remains excluded from production source policy."
       }
     }
   ]

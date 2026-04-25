@@ -51,6 +51,20 @@
               "lastReviewedAt": { "type": ["string", "null"], "format": "date-time" },
               "notes": { "type": ["string", "null"] }
             }
+          },
+          "shadow": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["productionInfluenceBlocked", "observationMode", "scorecardRef", "overlapRef"],
+            "properties": {
+              "productionInfluenceBlocked": { "type": "boolean", "const": true },
+              "observationMode": { "type": "string", "enum": ["source-ops-only", "offline-compare", "shadow-compare"] },
+              "scorecardRef": { "type": "string", "minLength": 1 },
+              "overlapRef": { "type": "string", "minLength": 1 },
+              "lastObservedAt": { "type": ["string", "null"], "format": "date-time" },
+              "promotionReadiness": { "type": ["string", "null"], "enum": ["not-ready", "research-needed", "shadow-ready", "human-review-required", null] },
+              "notes": { "type": ["string", "null"] }
+            }
           }
         }
       }

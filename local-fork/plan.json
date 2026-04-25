@@ -573,7 +573,7 @@
           {
             "id": "effort-25.1",
             "title": "Add shadow-state handling so candidate sources can be observed and scored before they influence production operator output",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-25.2",
@@ -612,8 +612,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 75,
-    "activeCycleId": "2026-04-25-cycle-075",
-    "lastCompletedCycleId": "2026-04-25-cycle-075"
+    "sequence": 76,
+    "activeCycleId": "2026-04-25-cycle-076",
+    "lastCompletedCycleId": "2026-04-25-cycle-076"
   }
 }

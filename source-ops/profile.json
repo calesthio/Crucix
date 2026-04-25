@@ -13,6 +13,12 @@
     "preProductionAutoAdvanceMax": "shadow",
     "activePromotionRequiresHumanApproval": true
   },
+  "shadowPolicy": {
+    "productionInfluenceBlocked": true,
+    "operatorSurface": "source-ops-only",
+    "requiresScoringBeforeShadow": true,
+    "minimumPromotionReadiness": "shadow-ready"
+  },
   "allowedRoles": [
     "discovery",
     "validation",
