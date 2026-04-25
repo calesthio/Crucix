@@ -58,9 +58,9 @@ function makeSnapshot() {
     ],
     newsFeed: [],
     ideas: [],
-    ideasSource: 'disabled',
-    agentAnalysis: {},
-    agentAnalysisMeta: {},
+    ideasSource: 'llm-failed',
+    agentAnalysis: { confidenceLabel: 'low', status: 'ready' },
+    agentAnalysisMeta: { source: 'deterministic', refinementCompletion: 'fallback-parse-failed', error: 'parse-failed' },
     evidenceSummary: {},
     corroboratedSignals: [],
     suspectSignals: [],
@@ -101,4 +101,12 @@ test('renderLower preserves healthy macro and market values alongside degraded s
   assert.match(out, /GSCPI[\s\S]*0\.68[\s\S]*above average/);
   assert.match(out, /VIX[\s\S]*18\.7[\s\S]*-3\.11%/);
   assert.match(out, /Gold[\s\S]*\$4,725\.4[\s\S]*\+0\.43% today/);
+});
+
+test('renderLower uses coherent LLM status labels across analysis and ideas panels', () => {
+  const out = runRender();
+  assert.match(out, /Agent Analysis[\s\S]*LLM FALLBACK/);
+  assert.match(out, /LLM attempted, fallback kept \(parse-failed\)/);
+  assert.match(out, /Leverageable Ideas[\s\S]*LLM FALLBACK/);
+  assert.doesNotMatch(out, /AI ENHANCED|LLM OFF|>PENDING</);
 });

@@ -439,7 +439,7 @@
           {
             "id": "effort-18.1",
             "title": "Unify operator-visible LLM status language across analysis, leverageable ideas, and review surfaces so off, fallback, configured, and parse-failed states do not contradict each other",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-18.2",

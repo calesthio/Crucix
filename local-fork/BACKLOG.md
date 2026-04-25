@@ -4,6 +4,4 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 
 ## Candidate backlog items
 
-All current backlog items were integrated into `local-fork/plan.json` on 2026-04-24.
-
-New items can be added here when they do not yet belong in the active roadmap.
+- Centralize a normalized operator-facing LLM state enum and explanation block in API payloads, so dashboard and briefing surfaces consume one status contract instead of re-deriving `applied`, `fallback`, `pending`, and `unavailable` labels independently.

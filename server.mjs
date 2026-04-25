@@ -1510,7 +1510,14 @@ function buildIMessengerBrief(snapshot = {}) {
       lines.push(`News cluster quality: ${newsSummary.quality.high || 0} strong, ${newsSummary.quality.medium || 0} moderate, ${newsSummary.quality.low || 0} weak`);
     }
     if (newsSummary.llm) {
-      lines.push(`News LLM: mode ${newsSummary.llm.requestedMode || 'auto'}, ${newsSummary.llm.used ? 'used' : 'heuristic fallback'}${newsSummary.llm.candidateSetCount != null ? `, candidates ${newsSummary.llm.candidateSetCount}` : ''}${newsSummary.llm.heuristicFallbackCount != null ? `, fallbacks ${newsSummary.llm.heuristicFallbackCount}` : ''}${newsSummary.llm.retryCount ? `, retries ${newsSummary.llm.retryCount}` : ''}${newsSummary.llm.repairSuccessCount ? `, repairs ${newsSummary.llm.repairSuccessCount}` : ''}`);
+      const newsLlmState = !newsSummary.llm.providerConfigured
+        ? 'LLM unavailable'
+        : newsSummary.llm.used && !newsSummary.llm.heuristicFallbackCount
+          ? 'LLM applied'
+          : newsSummary.llm.used && newsSummary.llm.heuristicFallbackCount
+            ? 'LLM partial fallback'
+            : 'LLM fallback';
+      lines.push(`News LLM: ${newsLlmState}${newsSummary.llm.requestedMode ? `, mode ${newsSummary.llm.requestedMode}` : ''}${newsSummary.llm.candidateSetCount != null ? `, candidates ${newsSummary.llm.candidateSetCount}` : ''}${newsSummary.llm.heuristicFallbackCount != null ? `, fallbacks ${newsSummary.llm.heuristicFallbackCount}` : ''}${newsSummary.llm.retryCount ? `, retries ${newsSummary.llm.retryCount}` : ''}${newsSummary.llm.repairSuccessCount ? `, repairs ${newsSummary.llm.repairSuccessCount}` : ''}`);
       if (newsSummary.llm.review?.failedRegionCount) {
         const topReason = newsSummary.llm.review.topReasons?.[0];
         lines.push(`Cluster review: ${newsSummary.llm.review.failedRegionCount} failed regions${topReason ? `, top reason ${topReason.reason} (${topReason.count})` : ''}`);

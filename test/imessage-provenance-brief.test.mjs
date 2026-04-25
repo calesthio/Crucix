@@ -25,6 +25,10 @@ const context = {
   console,
   memory: { getTrendSummary: () => ({}), getLastDelta: () => null },
   buildAgentAnalysis: () => ({ iMessageSummary: [] }),
+  summarizeClusterReviewMetrics: () => null,
+  attachClusterPressureStats: (v) => v,
+  attachClusterReviewStats: (v) => v,
+  annotateReview: (v) => v,
 };
 vm.createContext(context);
 vm.runInContext(code, context);
@@ -49,4 +53,30 @@ test('iMessage brief includes operator-facing evidence provenance labels', () =>
   assert.match(text, /Provenance: 1 carried-forward, 1 cached\/fallback, 1 degraded, 2 failed sources/);
   assert.match(text, /Top corroborated \[corroborated-confirmed-maritime-disruption-0\]: Confirmed maritime disruption \(high, hard-data corroboration\)/);
   assert.match(text, /Top suspect \[suspect-telegram-chatter-spike-0\]: Telegram chatter spike \(medium, osint-only signal\)/);
+});
+
+test('iMessage brief uses coherent News LLM wording for partial fallback runs', () => {
+  const text = buildIMessengerBrief({
+    agentAnalysis: { iMessageSummary: ['Status: ready'] },
+    tg: { urgent: [] },
+    newsSummary: undefined,
+    evidenceSummary: { counts: {} },
+    corroboratedSignals: [],
+    suspectSignals: [],
+    newsClusters: [{ headline: 'Example headline', region: 'EU', items: [{}, {}], llmConfidence: 'medium' }],
+    newsLlmDebug: {
+      requestedMode: 'auto',
+      providerConfigured: true,
+      attempted: true,
+      used: true,
+      heuristicFallbackCount: 2,
+      candidateSetCount: 4,
+      retryCount: 1,
+      repairSuccessCount: 1,
+      review: { failedRegionCount: 1, topReasons: [{ reason: 'no-json-match', count: 1 }] },
+    },
+  });
+
+  assert.match(text, /News LLM: LLM partial fallback, mode auto, candidates 4, fallbacks 2, retries 1, repairs 1/);
+  assert.doesNotMatch(text, /heuristic fallback/);
 });
