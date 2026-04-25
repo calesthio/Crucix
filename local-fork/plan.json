@@ -620,6 +620,11 @@
           {
             "id": "effort-26.3",
             "title": "Measure per-source contribution, overlap, noise, and operator impact so source additions can be validated against cluster quality, review pressure, tipping-point quality, and trust outcomes",
+            "status": "completed"
+          },
+          {
+            "id": "effort-26.4",
+            "title": "Add endpoint-level contract coverage for reasoning metadata on `/api/analysis` and `/api/brief/news` so source-role context cannot silently drop from live operator surfaces",
             "status": "pending"
           }
         ]
@@ -627,8 +632,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 83,
-    "activeCycleId": "2026-04-25-cycle-083",
-    "lastCompletedCycleId": "2026-04-25-cycle-083"
+    "sequence": 84,
+    "activeCycleId": "2026-04-25-cycle-084",
+    "lastCompletedCycleId": "2026-04-25-cycle-084"
   }
 }
