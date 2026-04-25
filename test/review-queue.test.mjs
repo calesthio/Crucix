@@ -38,20 +38,28 @@ vm.runInContext(`
 
 const { buildOperatorReviewQueue } = context.module.exports;
 
-test('buildOperatorReviewQueue returns bounded actionable items with top reasons', () => {
+test('buildOperatorReviewQueue returns bounded actionable items with triage prioritization', () => {
   const review = {
     reviewItems: [
-      { region: 'Iran', reason: 'no-json-match', severity: 'high', itemCount: 7, retried: true, repairAttempted: true, persistent: { chronic: true, consecutiveFailures: 9, lastStatus: 'heuristic-fallback' } },
-      { region: 'Australia', reason: 'no-json-match', severity: 'high', itemCount: 5, retried: true, repairAttempted: true, persistent: { chronic: true, consecutiveFailures: 17, lastStatus: 'heuristic-fallback' } },
-      { region: 'Pakistan', reason: 'shape-mismatch', severity: 'medium', itemCount: 3, retried: true, repairAttempted: false, persistent: { chronic: false, consecutiveFailures: 3, lastStatus: 'heuristic-fallback' } },
-      { region: 'EU', reason: 'no-json-match', severity: 'high', itemCount: 6, retried: true, repairAttempted: true, persistent: { chronic: true, consecutiveFailures: 20, lastStatus: 'heuristic-fallback' } },
-      { region: 'Spain', reason: 'shape-mismatch', severity: 'medium', itemCount: 2, retried: false, repairAttempted: false, persistent: { chronic: true, consecutiveFailures: 6, lastStatus: 'heuristic-fallback' } },
-      { region: 'India', reason: 'no-json-match', severity: 'medium', itemCount: 2, retried: true, repairAttempted: false, persistent: { chronic: true, consecutiveFailures: 1, lastStatus: 'llm-used-retry' } },
+      { region: 'Iran', reason: 'no-json-match', severity: 'high', itemCount: 7, retried: true, repairAttempted: true, persistent: { chronic: true, consecutiveFailures: 9, lastStatus: 'heuristic-fallback' }, pressure: { pressureScore: 63 } },
+      { region: 'Australia', reason: 'no-json-match', severity: 'high', itemCount: 5, retried: true, repairAttempted: true, persistent: { chronic: true, consecutiveFailures: 17, lastStatus: 'heuristic-fallback' }, pressure: { pressureScore: 62 } },
+      { region: 'Pakistan', reason: 'shape-mismatch', severity: 'medium', itemCount: 3, retried: true, repairAttempted: false, persistent: { chronic: false, consecutiveFailures: 3, lastStatus: 'heuristic-fallback' }, pressure: { pressureScore: 39 } },
+      { region: 'EU', reason: 'no-json-match', severity: 'high', itemCount: 6, retried: true, repairAttempted: true, persistent: { chronic: true, consecutiveFailures: 20, lastStatus: 'heuristic-fallback' }, pressure: { pressureScore: 9 } },
+      { region: 'Spain', reason: 'shape-mismatch', severity: 'medium', itemCount: 2, retried: false, repairAttempted: false, persistent: { chronic: true, consecutiveFailures: 6, lastStatus: 'heuristic-fallback' }, pressure: { pressureScore: 0 } },
+      { region: 'India', reason: 'no-json-match', severity: 'medium', itemCount: 2, retried: true, repairAttempted: false, persistent: { chronic: true, consecutiveFailures: 1, lastStatus: 'llm-used-retry' }, pressure: { pressureScore: 45 } },
     ],
     dismissedItems: [],
   };
 
-  const queue = buildOperatorReviewQueue(review, { maxItems: 5 });
+  const queue = buildOperatorReviewQueue(review, {
+    maxItems: 5,
+    quality: {
+      reviewMetrics: {
+        topSplitRegions: [{ region: 'EU', count: 7 }, { region: 'Pakistan', count: 3 }],
+        suspiciousNearDuplicates: [{ region: 'EU', similarity: 1 }, { region: 'Iran', similarity: 0.5 }],
+      },
+    },
+  });
   assert.equal(queue.totalItems, 6);
   assert.equal(queue.visibleItems, 5);
   assert.equal(queue.hasMore, true);
@@ -61,8 +69,10 @@ test('buildOperatorReviewQueue returns bounded actionable items with top reasons
     { reason: 'no-json-match', count: 4 },
     { reason: 'shape-mismatch', count: 2 },
   ]));
-  assert.equal(queue.items[0].region, 'Iran');
+  assert.equal(queue.items[0].region, 'EU');
   assert.equal(queue.items[0].chronic, true);
-  assert.match(queue.items[0].suggestedAction, /Inspect response shape/i);
-  assert.match(queue.items[2].suggestedAction, /schema mismatch/i);
+  assert.ok(queue.items[0].priorityScore > queue.items[1].priorityScore);
+  assert.match(queue.items[0].priorityDrivers.join(' '), /near-duplicate|split-pattern/);
+  assert.match(queue.items[1].suggestedAction, /Inspect response shape/i);
+  assert.match(queue.items[3].suggestedAction, /schema mismatch/i);
 });

@@ -428,22 +428,57 @@ function recordClusterReviewStats(snapshot = {}) {
 
 function attachClusterReviewStats(review = {}) {
   const statsSummary = summarizeClusterReviewStats();
+  const pressureSummary = summarizeClusterPressureStats();
   const byRegion = new Map((statsSummary.topRegions || []).map(entry => [entry.region, entry]));
+  const pressureByRegion = new Map((pressureSummary.topRegions || []).map(entry => [entry.region, entry]));
   const decorate = item => ({
     ...item,
     persistent: byRegion.get(item.region) || null,
+    pressure: pressureByRegion.get(item.region) || null,
   });
   return {
     ...review,
     reviewItems: Array.isArray(review.reviewItems) ? review.reviewItems.map(decorate) : [],
     dismissedItems: Array.isArray(review.dismissedItems) ? review.dismissedItems.map(decorate) : [],
     stats: statsSummary,
+    pressure: pressureSummary,
   };
 }
 
-function buildOperatorReviewQueue(review = {}, { maxItems = 5 } = {}) {
+function buildOperatorReviewQueue(review = {}, { maxItems = 5, quality = null } = {}) {
   const items = Array.isArray(review.reviewItems) ? review.reviewItems : [];
-  const bounded = items.slice(0, Math.max(1, maxItems));
+  const metrics = quality?.reviewMetrics || {};
+  const duplicateByRegion = new Map();
+  for (const entry of Array.isArray(metrics.suspiciousNearDuplicates) ? metrics.suspiciousNearDuplicates : []) {
+    const region = entry?.region || 'Unknown';
+    duplicateByRegion.set(region, Math.max(duplicateByRegion.get(region) || 0, Number(entry?.similarity || 0)));
+  }
+  const splitByRegion = new Map((Array.isArray(metrics.topSplitRegions) ? metrics.topSplitRegions : []).map(entry => [entry.region, entry.count || 0]));
+  const scored = items.map(item => {
+    const region = item?.region || 'Unknown';
+    const pressureScore = Number(item?.pressure?.pressureScore || 0);
+    const duplicateScore = Math.round((duplicateByRegion.get(region) || 0) * 100);
+    const splitCount = Number(splitByRegion.get(region) || 0);
+    const consecutiveFailures = Number(item?.persistent?.consecutiveFailures || 0);
+    const itemCount = Number(item?.itemCount || 0);
+    const chronicBonus = item?.persistent?.chronic ? 25 : 0;
+    const severityBonus = item?.severity === 'high' ? 20 : item?.severity === 'medium' ? 10 : 0;
+    const priorityScore = pressureScore + duplicateScore + (splitCount * 12) + (consecutiveFailures * 3) + (itemCount * 2) + chronicBonus + severityBonus;
+    const drivers = [];
+    if (pressureScore > 0) drivers.push(`pressure ${pressureScore}`);
+    if (duplicateScore > 0) drivers.push(`near-duplicate ${duplicateScore}`);
+    if (splitCount > 0) drivers.push(`split-pattern ${splitCount}`);
+    if (consecutiveFailures > 0) drivers.push(`repeat-fail ${consecutiveFailures}`);
+    return {
+      ...item,
+      priorityScore,
+      drivers,
+      duplicateScore,
+      splitCount,
+      pressureScore,
+    };
+  }).sort((a, b) => (b.priorityScore || 0) - (a.priorityScore || 0) || (b.itemCount || 0) - (a.itemCount || 0) || String(a.region || '').localeCompare(String(b.region || '')));
+  const bounded = scored.slice(0, Math.max(1, maxItems));
   const reasonCounts = new Map();
   for (const item of items) {
     const reason = item?.reason || 'unknown';
@@ -473,6 +508,11 @@ function buildOperatorReviewQueue(review = {}, { maxItems = 5 } = {}) {
       chronic: Boolean(item.persistent?.chronic),
       consecutiveFailures: item.persistent?.consecutiveFailures || 0,
       lastStatus: item.persistent?.lastStatus || item.status || null,
+      priorityScore: item.priorityScore || 0,
+      priorityDrivers: item.drivers || [],
+      pressureScore: item.pressureScore || 0,
+      duplicateScore: item.duplicateScore || 0,
+      splitCount: item.splitCount || 0,
       suggestedAction: item.reason === 'no-json-match'
         ? 'Inspect response shape and retry/repair behavior.'
         : item.reason === 'shape-mismatch'
@@ -1948,7 +1988,7 @@ app.get('/api/data', async (req, res) => {
   res.json({
     ...snapshot,
     runtimeLlm: buildRuntimeLlmStatus(snapshot),
-    reviewQueue: buildOperatorReviewQueue(review),
+    reviewQueue: buildOperatorReviewQueue(review, { quality: snapshot.newsClusterQuality || null }),
   });
 });
 
@@ -1990,7 +2030,7 @@ app.get('/api/brief/news/review', requireDebugAccess, async (req, res) => {
     quality: baseSummary.quality || null,
     llm: baseSummary.llm,
     review,
-    queue: buildOperatorReviewQueue(review),
+    queue: buildOperatorReviewQueue(review, { quality: baseSummary.quality || null }),
   });
 });
 
