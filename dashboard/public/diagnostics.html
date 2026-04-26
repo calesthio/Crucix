@@ -80,6 +80,9 @@ async function boot(){
         ${(reviewWorkflow?.workflow?.lowConfidenceSources || []).slice(0, 3).map(item => `<div><strong>${esc(item.name)}</strong><div class="mini">trust ${esc(item.trustOutcome || 'unknown')} • attention ${esc(String(item.attentionScore || 0))}</div><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${(item.actions || []).map(action => `<button data-review-action="${esc(action.id)}" data-source="${esc(action.sourceId || '')}">${esc(action.label)}</button>`).join('')}</div></div>`).join('') || '<div>No low-confidence source workflow recommendations right now.</div>'}
         ${(reviewWorkflow?.workflow?.promoteCandidates || []).slice(0, 2).map(item => `<div><strong>${esc(item.name)}</strong><div class="mini">${esc(item.promotionReadiness || 'unknown')}</div><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button data-review-action="promote-shadow" data-candidate="${esc(item.candidateId || '')}">Promote to approved</button></div></div>`).join('')}
       </div>`),
+      renderCard('Weak cluster repair helpers', 'Why weak, and which bounded action fits', `<div class="list">
+        ${(reviewWorkflow?.workflow?.clusterRepair?.weakClusters || []).slice(0, 4).map(item => `<div><strong>${esc(item.headline || item.clusterId || 'cluster')}</strong><div class="mini">${esc(item.region || 'Unknown')} • quality ${esc(item.quality || 'unknown')} • stories ${esc(String(item.storyCount || 0))} • sources ${esc(String(item.sourceCount || 0))}</div><div class="mini" style="margin-top:6px">${(item.weaknessReasons || []).map(reason => esc(reason)).join(' • ') || 'No explicit weakness reasons captured.'}</div><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${(item.actions || []).map(action => `<button data-review-action="${esc(action.id)}" data-cluster="${esc(action.clusterId || item.clusterId || '')}" data-target-cluster="${esc(action.targetClusterId || '')}">${esc(action.label)}</button>`).join('') || '<span class="mini">No bounded repair actions available.</span>'}</div></div>`).join('') || '<div>No weak cluster repair helpers are available right now.</div>'}
+      </div>`),
       renderCard('Workflow audit', 'Recent operator workflow trail', `<div class="list">
         ${(reviewWorkflow?.workflow?.auditTrail || []).map(item => `<div><strong>${esc(item.action || 'action')}</strong><div class="mini">${esc(item.recordedAt || '')} • ${esc(item.status || 'unknown')}</div><div class="mini">${esc(item.sourceId || item.region || item.candidateId || '')}</div></div>`).join('') || '<div>No workflow audit entries yet.</div>'}
       </div>`),
@@ -98,6 +101,8 @@ async function boot(){
       const payload = { action: btn.dataset.reviewAction };
       if (btn.dataset.source) payload.sourceId = btn.dataset.source;
       if (btn.dataset.candidate) payload.candidateId = btn.dataset.candidate;
+      if (btn.dataset.cluster) payload.clusterId = btn.dataset.cluster;
+      if (btn.dataset.targetCluster) payload.targetClusterId = btn.dataset.targetCluster;
       try {
         const res = await fetch('/api/review-workflow/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);

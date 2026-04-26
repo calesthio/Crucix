@@ -802,7 +802,7 @@
           {
             "id": "effort-32.2",
             "title": "Add cluster repair helpers that explain why a cluster is weak and support bounded merge, split, placement-correction, and suppression actions",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-32.3",

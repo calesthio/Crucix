@@ -27,6 +27,7 @@ const RUNS_DIR = join(ROOT, 'runs');
 const MEMORY_DIR = join(RUNS_DIR, 'memory');
 const REVIEW_ACKS_PATH = join(RUNS_DIR, 'cluster-review-acks.json');
 const REVIEW_WORKFLOW_AUDIT_PATH = join(RUNS_DIR, 'review-workflow-audit.json');
+const CLUSTER_REPAIR_ACTIONS_PATH = join(RUNS_DIR, 'cluster-repair-actions.json');
 const AGENT_ANALYSIS_VALIDATION_SCRIPT = join(ROOT, 'scripts/agent-analysis-validation-summary.mjs');
 const OPENSKY_STATE_PATH = join(ROOT, 'runs', 'cache', 'opensky-state.json');
 const OPERATOR_SETTINGS_PATH = process.env.OPERATOR_SETTINGS_PATH || join(ROOT, 'runs', 'operator-settings.json');
@@ -78,9 +79,11 @@ const CLUSTER_PRESSURE_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 const CLUSTER_REPAIR_ARTIFACTS_STATE_KEY = 'cluster-review:repair-artifacts';
 const CLUSTER_REPAIR_ARTIFACT_RETENTION_MS = Math.max(1, Number(config.review?.repairArtifactRetentionDays || 14)) * 24 * 60 * 60 * 1000;
 const CLUSTER_REPAIR_ARTIFACT_MAX_ENTRIES = Math.max(1, Number(config.review?.repairArtifactMaxEntries || 50));
+const CLUSTER_REPAIR_ACTION_MAX_HISTORY = Math.max(20, Number(config.review?.clusterRepairActionMaxEntries || 200));
 const REVIEW_WORKFLOW_AUDIT_MAX_ENTRIES = Math.max(20, Number(config.review?.workflowAuditMaxEntries || 200));
 const reviewAcks = loadReviewAcks();
 const reviewWorkflowAudit = loadReviewWorkflowAudit();
+const clusterRepairActions = loadClusterRepairActions();
 const sweepWatchdogTelemetry = {
   recoveryCount: 0,
   lastRecoveryAt: null,
@@ -517,6 +520,53 @@ function reviewWorkflowAuditSnapshot(limit = 25) {
   return reviewWorkflowAudit.slice(-Math.max(1, limit)).reverse();
 }
 
+function clusterRepairActionDefaults() {
+  return {
+    version: 'cluster-repair-actions-v1',
+    updatedAt: null,
+    suppressedClusterIds: [],
+    decisions: [],
+  };
+}
+
+function loadClusterRepairActions() {
+  const loaded = loadJsonFile(CLUSTER_REPAIR_ACTIONS_PATH, clusterRepairActionDefaults());
+  const base = loaded && typeof loaded === 'object' ? loaded : clusterRepairActionDefaults();
+  return {
+    version: 'cluster-repair-actions-v1',
+    updatedAt: base.updatedAt || null,
+    suppressedClusterIds: Array.isArray(base.suppressedClusterIds) ? base.suppressedClusterIds : [],
+    decisions: Array.isArray(base.decisions) ? base.decisions : [],
+  };
+}
+
+function saveClusterRepairActions() {
+  clusterRepairActions.version = 'cluster-repair-actions-v1';
+  clusterRepairActions.decisions = clusterRepairActions.decisions.slice(-CLUSTER_REPAIR_ACTION_MAX_HISTORY);
+  saveJsonFile(CLUSTER_REPAIR_ACTIONS_PATH, clusterRepairActions);
+}
+
+function recordClusterRepairDecision(entry = {}) {
+  const action = String(entry?.action || '').trim();
+  const clusterId = String(entry?.clusterId || '').trim();
+  const targetClusterId = String(entry?.targetClusterId || '').trim();
+  if (action === 'suppress-cluster' && clusterId && !clusterRepairActions.suppressedClusterIds.includes(clusterId)) {
+    clusterRepairActions.suppressedClusterIds.push(clusterId);
+    clusterRepairActions.suppressedClusterIds.sort((a, b) => a.localeCompare(b));
+  }
+  clusterRepairActions.updatedAt = new Date().toISOString();
+  clusterRepairActions.decisions.push({
+    id: `cluster-repair-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    recordedAt: clusterRepairActions.updatedAt,
+    ...entry,
+    clusterId: clusterId || null,
+    targetClusterId: targetClusterId || null,
+  });
+  while (clusterRepairActions.decisions.length > CLUSTER_REPAIR_ACTION_MAX_HISTORY) clusterRepairActions.decisions.shift();
+  saveClusterRepairActions();
+  return clusterRepairActions.decisions[clusterRepairActions.decisions.length - 1];
+}
+
 function resolveSourceInventory(snapshot = currentData || null) {
   const sourceOps = snapshot?.sourceOps || buildOperatorSourceOps(snapshot || null);
   const items = Array.isArray(sourceOps?.inventory?.items) ? sourceOps.inventory.items : [];
@@ -562,6 +612,134 @@ function buildReviewWorkflowActions(item = {}, snapshot = currentData || null) {
     });
   }
   return { actions, sourceItem };
+}
+
+function summarizeWeakClusterReasons(cluster = {}, duplicatePairs = []) {
+  const reasons = [];
+  if (cluster.quality === 'low' || cluster.confidenceLabel === 'weak') reasons.push('Marked weak by current cluster quality scoring.');
+  if ((cluster.qualityFlags || []).includes('heuristic-only')) reasons.push('Heuristic-only cluster, no successful LLM-backed repair or confirmation.');
+  if ((cluster.qualityFlags || []).includes('single-source') || (cluster.sourceCount || 0) <= 1) reasons.push('Single-source or single-publisher cluster, easy to overfit.');
+  if ((cluster.storyCount || 0) <= 1) reasons.push('Only one story item is present, so the cluster may be too narrow or duplicated elsewhere.');
+  if ((cluster.storyCount || 0) >= 4 && (cluster.qualityFlags || []).includes('heuristic-only')) reasons.push('Large heuristic cluster may hide multiple sub-stories that should be split.');
+  if (duplicatePairs.length) reasons.push(`Near-duplicate weak cluster detected in-region (${duplicatePairs.length} bounded merge candidate${duplicatePairs.length === 1 ? '' : 's'}).`);
+  if (cluster.placementClass && cluster.placementClass !== 'precise') reasons.push(`Placement is ${cluster.placementClass}, so geographic placement may need correction.`);
+  if (cluster.placementBasis && String(cluster.placementBasis).toLowerCase().includes('heuristic')) reasons.push('Placement came from heuristic basis rather than a precise anchor.');
+  return reasons.slice(0, 5);
+}
+
+function buildClusterRepairWorkflow(snapshot = currentData || null) {
+  const activeSnapshot = snapshot || currentData || null;
+  const clusters = Array.isArray(activeSnapshot?.newsClusters) ? activeSnapshot.newsClusters : [];
+  const reviewMetrics = activeSnapshot?.newsClusterQuality?.reviewMetrics || summarizeClusterReviewMetrics(clusters);
+  const duplicatePairs = Array.isArray(reviewMetrics?.suspiciousNearDuplicates) ? reviewMetrics.suspiciousNearDuplicates : [];
+  const duplicatesByCluster = new Map();
+  for (const pair of duplicatePairs) {
+    for (const side of [pair?.clusterA, pair?.clusterB]) {
+      const id = side?.id || null;
+      if (!id) continue;
+      const next = duplicatesByCluster.get(id) || [];
+      next.push(pair);
+      duplicatesByCluster.set(id, next);
+    }
+  }
+  const weakClusters = clusters
+    .filter(cluster => (
+      cluster?.quality === 'low' ||
+      cluster?.confidenceLabel === 'weak' ||
+      (cluster?.qualityFlags || []).includes('heuristic-only') ||
+      (cluster?.qualityFlags || []).includes('single-source')
+    ))
+    .map(cluster => {
+      const matches = duplicatesByCluster.get(cluster.id) || [];
+      const reasons = summarizeWeakClusterReasons(cluster, matches);
+      const actions = [];
+      for (const match of matches.slice(0, 2)) {
+        const other = match?.clusterA?.id === cluster.id ? match.clusterB : match.clusterA;
+        if (!other?.id) continue;
+        actions.push({
+          id: 'merge-clusters',
+          label: `Merge with ${other.headline || other.id}`,
+          method: 'POST',
+          href: '/api/review-workflow/action',
+          clusterId: cluster.id,
+          targetClusterId: other.id,
+          similarity: match.similarity || 0,
+          requiresLocalAdmin: true,
+          detail: 'Bounded merge recommendation derived from near-duplicate weak clusters in the same region.',
+        });
+      }
+      if ((cluster.storyCount || 0) >= 4 && (cluster.qualityFlags || []).includes('heuristic-only')) {
+        actions.push({
+          id: 'split-cluster',
+          label: 'Split cluster',
+          method: 'POST',
+          href: '/api/review-workflow/action',
+          clusterId: cluster.id,
+          requiresLocalAdmin: true,
+          detail: 'Large heuristic cluster may be conflating multiple sub-stories.',
+        });
+      }
+      if ((cluster.placementClass && cluster.placementClass !== 'precise') || String(cluster.placementBasis || '').toLowerCase().includes('heuristic')) {
+        actions.push({
+          id: 'correct-placement',
+          label: 'Correct placement',
+          method: 'POST',
+          href: '/api/review-workflow/action',
+          clusterId: cluster.id,
+          requiresLocalAdmin: true,
+          detail: 'Placement precision is weak enough to warrant a direct correction workflow.',
+        });
+      }
+      actions.push({
+        id: 'suppress-cluster',
+        label: 'Suppress cluster',
+        method: 'POST',
+        href: '/api/review-workflow/action',
+        clusterId: cluster.id,
+        requiresLocalAdmin: true,
+        detail: 'Suppress this cluster from the repair workflow surface when it is repetitive or low-value.',
+      });
+      const weaknessScore =
+        ((cluster.quality === 'low' || cluster.confidenceLabel === 'weak') ? 40 : 0) +
+        (((cluster.qualityFlags || []).includes('heuristic-only')) ? 20 : 0) +
+        (((cluster.qualityFlags || []).includes('single-source')) ? 15 : 0) +
+        ((matches.length || 0) * 12) +
+        (((cluster.storyCount || 0) >= 4 && (cluster.qualityFlags || []).includes('heuristic-only')) ? 10 : 0) +
+        ((cluster.placementClass && cluster.placementClass !== 'precise') ? 8 : 0);
+      return {
+        clusterId: cluster.id,
+        headline: cluster.headline || cluster.summary || cluster.id,
+        region: cluster.region || 'Unknown',
+        storyCount: cluster.storyCount || 0,
+        sourceCount: cluster.sourceCount || 0,
+        quality: cluster.quality || null,
+        confidenceLabel: cluster.confidenceLabel || null,
+        qualityFlags: cluster.qualityFlags || [],
+        placementClass: cluster.placementClass || null,
+        placementBasis: cluster.placementBasis || null,
+        sourceProvenance: cluster.sourceProvenance || null,
+        weaknessScore,
+        weaknessReasons: reasons,
+        mergeCandidateCount: matches.length,
+        actions: actions.slice(0, 4),
+      };
+    })
+    .sort((a, b) => (b.weaknessScore || 0) - (a.weaknessScore || 0) || (b.storyCount || 0) - (a.storyCount || 0) || String(a.region || '').localeCompare(String(b.region || '')))
+    .slice(0, 6);
+  return {
+    version: 'cluster-repair-workflow-v1',
+    supportedActions: ['merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'],
+    weakClusterCount: weakClusters.length,
+    suppressedClusterCount: Array.isArray(clusterRepairActions?.suppressedClusterIds) ? clusterRepairActions.suppressedClusterIds.length : 0,
+    metrics: {
+      lowConfidenceCount: reviewMetrics?.lowConfidenceCount || 0,
+      suspiciousNearDuplicateCount: reviewMetrics?.suspiciousNearDuplicateCount || 0,
+      splitCandidateCount: reviewMetrics?.splitCandidateCount || 0,
+      mergeCandidateCount: reviewMetrics?.mergeCandidateCount || 0,
+    },
+    weakClusters,
+    recentDecisions: Array.isArray(clusterRepairActions?.decisions) ? clusterRepairActions.decisions.slice(-8).reverse() : [],
+  };
 }
 
 function buildReviewWorkflowContract(snapshot = currentData || null, review = null) {
@@ -610,7 +788,7 @@ function buildReviewWorkflowContract(snapshot = currentData || null, review = nu
     endpoint: '/api/review-workflow/action',
     auditEndpoint: '/api/review-workflow/audit',
     requiresLocalAdmin: true,
-    supportedActions: ['ack', 'snooze', 'suppress-source', 'quarantine-source', 'promote-shadow'],
+    supportedActions: ['ack', 'snooze', 'suppress-source', 'quarantine-source', 'promote-shadow', 'merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'],
     queueSummary: queue ? {
       state: queue.state || null,
       totalItems: queue.totalItems || 0,
@@ -619,6 +797,7 @@ function buildReviewWorkflowContract(snapshot = currentData || null, review = nu
     } : null,
     lowConfidenceSources,
     promoteCandidates,
+    clusterRepair: buildClusterRepairWorkflow(activeSnapshot),
     auditTrail: reviewWorkflowAuditSnapshot(12),
   };
 }
@@ -3881,7 +4060,7 @@ app.get('/api/review-workflow/audit', requireDebugAccess, (req, res) => {
 app.post('/api/review-workflow/action', requireDebugAccess, (req, res) => {
   const action = String(req.body?.action || '').trim();
   const note = String(req.body?.note || '').trim();
-  const allowedActions = ['ack', 'snooze', 'suppress-source', 'quarantine-source', 'promote-shadow'];
+  const allowedActions = ['ack', 'snooze', 'suppress-source', 'quarantine-source', 'promote-shadow', 'merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'];
   if (!allowedActions.includes(action)) {
     return res.status(400).json({ ok: false, error: 'unsupported-review-workflow-action', allowedActions });
   }
@@ -3928,6 +4107,43 @@ app.post('/api/review-workflow/action', requireDebugAccess, (req, res) => {
         candidateId,
         status: 'recorded-human-review',
         detail: 'Promotion intent recorded in the audit trail. Direct registry mutation remains a separate lifecycle workflow.',
+        audit,
+      });
+    }
+
+    if (['merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'].includes(action)) {
+      const clusterId = String(req.body?.clusterId || '').trim();
+      const targetClusterId = String(req.body?.targetClusterId || '').trim();
+      if (!clusterId) return res.status(400).json({ ok: false, error: 'clusterId is required' });
+      const repairWorkflow = buildClusterRepairWorkflow(currentData || null);
+      const cluster = (repairWorkflow.weakClusters || []).find(item => item.clusterId === clusterId);
+      if (!cluster) return res.status(400).json({ ok: false, error: 'clusterId is not currently available for bounded repair actions' });
+      const matchedAction = (cluster.actions || []).find(item => item.id === action && (!targetClusterId || item.targetClusterId === targetClusterId));
+      if (!matchedAction) return res.status(400).json({ ok: false, error: 'requested bounded repair action is not currently available for this cluster' });
+      const decision = recordClusterRepairDecision({
+        action,
+        clusterId,
+        targetClusterId: matchedAction.targetClusterId || targetClusterId || null,
+        region: cluster.region || null,
+        headline: cluster.headline || null,
+        note: note || null,
+        status: action === 'suppress-cluster' ? 'applied' : 'recorded-human-review',
+      });
+      const audit = recordReviewWorkflowAudit({
+        action,
+        clusterId,
+        targetClusterId: matchedAction.targetClusterId || targetClusterId || null,
+        note: note || null,
+        status: action === 'suppress-cluster' ? 'applied' : 'recorded-human-review',
+      });
+      return res.json({
+        ok: true,
+        action,
+        clusterId,
+        targetClusterId: matchedAction.targetClusterId || targetClusterId || null,
+        status: action === 'suppress-cluster' ? 'applied' : 'recorded-human-review',
+        detail: matchedAction.detail || 'Bounded cluster repair action recorded.',
+        decision,
         audit,
       });
     }

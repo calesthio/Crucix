@@ -23,3 +23,4 @@ Recent promotions:
 New items can be added here when they do not yet belong in the active roadmap.
 
 - Add end-to-end regression coverage for `POST /api/review-workflow/action` and `GET /api/review-workflow/audit`, including action-specific payload validation and audit-entry assertions. Added 2026-04-26 during cycle 111 after the initial workflow surface shipped with only queue-contract coverage.
+- Add endpoint-level regression coverage for cluster-repair workflow actions and suppressed-cluster state on `/api/brief/news/review` and `/api/data`, so bounded repair recommendations and persisted decisions do not drift from the live contracts. Added 2026-04-26 during cycle 112 after the first cluster-repair helper surface shipped with unit coverage but no endpoint contract test.
