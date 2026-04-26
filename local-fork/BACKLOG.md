@@ -4,7 +4,7 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 
 ## Candidate backlog items
 
-All current backlog items were integrated into `local-fork/plan.json` on 2026-04-26.
+- Add a small admin diagnostics surface or export endpoint for the new SQLite runtime-history store, including table sizes, last-write timestamps, and a bounded integrity check, so datastore health is visible without shell access.
 
 Recent promotions:
 - Deployment-packaging follow-on work such as checked example `launchd` or `systemd` service definitions plus restart-policy guidance was promoted into `local-fork/plan.json` as Epic 33, effort 33.6 on 2026-04-26.

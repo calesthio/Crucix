@@ -5356,6 +5356,9 @@ async function runSweepCycle() {
     const sixHourBaselineRun = memory.getBaselineRun(6);
     synthesized.baseline6h = buildSixHourBaseline(synthesized, sixHourBaselineRun);
     synthesized.trendSummary = memory.getTrendSummary();
+    synthesized.sourceHealthHistory = memory.getSourceHealthHistory();
+    synthesized.reviewPressureHistory = memory.getReviewPressureHistory();
+    synthesized.llmFailureHistory = memory.getLlmFailureHistory();
     synthesized.sourcePerformanceHistory = memory.getSourcePerformanceHistory();
     synthesized.noiseSuppressionTrend = memory.getNoiseSuppressionTelemetryHistory();
     synthesized.sourceOps = buildOperatorSourceOps(synthesized);
@@ -5486,6 +5489,9 @@ async function start() {
       const existing = JSON.parse(readFileSync(join(RUNS_DIR, 'latest.json'), 'utf8'));
       synthesize(existing, llmProvider, { newsLlmMode: 'off' }).then(data => {
         data.trendSummary = memory.getTrendSummary();
+        data.sourceHealthHistory = memory.getSourceHealthHistory();
+        data.reviewPressureHistory = memory.getReviewPressureHistory();
+        data.llmFailureHistory = memory.getLlmFailureHistory();
         data.agentAnalysis = buildAgentAnalysis(data);
         data.agentAnalysisMeta = buildAgentAnalysisMeta({
           error: llmProvider?.isConfigured ? null : 'llm-unavailable',
