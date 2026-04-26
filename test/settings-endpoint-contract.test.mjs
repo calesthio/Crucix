@@ -59,8 +59,10 @@ async function withBootedServer({ port, env }, fn) {
     return await fn({
       settingsUrl: `http://127.0.0.1:${port}/api/settings`,
       adminSettingsUrl: `http://127.0.0.1:${port}/api/settings/admin`,
+      llmOperationsUrl: `http://127.0.0.1:${port}/api/llm/operations`,
       pageUrl: `http://127.0.0.1:${port}/settings`,
       adminPageUrl: `http://127.0.0.1:${port}/admin/settings`,
+      llmOpsPageUrl: `http://127.0.0.1:${port}/llm-ops`,
     });
   } finally {
     await stopChild(child);
@@ -76,7 +78,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
       OLLAMA_BASE_URL: 'http://127.0.0.1:11434',
       DEBUG_ENDPOINT_EXPOSURE: 'local-only',
     },
-  }, async ({ settingsUrl, adminSettingsUrl, pageUrl, adminPageUrl }) => {
+  }, async ({ settingsUrl, adminSettingsUrl, llmOperationsUrl, pageUrl, adminPageUrl, llmOpsPageUrl }) => {
     const health = await waitFor(`http://127.0.0.1:${BASE_PORT}/api/health`, payload => payload?.runtimeIdentity?.pid && payload?.sweepWatchdog?.phase, 30000);
     assert.equal(typeof health.runtimeIdentity.pid, 'number');
     assert.equal(health.runtimeControl.version, 'runtime-control-v1');
@@ -119,6 +121,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(settings.access.role, 'operator');
     assert.equal(settings.access.diagnosticsSurface, '/diagnostics');
     assert.equal(settings.access.sourceConsoleSurface, '/source-ops');
+    assert.equal(settings.access.llmOperationsSurface, '/llm-ops');
     assert.equal(settings.access.localAdminRequired, true);
 
     const admin = await waitFor(adminSettingsUrl, payload => payload?.version === 'admin-settings-v1', 30000);
@@ -141,6 +144,12 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(badControl.status, 400);
     assert.equal(badControl.body.ok, false);
 
+    const llmOps = await waitFor(llmOperationsUrl, payload => payload?.version === 'llm-operations-v1', 30000);
+    assert.equal(llmOps.surface, '/llm-ops');
+    assert.equal(llmOps.provider.name, 'ollama');
+    assert.equal(Array.isArray(llmOps.fallbackChains), true);
+    assert.equal(Array.isArray(llmOps.recentFailures), true);
+
     const page = await fetch(pageUrl).then(r => r.text());
     assert.match(page, /read-only operator view/i);
     assert.doesNotMatch(page, /id="saveBtn"/i);
@@ -161,6 +170,11 @@ test('booted operator and admin settings surfaces stay role-separated with local
     const diagnosticsPage = await fetch(`http://127.0.0.1:${BASE_PORT}/diagnostics`).then(r => r.text());
     assert.match(diagnosticsPage, /Runtime and review diagnostics/i);
     assert.match(diagnosticsPage, /Operator settings/i);
+
+    const llmOpsPage = await fetch(llmOpsPageUrl).then(r => r.text());
+    assert.match(llmOpsPage, /Provider health and fallback operations/i);
+    assert.match(llmOpsPage, /Raw JSON/i);
+    assert.match(llmOpsPage, /Admin settings/i);
 
     const adminPage = await fetch(adminPageUrl).then(r => r.text());
     assert.match(adminPage, /Local control plane/i);

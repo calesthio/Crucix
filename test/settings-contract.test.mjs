@@ -56,7 +56,7 @@ const context = {
       ],
     },
   }),
-  buildOperatorLlmStateContract: () => ({ status: 'applied', label: 'LLM APPLIED' }),
+  buildOperatorLlmStateContract: () => ({ status: 'applied', label: 'LLM APPLIED', summary: 'LLM participated', surfaces: { analysis: { label: 'LLM APPLIED' }, ideas: { label: 'STATIC BY DESIGN' } } }),
   getSweepWatchdogSnapshot: () => ({ timeoutMinutes: 45, timeoutMs: 2700000, pollMs: 30000 }),
   module: { exports: {} },
   exports: {},
@@ -64,10 +64,10 @@ const context = {
 vm.createContext(context);
 vm.runInContext(`
   ${extractChunk('function buildRuntimeConfigContract() {', '// API: current data')}
-  module.exports = { buildRuntimeConfigContract, buildOperatorSettingsContract, buildAdminSettingsContract };
+  module.exports = { buildRuntimeConfigContract, buildOperatorSettingsContract, buildAdminSettingsContract, buildLlmOperationsContract };
 `, context);
 
-const { buildRuntimeConfigContract, buildOperatorSettingsContract, buildAdminSettingsContract } = context.module.exports;
+const { buildRuntimeConfigContract, buildOperatorSettingsContract, buildAdminSettingsContract, buildLlmOperationsContract } = context.module.exports;
 
 test('runtime config contract exposes defaults, effective values, validation, and drift summary', () => {
   context.process.env = {
@@ -98,6 +98,16 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
       refinementState: 'completed',
       refinementCompletion: 'llm-applied',
     },
+    newsLlmDebug: {
+      requestedMode: 'force',
+      providerConfigured: true,
+      fallbackReason: 'parse-failed',
+      heuristicFallbackCount: 2,
+      llmSuccessCount: 1,
+      llmErrorCount: 1,
+      review: { topReasons: [{ reason: 'no-json-match', count: 1 }] },
+    },
+    ideasSource: 'llm-failed',
   });
 
   assert.equal(contract.version, 'operator-settings-v1');
@@ -151,6 +161,7 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.access.role, 'operator');
   assert.equal(contract.access.diagnosticsSurface, '/diagnostics');
   assert.equal(contract.access.sourceConsoleSurface, '/source-ops');
+  assert.equal(contract.access.llmOperationsSurface, '/llm-ops');
   assert.equal(contract.access.localAdminRequired, true);
   assert.match(contract.notes[0], /centralizes current operator-visible settings/i);
 });
@@ -167,4 +178,36 @@ test('admin settings contract exposes local-write controls separately from opera
   assert.equal(contract.access.diagnosticsSurface, '/diagnostics');
   assert.equal(contract.admin.boundaries.requiresLocalRequest, true);
   assert.equal(contract.admin.controls.writeEndpoint, '/api/settings/operator');
+});
+
+test('llm operations contract exposes provider health, mode forcing, fallback chains, and recent failure reasons', () => {
+  const contract = buildLlmOperationsContract({
+    newsLlmDebug: {
+      requestedMode: 'force',
+      providerConfigured: true,
+      fallbackReason: 'all-candidate-sets-fell-back',
+      heuristicFallbackCount: 3,
+      retryCount: 1,
+      llmSuccessCount: 2,
+      llmErrorCount: 1,
+      review: { topReasons: [{ reason: 'no-json-match', count: 2 }] },
+    },
+    agentAnalysisMeta: {
+      error: 'parse-failed',
+      refinementState: 'failed',
+      refinementCompletion: 'fallback-parse-failed',
+    },
+    ideasSource: 'llm-failed',
+  });
+  assert.equal(contract.version, 'llm-operations-v1');
+  assert.equal(contract.surface, '/llm-ops');
+  assert.equal(contract.provider.name, 'ollama');
+  assert.equal(contract.provider.activeModel, 'qwen');
+  assert.equal(contract.modes.defaultNewsMode, 'auto');
+  assert.equal(Array.isArray(contract.fallbackChains), true);
+  assert.equal(contract.fallbackChains[0].surface, 'news-clustering');
+  assert.equal(contract.fallbackChains[0].fallbackReason, 'all-candidate-sets-fell-back');
+  assert.equal(contract.navigation.api, '/api/llm/operations');
+  assert.equal(contract.recentFailures.some(item => item.surface === 'news-clustering'), true);
+  assert.equal(contract.recentFailures.some(item => item.surface === 'analysis'), true);
 });

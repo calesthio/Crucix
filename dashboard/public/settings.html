@@ -31,6 +31,7 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.5 var(--mono
     <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
       <a class="pill" href="/">Dashboard</a>
       <a class="pill" href="/source-ops">Source ops</a>
+      <a class="pill" href="/llm-ops">LLM ops</a>
       <a class="pill" href="/diagnostics">Diagnostics</a>
       <a class="pill" href="/admin/settings">Admin settings</a>
       <a class="pill" href="/api/settings" target="_blank" rel="noreferrer">Raw JSON</a>
@@ -63,6 +64,7 @@ async function boot(){
         row('Local admin required', esc(String(Boolean(data.access?.localAdminRequired)))),
         row('Admin surface', esc(data.access?.adminSurface || 'n/a')),
         row('Source console', esc(data.access?.sourceConsoleSurface || 'n/a')),
+        row('LLM operations', esc(data.access?.llmOperationsSurface || 'n/a')),
       ].join('')),
       renderCard('Layout', 'Current operator posture', [
         row('Current', esc(data.layout?.current || 'unknown')),

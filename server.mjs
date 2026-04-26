@@ -2309,6 +2309,14 @@ app.get('/source-ops', async (req, res) => {
   res.type('html').send(injectDashboardRuntimeHtml(html));
 });
 
+app.get('/llm-ops', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
+  const htmlPath = join(ROOT, 'dashboard/public/llm-ops.html');
+  const html = readFileSync(htmlPath, 'utf-8');
+  res.type('html').send(injectDashboardRuntimeHtml(html));
+});
+
 app.get('/diagnostics', requireDebugAccess, async (req, res) => {
   const snapshot = await ensureCurrentData();
   if (!snapshot) return res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
@@ -2955,6 +2963,7 @@ function buildOperatorSettingsContract(snapshot = null) {
       adminSurface: '/admin/settings',
       adminApi: '/api/settings/admin',
       sourceConsoleSurface: '/source-ops',
+      llmOperationsSurface: '/llm-ops',
       localAdminRequired: true,
     },
     notes: [
@@ -3033,6 +3042,117 @@ function buildRuntimeControlContract(snapshot = null) {
   };
 }
 
+
+function buildLlmOperationsContract(snapshot = null) {
+  const activeSnapshot = snapshot || currentData || {};
+  const operatorSettings = loadOperatorSettings();
+  const runtimeConfig = buildRuntimeConfigContract();
+  const llmState = buildOperatorLlmStateContract(activeSnapshot || {}, { provider: config.llm.provider, model: llmProvider?.model || null });
+  const runtimeControl = buildRuntimeControlContract(activeSnapshot || {});
+  const defaultMode = operatorSettings.preferences.llm.newsModeDefault || 'auto';
+  const providerWarnings = (runtimeConfig.validation?.warnings || []).filter(item => String(item?.key || '').startsWith('llm.'));
+  const providerIssues = (runtimeConfig.validation?.issues || []).filter(item => String(item?.key || '').startsWith('llm.'));
+  const newsDebug = activeSnapshot.newsLlmDebug || null;
+  const recentFailures = [];
+  const pushFailure = (surface, reason, detail = null, severity = 'warn') => {
+    if (!reason) return;
+    recentFailures.push({ surface, reason, detail: detail || null, severity });
+  };
+
+  pushFailure('news-clustering', newsDebug?.fallbackReason || null, newsDebug?.review?.topReasons?.[0]?.reason || null, newsDebug?.fallbackReason ? 'warn' : 'info');
+  pushFailure('analysis', activeSnapshot.agentAnalysisMeta?.error || null, activeSnapshot.agentAnalysisMeta?.refinementCompletion || null, activeSnapshot.agentAnalysisMeta?.error ? 'warn' : 'info');
+  if ((activeSnapshot.ideasSource || null) === 'llm-failed') {
+    pushFailure('ideas', runtimeControl.jobs?.ideas?.error || runtimeControl.jobs?.ideas?.lastOutcome || 'llm-failed', runtimeControl.jobs?.ideas?.lastOutcome || null, 'warn');
+  }
+  if (runtimeControl.jobs?.analysis?.error) {
+    pushFailure('analysis-job', runtimeControl.jobs.analysis.error, runtimeControl.jobs.analysis.lastOutcome || null, 'warn');
+  }
+  if (runtimeControl.sweep?.lastFailureReason) {
+    pushFailure('runtime-phase', runtimeControl.sweep.lastFailureReason, runtimeControl.sweep.lastFailurePhase || null, 'warn');
+  }
+
+  return {
+    version: 'llm-operations-v1',
+    generatedAt: new Date().toISOString(),
+    surface: '/llm-ops',
+    provider: {
+      configured: Boolean(config.llm.provider),
+      available: Boolean(llmProvider?.isConfigured),
+      name: config.llm.provider || null,
+      activeModel: llmProvider?.model || config.llm.model || null,
+      baseUrl: config.llm.baseUrl || null,
+      apiKeyConfigured: Boolean(config.llm.apiKey),
+      health: providerIssues.length
+        ? 'misconfigured'
+        : !config.llm.provider
+          ? 'disabled'
+          : llmProvider?.isConfigured
+            ? 'ready'
+            : 'degraded',
+      warnings: providerWarnings,
+      issues: providerIssues,
+    },
+    runtime: llmState,
+    modes: {
+      available: ['auto', 'off', 'force'],
+      defaultNewsMode: defaultMode,
+      forcedHeuristic: defaultMode === 'off',
+      forcedLlm: defaultMode === 'force',
+      explanation: defaultMode === 'off'
+        ? 'Operator default currently forces heuristic clustering.'
+        : defaultMode === 'force'
+          ? 'Operator default currently forces the LLM clustering path before fallback.'
+          : 'Operator default uses automatic clustering mode.',
+    },
+    fallbackChains: [
+      {
+        surface: 'news-clustering',
+        entryMode: newsDebug?.requestedMode || defaultMode,
+        providerConfigured: Boolean(newsDebug?.providerConfigured ?? config.llm.provider),
+        activeModel: llmProvider?.model || config.llm.model || null,
+        fallbackTarget: 'heuristic clustering',
+        fallbackReason: newsDebug?.fallbackReason || null,
+        heuristicFallbackCount: newsDebug?.heuristicFallbackCount || 0,
+        repairAttempts: newsDebug?.retryCount || 0,
+        llmSuccessCount: newsDebug?.llmSuccessCount || 0,
+        llmErrorCount: newsDebug?.llmErrorCount || 0,
+      },
+      {
+        surface: 'agent-analysis',
+        entryMode: 'deterministic-publish-then-refine',
+        providerConfigured: Boolean(config.llm.provider),
+        activeModel: llmProvider?.model || config.llm.model || null,
+        fallbackTarget: 'published deterministic analysis',
+        fallbackReason: activeSnapshot.agentAnalysisMeta?.error || null,
+        refinementState: activeSnapshot.agentAnalysisMeta?.refinementState || null,
+        refinementCompletion: activeSnapshot.agentAnalysisMeta?.refinementCompletion || null,
+      },
+      {
+        surface: 'ideas',
+        entryMode: 'static-until-llm-runs',
+        providerConfigured: Boolean(config.llm.provider),
+        activeModel: llmProvider?.model || config.llm.model || null,
+        fallbackTarget: 'static ideas',
+        fallbackReason: (activeSnapshot.ideasSource || null) === 'llm-failed' ? (runtimeControl.jobs?.ideas?.error || runtimeControl.jobs?.ideas?.lastOutcome || 'llm-failed') : null,
+        ideasSource: activeSnapshot.ideasSource || null,
+        lastOutcome: runtimeControl.jobs?.ideas?.lastOutcome || null,
+      },
+    ],
+    recentFailures,
+    navigation: {
+      operatorSurface: '/settings',
+      diagnosticsSurface: '/diagnostics',
+      adminSurface: '/admin/settings',
+      sourceConsoleSurface: '/source-ops',
+      api: '/api/llm/operations',
+    },
+    notes: [
+      'This surface centralizes provider posture, active model, mode forcing, fallback chains, and recent LLM-related failure reasons.',
+      'Provider health is configuration-derived here; it does not yet perform an active remote provider ping.',
+    ],
+  };
+}
+
 function buildAdminSettingsContract(snapshot = null) {
   const operator = buildOperatorSettingsContract(snapshot);
   const operatorSettings = loadOperatorSettings();
@@ -3107,6 +3227,12 @@ app.get('/api/settings/admin', requireDebugAccess, async (req, res) => {
   const snapshot = await ensureCurrentData();
   if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
   res.json(buildAdminSettingsContract(snapshot));
+});
+
+app.get('/api/llm/operations', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  res.json(buildLlmOperationsContract(snapshot));
 });
 
 app.get('/api/settings/export', requireDebugAccess, (req, res) => {

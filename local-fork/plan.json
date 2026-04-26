@@ -745,12 +745,12 @@
       {
         "id": "epic-31",
         "title": "LLM and agent operations console",
-        "status": "pending",
+        "status": "in_progress",
         "efforts": [
           {
             "id": "effort-31.1",
             "title": "Create an LLM operations page that exposes provider health, active model, fallback chain, forced heuristic or forced LLM modes, and recent failure reasons",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-31.2",
@@ -912,8 +912,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 88,
-    "activeCycleId": "2026-04-25-cycle-088",
-    "lastCompletedCycleId": "2026-04-25-cycle-088"
+    "sequence": 103,
+    "activeCycleId": null,
+    "lastCompletedCycleId": "2026-04-26-cycle-103"
   }
 }
