@@ -42,6 +42,8 @@ const context = {
       agentAnalysis: { detailLevel: 'standard' },
     },
   }),
+  buildNewsClusterSummary: snapshot => ({ sourceReasoning: snapshot?.newsSourceReasoning || null }),
+  summarizeClusterRepairArtifacts: artifacts => ({ totalArtifacts: Array.isArray(artifacts) ? artifacts.length : 0, topReasons: [], topRegions: [], items: Array.isArray(artifacts) ? artifacts : [] }),
   buildOperatorSourceOps: snapshot => ({
     history: { version: 'source-health-history-v1', windows: [] },
     inventory: {
@@ -185,17 +187,49 @@ test('llm operations contract exposes provider health, mode forcing, fallback ch
     newsLlmDebug: {
       requestedMode: 'force',
       providerConfigured: true,
+      attempted: true,
+      used: false,
       fallbackReason: 'all-candidate-sets-fell-back',
       heuristicFallbackCount: 3,
       retryCount: 1,
       llmSuccessCount: 2,
       llmErrorCount: 1,
-      review: { topReasons: [{ reason: 'no-json-match', count: 2 }] },
+      repairArtifacts: [{
+        region: 'Iran',
+        reason: 'shape-mismatch',
+        stage: 'repair-failed',
+        promptFingerprint: 'prompt-fp',
+        repairPromptFingerprint: 'repair-fp',
+        tuningFingerprint: 'tuning-fp',
+        promptPreview: 'user prompt',
+        repairPromptPreview: 'repair user',
+      }],
+      review: { topReasons: [{ reason: 'no-json-match', count: 2 }], failedRegionCount: 2, reviewItems: [{ region: 'Iran', reason: 'no-json-match', itemCount: 3 }] },
+    },
+    agentAnalysis: {
+      sourceReasoning: {
+        totalSources: 30,
+        anchorCount: 4,
+        corroboratorCount: 8,
+        anomalyDetectorCount: 2,
+        contextCount: 10,
+        exploratoryCount: 6,
+        guidance: { cautionRoles: ['exploratory'], groundingPriority: ['anchor', 'corroborator'] },
+      },
     },
     agentAnalysisMeta: {
+      source: 'deterministic',
       error: 'parse-failed',
       refinementState: 'failed',
       refinementCompletion: 'fallback-parse-failed',
+    },
+    newsSourceReasoning: {
+      totalSources: 30,
+      anchorCount: 4,
+      corroboratorCount: 8,
+      anomalyDetectorCount: 2,
+      exploratoryCount: 6,
+      guidance: { cautionRoles: ['exploratory'] },
     },
     ideasSource: 'llm-failed',
   });
@@ -207,6 +241,10 @@ test('llm operations contract exposes provider health, mode forcing, fallback ch
   assert.equal(Array.isArray(contract.fallbackChains), true);
   assert.equal(contract.fallbackChains[0].surface, 'news-clustering');
   assert.equal(contract.fallbackChains[0].fallbackReason, 'all-candidate-sets-fell-back');
+  assert.equal(contract.clusteringDebug.promptDebug.promptFingerprint, 'prompt-fp');
+  assert.equal(contract.clusteringDebug.parseFailureArtifacts.totalArtifacts, 1);
+  assert.equal(contract.reasoningValidation.analysis.reasoningSurfacePresent, true);
+  assert.deepEqual(contract.reasoningValidation.analysis.sourceReasoning.cautionRoles, ['exploratory']);
   assert.equal(contract.navigation.api, '/api/llm/operations');
   assert.equal(contract.recentFailures.some(item => item.surface === 'news-clustering'), true);
   assert.equal(contract.recentFailures.some(item => item.surface === 'analysis'), true);

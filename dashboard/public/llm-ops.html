@@ -45,6 +45,14 @@ function esc(value){return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&
 function row(key, value){return `<div class="row"><div class="key">${esc(key)}</div><div class="val">${value}</div></div>`;}
 function renderCard(title, subtitle, body){return `<section class="card"><div class="mini">${esc(subtitle)}</div><h2>${esc(title)}</h2>${body}</section>`;}
 function renderFailure(item){return `<div class="item"><strong>${esc(item.surface || 'surface')}</strong><div>${esc(item.reason || 'unknown')}</div>${item.detail ? `<div class="mini">${esc(item.detail)}</div>` : ''}</div>`;}
+function renderReasoningSummary(reasoning){
+  if(!reasoning) return '<div class="item">No reasoning summary available.</div>';
+  return `<div class="list">
+    <div class="item"><strong>Source mix</strong><div>${esc(`total ${reasoning.totalSources || 0}, anchors ${reasoning.anchorCount || 0}, corroborators ${reasoning.corroboratorCount || 0}, anomaly detectors ${reasoning.anomalyDetectorCount || 0}, exploratory ${reasoning.exploratoryCount || 0}`)}</div></div>
+    <div class="item"><strong>Caution roles</strong><div>${esc((reasoning.cautionRoles || []).join(', ') || 'none')}</div></div>
+    ${Array.isArray(reasoning.groundingPriority) ? `<div class="item"><strong>Grounding priority</strong><div>${esc(reasoning.groundingPriority.join(' → ') || 'n/a')}</div></div>` : ''}
+  </div>`;
+}
 async function boot(){
   const status = document.getElementById('status');
   const grid = document.getElementById('grid');
@@ -77,6 +85,21 @@ async function boot(){
       ].join('')),
       renderCard('Fallback chains', 'Current surfaces and fallback targets', `<div class="list">${(data.fallbackChains || []).map(item => `<div class="item"><strong>${esc(item.surface)}</strong><div class="mini">entry ${esc(item.entryMode || 'n/a')} → fallback ${esc(item.fallbackTarget || 'n/a')}</div><div>${esc(item.fallbackReason || 'no current fallback reason')}</div></div>`).join('')}</div>`),
       renderCard('Recent failure reasons', 'Latest LLM-related failures or degradations', (data.recentFailures || []).length ? `<div class="list">${data.recentFailures.map(renderFailure).join('')}</div>` : '<div class="item">No recent LLM failures captured.</div>'),
+      renderCard('Clustering prompt debug', 'Prompt-debug and parse-failure surface', [
+        row('Review endpoint', `<a href="${esc(data.clusteringDebug?.reviewEndpoint || '/api/brief/news/review')}" target="_blank" rel="noreferrer">${esc(data.clusteringDebug?.reviewEndpoint || '/api/brief/news/review')}</a>`),
+        row('Artifact endpoint', `<a href="${esc(data.clusteringDebug?.artifactEndpoint || '/api/brief/news/review/artifacts')}" target="_blank" rel="noreferrer">${esc(data.clusteringDebug?.artifactEndpoint || '/api/brief/news/review/artifacts')}</a>`),
+        row('Fallback reason', esc(data.clusteringDebug?.fallbackReason || 'none')),
+        row('Failed regions', esc(String(data.clusteringDebug?.review?.failedRegionCount ?? 0))),
+        row('Artifact count', esc(String(data.clusteringDebug?.parseFailureArtifacts?.totalArtifacts ?? 0))),
+        row('Prompt fingerprint', esc(data.clusteringDebug?.promptDebug?.promptFingerprint || 'n/a')),
+        row('Repair prompt fingerprint', esc(data.clusteringDebug?.promptDebug?.repairPromptFingerprint || 'n/a')),
+        row('Prompt preview', esc(data.clusteringDebug?.promptDebug?.promptPreview || 'n/a')),
+        row('Repair preview', esc(data.clusteringDebug?.promptDebug?.repairPromptPreview || 'n/a')),
+      ].join('')),
+      renderCard('Reasoning surface validation', 'Published analysis and news reasoning visibility', `<div class="list">
+        <div class="item"><strong>Analysis validation</strong><div class="mini"><a href="${esc(data.reasoningValidation?.analysis?.endpoint || '/api/analysis/validation-summary')}" target="_blank" rel="noreferrer">${esc(data.reasoningValidation?.analysis?.endpoint || '/api/analysis/validation-summary')}</a> · <a href="${esc(data.reasoningValidation?.analysis?.reviewEndpoint || '/api/analysis/review')}" target="_blank" rel="noreferrer">${esc(data.reasoningValidation?.analysis?.reviewEndpoint || '/api/analysis/review')}</a></div><div>${esc(data.reasoningValidation?.analysis?.reasoningSurfacePresent ? 'Reasoning surface present' : 'Reasoning surface missing')}</div>${renderReasoningSummary(data.reasoningValidation?.analysis?.sourceReasoning)}</div>
+        <div class="item"><strong>News reasoning</strong><div class="mini"><a href="${esc(data.reasoningValidation?.news?.endpoint || '/api/brief/news')}" target="_blank" rel="noreferrer">${esc(data.reasoningValidation?.news?.endpoint || '/api/brief/news')}</a></div><div>${esc(data.reasoningValidation?.news?.reasoningSurfacePresent ? 'Reasoning surface present' : 'Reasoning surface missing')}</div>${renderReasoningSummary(data.reasoningValidation?.news?.sourceReasoning)}</div>
+      </div>`),
       renderCard('Notes', 'Boundaries', `<pre>${esc((data.notes || []).join('\n- ')).replace(/^/, '- ')}</pre>`),
     ].join('');
   } catch (err) {

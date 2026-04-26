@@ -3053,6 +3053,11 @@ function buildLlmOperationsContract(snapshot = null) {
   const providerWarnings = (runtimeConfig.validation?.warnings || []).filter(item => String(item?.key || '').startsWith('llm.'));
   const providerIssues = (runtimeConfig.validation?.issues || []).filter(item => String(item?.key || '').startsWith('llm.'));
   const newsDebug = activeSnapshot.newsLlmDebug || null;
+  const newsSummary = buildNewsClusterSummary(activeSnapshot) || {};
+  const analysis = activeSnapshot.agentAnalysis || buildAgentAnalysis(activeSnapshot);
+  const analysisMeta = activeSnapshot.agentAnalysisMeta || buildAgentAnalysisMeta({ error: llmProvider?.isConfigured ? null : 'llm-unavailable' });
+  const clusterArtifacts = summarizeClusterRepairArtifacts(Array.isArray(newsDebug?.repairArtifacts) && newsDebug.repairArtifacts.length ? newsDebug.repairArtifacts : undefined);
+  const latestArtifact = clusterArtifacts.items?.[0] || null;
   const recentFailures = [];
   const pushFailure = (surface, reason, detail = null, severity = 'warn') => {
     if (!reason) return;
@@ -3060,7 +3065,7 @@ function buildLlmOperationsContract(snapshot = null) {
   };
 
   pushFailure('news-clustering', newsDebug?.fallbackReason || null, newsDebug?.review?.topReasons?.[0]?.reason || null, newsDebug?.fallbackReason ? 'warn' : 'info');
-  pushFailure('analysis', activeSnapshot.agentAnalysisMeta?.error || null, activeSnapshot.agentAnalysisMeta?.refinementCompletion || null, activeSnapshot.agentAnalysisMeta?.error ? 'warn' : 'info');
+  pushFailure('analysis', analysisMeta?.error || null, analysisMeta?.refinementCompletion || null, analysisMeta?.error ? 'warn' : 'info');
   if ((activeSnapshot.ideasSource || null) === 'llm-failed') {
     pushFailure('ideas', runtimeControl.jobs?.ideas?.error || runtimeControl.jobs?.ideas?.lastOutcome || 'llm-failed', runtimeControl.jobs?.ideas?.lastOutcome || null, 'warn');
   }
@@ -3123,9 +3128,9 @@ function buildLlmOperationsContract(snapshot = null) {
         providerConfigured: Boolean(config.llm.provider),
         activeModel: llmProvider?.model || config.llm.model || null,
         fallbackTarget: 'published deterministic analysis',
-        fallbackReason: activeSnapshot.agentAnalysisMeta?.error || null,
-        refinementState: activeSnapshot.agentAnalysisMeta?.refinementState || null,
-        refinementCompletion: activeSnapshot.agentAnalysisMeta?.refinementCompletion || null,
+        fallbackReason: analysisMeta?.error || null,
+        refinementState: analysisMeta?.refinementState || null,
+        refinementCompletion: analysisMeta?.refinementCompletion || null,
       },
       {
         surface: 'ideas',
@@ -3138,6 +3143,79 @@ function buildLlmOperationsContract(snapshot = null) {
         lastOutcome: runtimeControl.jobs?.ideas?.lastOutcome || null,
       },
     ],
+    clusteringDebug: {
+      surface: 'news-clustering',
+      reviewEndpoint: '/api/brief/news/review',
+      artifactEndpoint: '/api/brief/news/review/artifacts',
+      requestedMode: newsDebug?.requestedMode || defaultMode,
+      attempted: Boolean(newsDebug?.attempted),
+      used: Boolean(newsDebug?.used),
+      fallbackReason: newsDebug?.fallbackReason || null,
+      retryCount: newsDebug?.retryCount || 0,
+      repairAttemptCount: newsDebug?.repairAttemptCount || 0,
+      repairSuccessCount: newsDebug?.repairSuccessCount || 0,
+      review: newsDebug?.review ? {
+        failedRegionCount: newsDebug.review.failedRegionCount || 0,
+        topReasons: Array.isArray(newsDebug.review.topReasons) ? newsDebug.review.topReasons.slice(0, 4) : [],
+        reviewItems: Array.isArray(newsDebug.review.reviewItems) ? newsDebug.review.reviewItems.slice(0, 4).map(item => ({
+          region: item.region || null,
+          reason: item.reason || null,
+          itemCount: item.itemCount || 0,
+        })) : [],
+      } : null,
+      promptDebug: latestArtifact ? {
+        latestRegion: latestArtifact.region || null,
+        latestReason: latestArtifact.reason || null,
+        latestStage: latestArtifact.stage || null,
+        promptFingerprint: latestArtifact.promptFingerprint || null,
+        repairPromptFingerprint: latestArtifact.repairPromptFingerprint || null,
+        tuningFingerprint: latestArtifact.tuningFingerprint || null,
+        promptPreview: latestArtifact.promptPreview || null,
+        repairPromptPreview: latestArtifact.repairPromptPreview || null,
+      } : null,
+      parseFailureArtifacts: {
+        totalArtifacts: clusterArtifacts.totalArtifacts || 0,
+        topReasons: Array.isArray(clusterArtifacts.topReasons) ? clusterArtifacts.topReasons.slice(0, 4) : [],
+        topRegions: Array.isArray(clusterArtifacts.topRegions) ? clusterArtifacts.topRegions.slice(0, 4) : [],
+      },
+    },
+    reasoningValidation: {
+      analysis: {
+        endpoint: '/api/analysis/validation-summary',
+        reviewEndpoint: '/api/analysis/review',
+        available: true,
+        reasoningSurfacePresent: Boolean(analysis?.sourceReasoning),
+        sourceReasoning: analysis?.sourceReasoning ? {
+          totalSources: Number(analysis.sourceReasoning.totalSources) || 0,
+          anchorCount: Number(analysis.sourceReasoning.anchorCount) || 0,
+          corroboratorCount: Number(analysis.sourceReasoning.corroboratorCount) || 0,
+          anomalyDetectorCount: Number(analysis.sourceReasoning.anomalyDetectorCount) || 0,
+          contextCount: Number(analysis.sourceReasoning.contextCount) || 0,
+          exploratoryCount: Number(analysis.sourceReasoning.exploratoryCount) || 0,
+          cautionRoles: Array.isArray(analysis.sourceReasoning.guidance?.cautionRoles) ? analysis.sourceReasoning.guidance.cautionRoles.slice(0, 3) : [],
+          groundingPriority: Array.isArray(analysis.sourceReasoning.guidance?.groundingPriority) ? analysis.sourceReasoning.guidance.groundingPriority.slice(0, 5) : [],
+        } : null,
+        refinement: {
+          source: analysisMeta.source || 'deterministic',
+          state: analysisMeta.refinementState || 'not-requested',
+          completion: analysisMeta.refinementCompletion || null,
+          error: analysisMeta.error || null,
+          model: analysisMeta.model || llmProvider?.model || null,
+        },
+      },
+      news: {
+        endpoint: '/api/brief/news',
+        reasoningSurfacePresent: Boolean(newsSummary?.sourceReasoning),
+        sourceReasoning: newsSummary?.sourceReasoning ? {
+          totalSources: Number(newsSummary.sourceReasoning.totalSources) || 0,
+          anchorCount: Number(newsSummary.sourceReasoning.anchorCount) || 0,
+          corroboratorCount: Number(newsSummary.sourceReasoning.corroboratorCount) || 0,
+          anomalyDetectorCount: Number(newsSummary.sourceReasoning.anomalyDetectorCount) || 0,
+          exploratoryCount: Number(newsSummary.sourceReasoning.exploratoryCount) || 0,
+          cautionRoles: Array.isArray(newsSummary.sourceReasoning.guidance?.cautionRoles) ? newsSummary.sourceReasoning.guidance.cautionRoles.slice(0, 3) : [],
+        } : null,
+      },
+    },
     recentFailures,
     navigation: {
       operatorSurface: '/settings',
@@ -3148,6 +3226,7 @@ function buildLlmOperationsContract(snapshot = null) {
     },
     notes: [
       'This surface centralizes provider posture, active model, mode forcing, fallback chains, and recent LLM-related failure reasons.',
+      'Prompt-debug previews, parse-failure artifact summaries, and reasoning-surface validation indicators are exposed here so operators do not need direct file inspection.',
       'Provider health is configuration-derived here; it does not yet perform an active remote provider ping.',
     ],
   };
