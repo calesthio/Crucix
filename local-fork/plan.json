@@ -732,6 +732,11 @@
             "id": "effort-29.7",
             "title": "Add rolling per-sweep noise-suppression telemetry snapshots and a lightweight diagnostics trend view so operators can distinguish one-off aged-out or prune activity from sustained state-growth pressure over time",
             "status": "completed"
+          },
+          {
+            "id": "effort-29.8",
+            "title": "Add a sustained-pressure alert or queue threshold for noise-suppression telemetry so repeated retained-entry growth or consecutive prune-active sweeps can escalate from diagnostics-only visibility into an operator action cue",
+            "status": "pending"
           }
         ]
       },
@@ -853,6 +858,11 @@
             "id": "effort-32.8",
             "title": "Surface source-registry runtime-bucket metadata and registry-vs-observed attribution drift in the source-ops console so operators can review when a source declared single-publisher starts behaving like an aggregator or when new aggregator aliases should be added to the contract",
             "status": "completed"
+          },
+          {
+            "id": "effort-32.9",
+            "title": "Persist runtime-bucket drift history and delta trends across sweeps so operators can distinguish one-off alias anomalies from sustained contract drift before editing source-registry aliases or promoting a source to expected multi-publisher",
+            "status": "pending"
           }
         ]
       },
