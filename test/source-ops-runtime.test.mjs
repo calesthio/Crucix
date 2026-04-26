@@ -261,6 +261,18 @@ test('source ops surface attaches live source-health state when snapshot health 
   assert.ok(gdeltBucket);
   assert.match(gdeltBucket.reason, /source registry|aggregates many upstream publishers/i);
   assert.ok(surface.performance.workflow.attributionDiagnostics.ambiguousMappings.some(item => item.sourceName === 'Operator Feed'));
+  assert.equal(surface.performance.workflow.attributionDiagnostics.runtimeBucketDrift.version, 'source-runtime-bucket-drift-v1');
+  assert.equal(surface.performance.workflow.attributionDiagnostics.summary.runtimeBucketDriftCount, 2);
+  assert.equal(surface.performance.workflow.attributionDiagnostics.summary.singlePublisherMismatchCount, 1);
+  assert.equal(surface.performance.workflow.attributionDiagnostics.summary.missingAggregatorAliasCount, 1);
+  const telegramDrift = surface.performance.workflow.attributionDiagnostics.runtimeBucketDrift.items.find(item => item.runtimeSource === 'Telegram');
+  assert.ok(telegramDrift);
+  assert.equal(telegramDrift.driftKind, 'single-publisher-mismatch');
+  assert.match(telegramDrift.summary, /declared single-publisher/i);
+  const gdeltDrift = surface.performance.workflow.attributionDiagnostics.runtimeBucketDrift.items.find(item => item.runtimeSource === 'GDELT');
+  assert.ok(gdeltDrift);
+  assert.equal(gdeltDrift.driftKind, 'missing-aggregator-alias');
+  assert.ok(gdeltDrift.unexpectedObservedAliases.some(item => item.name === 'Operator Feed'));
   const iranRisk = surface.performance.workflow.attributionDiagnostics.doubleCountRisks.find(item => item.clusterId === 'iran::cluster-a');
   assert.ok(iranRisk);
   assert.ok(iranRisk.duplicateRuntimeSources.includes('Telegram'));

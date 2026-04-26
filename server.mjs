@@ -3656,14 +3656,24 @@ function buildOperatorSettingsContract(snapshot = null) {
   const lifecycleStates = Object.entries(sourceOps?.inventory?.byLifecycle || {})
     .map(([lifecycle, count]) => ({ lifecycle, count }))
     .sort((a, b) => b.count - a.count || a.lifecycle.localeCompare(b.lifecycle));
+  const driftBySource = new Map(
+    Array.isArray(sourceOps?.performance?.workflow?.attributionDiagnostics?.runtimeBucketDrift?.items)
+      ? sourceOps.performance.workflow.attributionDiagnostics.runtimeBucketDrift.items.map(item => [item.runtimeSource, item])
+      : []
+  );
   const sourceItems = Array.isArray(sourceOps?.inventory?.items) ? sourceOps.inventory.items.map(item => ({
     id: item.id,
     name: item.name,
     category: item.category,
     lifecycle: item.lifecycle,
     liveState: item.liveState || null,
-    fusionRole: item.fusionRole || null,
-    trustProfile: item.trustProfile || null,
+    liveAgeMinutes: item.liveAgeMinutes ?? null,
+    liveFailureClass: item.liveFailureClass || null,
+    freshnessTargetMinutes: item.freshnessTargetMinutes ?? null,
+    fusionRole: item.operatorRole || null,
+    trustProfile: item.trustClass || null,
+    runtimeBucket: item.runtimeBucket || null,
+    runtimeBucketDrift: driftBySource.get(item.name) || null,
   })) : [];
   const roleGroups = Array.isArray(sourceOps?.fusionRoles?.roles)
     ? sourceOps.fusionRoles.roles.map(item => ({
@@ -3817,6 +3827,7 @@ function buildOperatorSettingsContract(snapshot = null) {
           attributionCoverage: sourceOps?.performance?.attributionCoverage || null,
         },
         attributionDiagnostics: sourceOps?.performance?.workflow?.attributionDiagnostics || null,
+        runtimeBucketDrift: sourceOps?.performance?.workflow?.attributionDiagnostics?.runtimeBucketDrift || null,
         attributionHeadlines: Array.isArray(sourceOps?.performance?.workflow?.attributionHeadlines) ? sourceOps.performance.workflow.attributionHeadlines : [],
         confidenceCaveats: Array.isArray(sourceOps?.performance?.workflow?.confidenceCaveats) ? sourceOps.performance.workflow.confidenceCaveats : [],
         validationViews: sourceOps?.performance?.workflow?.validationViews || null,

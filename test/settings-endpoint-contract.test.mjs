@@ -196,6 +196,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.match(sourceOpsPage, /Attribution explanations/i);
     assert.match(sourceOpsPage, /Confidence caveats/i);
     assert.match(sourceOpsPage, /Attribution uncertainty diagnostics/i);
+    assert.match(sourceOpsPage, /Runtime bucket contract and drift/i);
+    assert.match(sourceOpsPage, /Observed drift/i);
     assert.match(sourceOpsPage, /Validation views/i);
     assert.match(sourceOpsPage, /Failing now/i);
     assert.match(sourceOpsPage, /Quarantine/i);

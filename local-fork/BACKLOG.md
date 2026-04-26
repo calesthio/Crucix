@@ -33,3 +33,4 @@ Recent promotions:
 New items can be added here when they do not yet belong in the active roadmap.
 
 - Add a simple sustained-pressure alert or queue threshold for noise-suppression telemetry so repeated retained-entry growth or consecutive prune-active sweeps can escalate from diagnostics-only visibility into an operator action cue.
+- Persist runtime-bucket drift history and delta trends across sweeps so operators can tell one-off alias anomalies from sustained contract drift before editing source-registry aliases or promoting a source to expected multi-publisher.

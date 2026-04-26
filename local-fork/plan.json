@@ -812,7 +812,7 @@
       {
         "id": "epic-32",
         "title": "Operator review workflow, diagnostics, and reasoning repair",
-        "status": "in_progress",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-32.1",
@@ -852,7 +852,7 @@
           {
             "id": "effort-32.8",
             "title": "Surface source-registry runtime-bucket metadata and registry-vs-observed attribution drift in the source-ops console so operators can review when a source declared single-publisher starts behaving like an aggregator or when new aggregator aliases should be added to the contract",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -997,8 +997,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 121,
+    "sequence": 122,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-26-cycle-121"
+    "lastCompletedCycleId": "2026-04-26-cycle-122"
   }
 }
