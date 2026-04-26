@@ -26,6 +26,7 @@ const ROOT = __dirname;
 const RUNS_DIR = join(ROOT, 'runs');
 const MEMORY_DIR = join(RUNS_DIR, 'memory');
 const REVIEW_ACKS_PATH = join(RUNS_DIR, 'cluster-review-acks.json');
+const REVIEW_WORKFLOW_AUDIT_PATH = join(RUNS_DIR, 'review-workflow-audit.json');
 const AGENT_ANALYSIS_VALIDATION_SCRIPT = join(ROOT, 'scripts/agent-analysis-validation-summary.mjs');
 const OPENSKY_STATE_PATH = join(ROOT, 'runs', 'cache', 'opensky-state.json');
 const OPERATOR_SETTINGS_PATH = process.env.OPERATOR_SETTINGS_PATH || join(ROOT, 'runs', 'operator-settings.json');
@@ -77,7 +78,9 @@ const CLUSTER_PRESSURE_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 const CLUSTER_REPAIR_ARTIFACTS_STATE_KEY = 'cluster-review:repair-artifacts';
 const CLUSTER_REPAIR_ARTIFACT_RETENTION_MS = Math.max(1, Number(config.review?.repairArtifactRetentionDays || 14)) * 24 * 60 * 60 * 1000;
 const CLUSTER_REPAIR_ARTIFACT_MAX_ENTRIES = Math.max(1, Number(config.review?.repairArtifactMaxEntries || 50));
+const REVIEW_WORKFLOW_AUDIT_MAX_ENTRIES = Math.max(20, Number(config.review?.workflowAuditMaxEntries || 200));
 const reviewAcks = loadReviewAcks();
+const reviewWorkflowAudit = loadReviewWorkflowAudit();
 const sweepWatchdogTelemetry = {
   recoveryCount: 0,
   lastRecoveryAt: null,
@@ -179,6 +182,10 @@ function loadJsonFile(path, fallback) {
 function saveJsonFile(path, data) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
+}
+
+function normalizeToken(value = '') {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
 function operatorSettingsDefaults() {
@@ -487,6 +494,135 @@ function clearReviewAck(region = '', reason = '') {
   return existed;
 }
 
+function loadReviewWorkflowAudit() {
+  return Array.isArray(loadJsonFile(REVIEW_WORKFLOW_AUDIT_PATH, [])) ? loadJsonFile(REVIEW_WORKFLOW_AUDIT_PATH, []) : [];
+}
+
+function saveReviewWorkflowAudit() {
+  saveJsonFile(REVIEW_WORKFLOW_AUDIT_PATH, reviewWorkflowAudit.slice(-REVIEW_WORKFLOW_AUDIT_MAX_ENTRIES));
+}
+
+function recordReviewWorkflowAudit(entry = {}) {
+  reviewWorkflowAudit.push({
+    id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    recordedAt: new Date().toISOString(),
+    ...entry,
+  });
+  while (reviewWorkflowAudit.length > REVIEW_WORKFLOW_AUDIT_MAX_ENTRIES) reviewWorkflowAudit.shift();
+  saveReviewWorkflowAudit();
+  return reviewWorkflowAudit[reviewWorkflowAudit.length - 1];
+}
+
+function reviewWorkflowAuditSnapshot(limit = 25) {
+  return reviewWorkflowAudit.slice(-Math.max(1, limit)).reverse();
+}
+
+function resolveSourceInventory(snapshot = currentData || null) {
+  const sourceOps = snapshot?.sourceOps || buildOperatorSourceOps(snapshot || null);
+  const items = Array.isArray(sourceOps?.inventory?.items) ? sourceOps.inventory.items : [];
+  const byToken = new Map();
+  for (const item of items) {
+    for (const candidate of [item.id, item.name]) {
+      const token = normalizeToken(candidate);
+      if (token && !byToken.has(token)) byToken.set(token, item);
+    }
+  }
+  return { sourceOps, items, byToken };
+}
+
+function findSourceByAttribution(sourceName = '', snapshot = currentData || null) {
+  const token = normalizeToken(sourceName);
+  if (!token) return null;
+  const { byToken } = resolveSourceInventory(snapshot);
+  return byToken.get(token) || null;
+}
+
+function buildReviewWorkflowActions(item = {}, snapshot = currentData || null) {
+  const actions = [];
+  const topSource = item?.sourceProvenance?.topSources?.[0] || null;
+  const sourceItem = findSourceByAttribution(topSource?.runtimeSource || topSource?.source || '', snapshot);
+  if (sourceItem?.id) {
+    actions.push({
+      id: 'quarantine-source',
+      label: 'Quarantine source',
+      method: 'POST',
+      href: '/api/review-workflow/action',
+      detail: `Quarantine ${sourceItem.name} from this review workflow surface.`,
+      sourceId: sourceItem.id,
+      requiresLocalAdmin: true,
+    });
+    actions.push({
+      id: 'suppress-source',
+      label: 'Suppress source',
+      method: 'POST',
+      href: '/api/review-workflow/action',
+      detail: `Suppress ${sourceItem.name} from this review workflow surface.`,
+      sourceId: sourceItem.id,
+      requiresLocalAdmin: true,
+    });
+  }
+  return { actions, sourceItem };
+}
+
+function buildReviewWorkflowContract(snapshot = currentData || null, review = null) {
+  const activeSnapshot = snapshot || currentData || null;
+  const queue = review?.queue || (activeSnapshot?.reviewQueue || null);
+  const sourceOps = activeSnapshot?.sourceOps || buildOperatorSourceOps(activeSnapshot);
+  const shadowItems = Array.isArray(sourceOps?.shadow?.items) ? sourceOps.shadow.items : [];
+  const promoteCandidates = shadowItems
+    .filter(item => item?.promotionReadiness === 'shadow-ready' || (Array.isArray(item?.eligibleNextStates) && item.eligibleNextStates.includes('approved')))
+    .slice(0, 5)
+    .map(item => ({
+      candidateId: item.id,
+      name: item.name,
+      category: item.category,
+      promotionReadiness: item.promotionReadiness || null,
+      eligibleNextStates: Array.isArray(item.eligibleNextStates) ? item.eligibleNextStates : [],
+      action: {
+        id: 'promote-shadow',
+        label: 'Promote to approved',
+        method: 'POST',
+        href: '/api/review-workflow/action',
+        candidateId: item.id,
+        requiresLocalAdmin: true,
+      },
+    }));
+  const topSources = Array.isArray(sourceOps?.performance?.topImpactSources) ? sourceOps.performance.topImpactSources : [];
+  const lowConfidenceSources = topSources
+    .filter(item => item?.trustOutcome === 'degraded' || (item?.contribution?.suspectSignals || 0) > (item?.contribution?.corroboratedSignals || 0))
+    .slice(0, 5)
+    .map(item => {
+      const sourceItem = findSourceByAttribution(item.name, activeSnapshot);
+      return {
+        name: item.name,
+        sourceId: sourceItem?.id || null,
+        attentionScore: item.attentionScore || 0,
+        trustOutcome: item.trustOutcome || null,
+        contribution: item.contribution || null,
+        actions: sourceItem?.id ? [
+          { id: 'quarantine-source', label: 'Quarantine', method: 'POST', href: '/api/review-workflow/action', sourceId: sourceItem.id, requiresLocalAdmin: true },
+          { id: 'suppress-source', label: 'Suppress', method: 'POST', href: '/api/review-workflow/action', sourceId: sourceItem.id, requiresLocalAdmin: true },
+        ] : [],
+      };
+    });
+  return {
+    version: 'review-workflow-v1',
+    endpoint: '/api/review-workflow/action',
+    auditEndpoint: '/api/review-workflow/audit',
+    requiresLocalAdmin: true,
+    supportedActions: ['ack', 'snooze', 'suppress-source', 'quarantine-source', 'promote-shadow'],
+    queueSummary: queue ? {
+      state: queue.state || null,
+      totalItems: queue.totalItems || 0,
+      topReasons: queue.topReasons || [],
+      metrics: queue.metrics || null,
+    } : null,
+    lowConfidenceSources,
+    promoteCandidates,
+    auditTrail: reviewWorkflowAuditSnapshot(12),
+  };
+}
+
 function annotateReview(review = {}) {
   pruneReviewAcks();
   const reviewItems = Array.isArray(review.reviewItems) ? review.reviewItems : [];
@@ -772,6 +908,7 @@ function buildOperatorReviewQueue(review = {}, { maxItems = 5, quality = null } 
       const reason = item.reason || 'unknown';
       const artifactRegion = encodeURIComponent(region || '');
       const artifactReason = encodeURIComponent(reason);
+      const workflow = buildReviewWorkflowActions(item);
       return {
         region,
         reason,
@@ -787,6 +924,8 @@ function buildOperatorReviewQueue(review = {}, { maxItems = 5, quality = null } 
         pressureScore: item.pressureScore || 0,
         duplicateScore: item.duplicateScore || 0,
         splitCount: item.splitCount || 0,
+        sourceProvenance: item.sourceProvenance || null,
+        dominantSource: workflow.sourceItem ? { id: workflow.sourceItem.id, name: workflow.sourceItem.name } : null,
         suggestedAction: reason === 'no-json-match'
           ? 'Inspect response shape and retry/repair behavior.'
           : reason === 'shape-mismatch'
@@ -809,6 +948,7 @@ function buildOperatorReviewQueue(review = {}, { maxItems = 5, quality = null } 
             intent: 'snooze',
             detail: 'Dismiss this queue item for 24 hours, then automatically return it if still present.',
           },
+          ...workflow.actions,
           {
             id: 'artifacts',
             label: 'Artifacts',
@@ -3653,11 +3793,13 @@ app.get('/api/data', async (req, res) => {
     : { reviewItems: [], dismissedItems: [], activeCount: 0, dismissedCount: 0, ackSummary: reviewAckStats(), stats: summarizeClusterReviewStats() };
   const llmState = buildOperatorLlmStateContract(snapshot);
   const sourceOps = buildOperatorSourceOps(snapshot);
+  const reviewQueue = buildOperatorReviewQueue(review, { quality: snapshot.newsClusterQuality || null });
   res.json({
     ...snapshot,
     llmState,
     runtimeLlm: llmState.runtimeLlm,
-    reviewQueue: buildOperatorReviewQueue(review, { quality: snapshot.newsClusterQuality || null }),
+    reviewQueue,
+    reviewWorkflow: buildReviewWorkflowContract(snapshot, { queue: reviewQueue, review }),
     sourceInventory: sourceOps.inventory,
     sourceOps,
   });
@@ -3727,6 +3869,75 @@ app.post('/api/source-ops/control', requireDebugAccess, (req, res) => {
   });
 });
 
+app.get('/api/review-workflow/audit', requireDebugAccess, (req, res) => {
+  const limit = Math.max(1, Math.min(Number.parseInt(req.query.limit, 10) || 25, 100));
+  res.json({
+    version: 'review-workflow-audit-v1',
+    total: reviewWorkflowAudit.length,
+    entries: reviewWorkflowAuditSnapshot(limit),
+  });
+});
+
+app.post('/api/review-workflow/action', requireDebugAccess, (req, res) => {
+  const action = String(req.body?.action || '').trim();
+  const note = String(req.body?.note || '').trim();
+  const allowedActions = ['ack', 'snooze', 'suppress-source', 'quarantine-source', 'promote-shadow'];
+  if (!allowedActions.includes(action)) {
+    return res.status(400).json({ ok: false, error: 'unsupported-review-workflow-action', allowedActions });
+  }
+  try {
+    if (action === 'ack' || action === 'snooze') {
+      const region = String(req.body?.region || '').trim();
+      const reason = String(req.body?.reason || '').trim();
+      if (!region || !reason) return res.status(400).json({ ok: false, error: 'region and reason are required' });
+      const hours = Math.max(1, Math.min(Number.parseInt(req.body?.hours, 10) || 24, 24 * 14));
+      const entry = action === 'ack'
+        ? ackReviewItem(region, reason, note, { action: 'ack' })
+        : ackReviewItem(region, reason, note || `Snoozed for ${hours}h`, { action: 'snooze', durationMs: hours * 60 * 60 * 1000 });
+      const audit = recordReviewWorkflowAudit({ action, region, reason, note: note || null, status: 'applied' });
+      return res.json({ ok: true, action, entry: formatReviewAckEntry(entry), summary: reviewAckStats(), audit });
+    }
+
+    if (action === 'suppress-source' || action === 'quarantine-source') {
+      const sourceId = String(req.body?.sourceId || '').trim();
+      if (!sourceId) return res.status(400).json({ ok: false, error: 'sourceId is required' });
+      const current = loadOperatorSettings();
+      const suppressed = new Set(current.preferences.sources.suppressedSourceIds || []);
+      const quarantined = new Set(current.preferences.sources.quarantinedSourceIds || []);
+      if (action === 'suppress-source') suppressed.add(sourceId);
+      if (action === 'quarantine-source') quarantined.add(sourceId);
+      const saved = mergeOperatorSettingsPatch({
+        preferences: {
+          sources: {
+            suppressedSourceIds: Array.from(suppressed).sort((a, b) => a.localeCompare(b)),
+            quarantinedSourceIds: Array.from(quarantined).sort((a, b) => a.localeCompare(b)),
+          },
+        },
+      });
+      const audit = recordReviewWorkflowAudit({ action, sourceId, note: note || null, status: 'applied' });
+      return res.json({ ok: true, action, sourceId, controls: saved.preferences.sources, audit });
+    }
+
+    if (action === 'promote-shadow') {
+      const candidateId = String(req.body?.candidateId || '').trim();
+      if (!candidateId) return res.status(400).json({ ok: false, error: 'candidateId is required' });
+      const audit = recordReviewWorkflowAudit({ action, candidateId, note: note || null, status: 'recorded-human-review' });
+      return res.json({
+        ok: true,
+        action,
+        candidateId,
+        status: 'recorded-human-review',
+        detail: 'Promotion intent recorded in the audit trail. Direct registry mutation remains a separate lifecycle workflow.',
+        audit,
+      });
+    }
+  } catch (error) {
+    const audit = recordReviewWorkflowAudit({ action, note: note || null, status: 'failed', error: error.message || 'workflow-action-failed' });
+    return res.status(500).json({ ok: false, error: error.message || 'workflow-action-failed', audit });
+  }
+  return res.status(400).json({ ok: false, error: 'unsupported-review-workflow-action' });
+});
+
 app.post('/api/settings/import', requireDebugAccess, (req, res) => {
   const payload = req.body?.preferences ? req.body : { preferences: req.body || {} };
   const saved = saveOperatorSettings(payload);
@@ -3775,6 +3986,7 @@ app.get('/api/brief/compact', async (req, res) => {
     agentAnalysis: buildAgentAnalysisSummary(snapshot),
     llmState,
     runtimeLlm: llmState.runtimeLlm,
+    reviewWorkflow: buildReviewWorkflowContract(snapshot),
     sourceInventory: {
       total: sourceOps.inventory.total,
       byLifecycle: sourceOps.inventory.byLifecycle,
@@ -3804,12 +4016,14 @@ app.get('/api/brief/news/review', requireDebugAccess, async (req, res) => {
       });
   if (!baseSummary?.llm) return res.json({ review: null, queue: buildOperatorReviewQueue({ reviewItems: [], dismissedItems: [], activeCount: 0, dismissedCount: 0, ackSummary: reviewAckStats(), stats: summarizeClusterReviewStats() }), llm: null, quality: baseSummary?.quality || null, totalClusters: baseSummary?.totalClusters || 0, ackSummary: reviewAckStats() });
   const review = attachClusterReviewStats(annotateReview(baseSummary.llm.review || { failedRegionCount: 0, topReasons: [], reviewItems: [] }));
+  const queue = buildOperatorReviewQueue(review, { quality: baseSummary.quality || null });
   res.json({
     totalClusters: baseSummary.totalClusters,
     quality: baseSummary.quality || null,
     llm: baseSummary.llm,
     review,
-    queue: buildOperatorReviewQueue(review, { quality: baseSummary.quality || null }),
+    queue,
+    workflow: buildReviewWorkflowContract(snapshot, { queue, review }),
   });
 });
 

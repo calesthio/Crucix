@@ -29,6 +29,15 @@ const context = {
   Array,
   memory: { getSignalState: () => ({ regions: {}, updatedAt: null }) },
   reviewAckStats: () => ({ active: 0, repeatAckCount: 0, recentDismissalCount: 0, nextExpiry: null }),
+  buildReviewWorkflowActions: item => ({
+    actions: item?.sourceProvenance?.topSources?.[0]?.runtimeSource === 'GDELT'
+      ? [
+          { id: 'quarantine-source', label: 'Quarantine source', method: 'POST', href: '/api/review-workflow/action', sourceId: 'gdelt' },
+          { id: 'suppress-source', label: 'Suppress source', method: 'POST', href: '/api/review-workflow/action', sourceId: 'gdelt' },
+        ]
+      : [],
+    sourceItem: item?.sourceProvenance?.topSources?.[0]?.runtimeSource === 'GDELT' ? { id: 'gdelt', name: 'GDELT' } : null,
+  }),
 };
 vm.createContext(context);
 vm.runInContext(`
@@ -61,7 +70,11 @@ test('buildOperatorReviewQueue marks empty-but-elevated queues explicitly', () =
 });
 
 test('buildOperatorReviewQueue returns bounded actionable items with triage prioritization', () => {
-  const queue = buildOperatorReviewQueue(realisticFixture.review, {
+  const review = JSON.parse(JSON.stringify(realisticFixture.review));
+  review.reviewItems[0].sourceProvenance = {
+    topSources: [{ runtimeSource: 'GDELT', source: 'GDELT', count: 4 }],
+  };
+  const queue = buildOperatorReviewQueue(review, {
     maxItems: 5,
     quality: realisticFixture.quality,
   });
@@ -77,13 +90,16 @@ test('buildOperatorReviewQueue returns bounded actionable items with triage prio
   assert.ok(queue.items[0].priorityScore > queue.items[1].priorityScore);
   assert.match(queue.items[0].priorityDrivers.join(' '), /pressure|near-duplicate|split-pattern/);
   assert.match(queue.items[0].suggestedAction, /Inspect response shape/i);
-  assert.equal(queue.items[0].actions.length, 3);
+  assert.equal(queue.items[0].actions.length, 5);
   assert.equal(queue.items[0].actions[0].id, 'ack');
   assert.match(queue.items[0].actions[0].href, /\/api\/brief\/news\/review\/ack\?/);
   assert.equal(queue.items[0].actions[1].id, 'snooze');
   assert.match(queue.items[0].actions[1].href, /hours=24/);
-  assert.equal(queue.items[0].actions[2].id, 'artifacts');
-  assert.match(queue.items[0].actions[2].href, /\/api\/brief\/news\/review\/artifacts\?/);
+  assert.equal(queue.items[0].actions[2].id, 'quarantine-source');
+  assert.equal(queue.items[0].actions[3].id, 'suppress-source');
+  assert.equal(queue.items[0].actions[4].id, 'artifacts');
+  assert.match(queue.items[0].actions[4].href, /\/api\/brief\/news\/review\/artifacts\?/);
+  assert.equal(queue.items[0].dominantSource.id, 'gdelt');
   assert.equal(queue.metrics.lowConfidenceCount, 46);
   assert.equal(queue.metrics.suspiciousNearDuplicateCount, 1);
   assert.equal(queue.metrics.pressuredRegionCount, 8);

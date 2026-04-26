@@ -49,10 +49,11 @@ async function boot(){
   const status = document.getElementById('status');
   const grid = document.getElementById('grid');
   try {
-    const [settings, reviewStats, analysisReview] = await Promise.all([
+    const [settings, reviewStats, analysisReview, reviewWorkflow] = await Promise.all([
       fetchJson('/api/settings/admin'),
       fetchJson('/api/brief/news/review/stats'),
       fetchJson('/api/analysis/review'),
+      fetchJson('/api/brief/news/review'),
     ]);
     status.textContent = `Loaded diagnostics at ${new Date(settings.generatedAt).toLocaleString()}`;
     grid.hidden = false;
@@ -75,15 +76,37 @@ async function boot(){
         row('Refinement', esc(analysisReview?.analysis?.refinementState || 'unknown')),
         row('Review endpoint', '<a href="/api/analysis/review" target="_blank" rel="noreferrer">/api/analysis/review</a>'),
       ].join('')),
+      renderCard('Workflow controls', 'Direct review actions with audit trail', `<div class="list">
+        ${(reviewWorkflow?.workflow?.lowConfidenceSources || []).slice(0, 3).map(item => `<div><strong>${esc(item.name)}</strong><div class="mini">trust ${esc(item.trustOutcome || 'unknown')} • attention ${esc(String(item.attentionScore || 0))}</div><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${(item.actions || []).map(action => `<button data-review-action="${esc(action.id)}" data-source="${esc(action.sourceId || '')}">${esc(action.label)}</button>`).join('')}</div></div>`).join('') || '<div>No low-confidence source workflow recommendations right now.</div>'}
+        ${(reviewWorkflow?.workflow?.promoteCandidates || []).slice(0, 2).map(item => `<div><strong>${esc(item.name)}</strong><div class="mini">${esc(item.promotionReadiness || 'unknown')}</div><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button data-review-action="promote-shadow" data-candidate="${esc(item.candidateId || '')}">Promote to approved</button></div></div>`).join('')}
+      </div>`),
+      renderCard('Workflow audit', 'Recent operator workflow trail', `<div class="list">
+        ${(reviewWorkflow?.workflow?.auditTrail || []).map(item => `<div><strong>${esc(item.action || 'action')}</strong><div class="mini">${esc(item.recordedAt || '')} • ${esc(item.status || 'unknown')}</div><div class="mini">${esc(item.sourceId || item.region || item.candidateId || '')}</div></div>`).join('') || '<div>No workflow audit entries yet.</div>'}
+      </div>`),
       renderCard('Diagnostic endpoints', 'Direct inspection links', `<div class="list">
         <a href="/api/brief/news/review" target="_blank" rel="noreferrer">News review payload</a>
         <a href="/api/brief/news/review/stats" target="_blank" rel="noreferrer">News review stats</a>
         <a href="/api/brief/news/review/acks" target="_blank" rel="noreferrer">Review acknowledgements</a>
+        <a href="/api/review-workflow/audit" target="_blank" rel="noreferrer">Review workflow audit</a>
         <a href="/api/settings/admin" target="_blank" rel="noreferrer">Admin settings contract</a>
       </div>`),
-      renderCard('Notes', 'Intent', `<pre>- Diagnostics is read-only and debug-adjacent.
+      renderCard('Notes', 'Intent', `<pre>- Diagnostics now exposes direct local-admin review workflow controls with audit capture.
 - Operator settings remains the normal read-only control view.
-- Admin settings remains the local-write control plane.</pre>`),
+- Admin settings remains the broader local-write control plane.</pre>`),
+    ].join('');
+    grid.querySelectorAll('button[data-review-action]').forEach(btn => btn.addEventListener('click', async () => {
+      const payload = { action: btn.dataset.reviewAction };
+      if (btn.dataset.source) payload.sourceId = btn.dataset.source;
+      if (btn.dataset.candidate) payload.candidateId = btn.dataset.candidate;
+      try {
+        const res = await fetch('/api/review-workflow/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        status.textContent = `Applied ${payload.action}. Reloading diagnostics.`;
+        boot();
+      } catch (err) {
+        status.textContent = `Workflow action failed: ${err.message}`;
+      }
+    }));
     ].join('');
   } catch (err) {
     status.textContent = `Failed to load diagnostics: ${err.message}`;

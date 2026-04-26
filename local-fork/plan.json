@@ -792,12 +792,12 @@
       {
         "id": "epic-32",
         "title": "Operator review workflow, diagnostics, and reasoning repair",
-        "status": "pending",
+        "status": "in_progress",
         "efforts": [
           {
             "id": "effort-32.1",
             "title": "Turn review queues and low-confidence diagnostics into direct operator workflows with acknowledge, snooze, suppress, promote, and quarantine actions plus audit trail capture",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-32.2",
