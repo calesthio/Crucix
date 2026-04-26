@@ -3354,6 +3354,7 @@ function buildOperatorSettingsContract(snapshot = null) {
           byTrustOutcome: sourceOps?.performance?.byTrustOutcome || null,
           attributionCoverage: sourceOps?.performance?.attributionCoverage || null,
         },
+        attributionDiagnostics: sourceOps?.performance?.workflow?.attributionDiagnostics || null,
         attributionHeadlines: Array.isArray(sourceOps?.performance?.workflow?.attributionHeadlines) ? sourceOps.performance.workflow.attributionHeadlines : [],
         confidenceCaveats: Array.isArray(sourceOps?.performance?.workflow?.confidenceCaveats) ? sourceOps.performance.workflow.confidenceCaveats : [],
         validationViews: sourceOps?.performance?.workflow?.validationViews || null,

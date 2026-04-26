@@ -117,10 +117,14 @@ test('source ops surface attaches live source-health state when snapshot health 
               { source: 'Telegram', type: 'telegram', runtimeSource: 'Telegram', count: 1 },
               { source: 'NYT', type: 'unknown', runtimeSource: 'GDELT', count: 1 },
               { source: 'France 24', type: 'unknown', runtimeSource: 'GDELT', count: 1 },
+              { source: 'Operator Feed', type: 'unknown', runtimeSource: 'GDELT', count: 1 },
+              { source: 'Operator Feed', type: 'telegram', runtimeSource: 'Telegram', count: 1 },
             ],
             topSources: [
               { source: 'NYT', type: 'unknown', runtimeSource: 'GDELT', count: 1 },
               { source: 'France 24', type: 'unknown', runtimeSource: 'GDELT', count: 1 },
+              { source: 'Operator Feed', type: 'unknown', runtimeSource: 'GDELT', count: 1 },
+              { source: 'Operator Feed', type: 'telegram', runtimeSource: 'Telegram', count: 1 },
               { source: 'Telegram', type: 'telegram', runtimeSource: 'Telegram', count: 1 },
             ],
           },
@@ -211,11 +215,11 @@ test('source ops surface attaches live source-health state when snapshot health 
   assert.equal(acledPerf.contribution.corroboratedSignals, 1);
   assert.equal(acledPerf.contribution.citedByTippingPoints, 1);
   assert.equal(telegramPerf.contribution.feedItems, 1);
-  assert.equal(telegramPerf.contribution.clusteredItems, 1);
+  assert.equal(telegramPerf.contribution.clusteredItems, 2);
   assert.equal(telegramPerf.contribution.clusteredStories, 1);
   assert.equal(telegramPerf.contribution.suspectSignals, 1);
   assert.equal(gdeltPerf.contribution.feedItems, 2);
-  assert.equal(gdeltPerf.contribution.clusteredItems, 2);
+  assert.equal(gdeltPerf.contribution.clusteredItems, 3);
   assert.equal(gdeltPerf.contribution.clusteredStories, 1);
   assert.equal(blueskyPerf.contribution.clusteredItems, 1);
   assert.equal(blueskyPerf.trustOutcome, 'degraded');
@@ -227,6 +231,13 @@ test('source ops surface attaches live source-health state when snapshot health 
   assert.equal(surface.performance.workflow.validationViews.clusterQuality.find(item => item.label === 'Low quality')?.value, 3);
   assert.equal(surface.performance.workflow.validationViews.trustOutcomes.find(item => item.label === 'degraded')?.value >= 1, true);
   assert.ok(surface.performance.workflow.confidenceCaveats.some(item => /heuristic-only cluster/i.test(item)));
+  assert.equal(surface.performance.workflow.attributionDiagnostics.version, 'source-attribution-diagnostics-v1');
+  assert.equal(surface.performance.workflow.attributionDiagnostics.summary.aliasCollisionCount >= 1, true);
+  assert.equal(surface.performance.workflow.attributionDiagnostics.summary.ambiguousMappingCount >= 1, true);
+  assert.equal(surface.performance.workflow.attributionDiagnostics.summary.doubleCountRiskCount >= 1, true);
+  assert.ok(surface.performance.workflow.attributionDiagnostics.aliasCollisions.some(item => item.runtimeSource === 'GDELT'));
+  assert.ok(surface.performance.workflow.attributionDiagnostics.ambiguousMappings.some(item => item.sourceName === 'Operator Feed'));
+  assert.ok(surface.performance.workflow.attributionDiagnostics.doubleCountRisks.some(item => item.clusterId === 'iran::cluster-a'));
   assert.ok(Array.isArray(telegramPerf.attributionExplanation));
   assert.ok(telegramPerf.attributionExplanation.some(item => /clustered item/i.test(item)));
   assert.ok(Array.isArray(blueskyPerf.confidenceCaveats));

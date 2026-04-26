@@ -53,6 +53,23 @@ const context = {
   summarizeClusterRepairArtifacts: artifacts => ({ totalArtifacts: Array.isArray(artifacts) ? artifacts.length : 0, topReasons: [], topRegions: [], items: Array.isArray(artifacts) ? artifacts : [] }),
   buildOperatorSourceOps: snapshot => ({
     history: { version: 'source-health-history-v1', windows: [] },
+    performance: {
+      version: 'source-performance-workflow-v1',
+      totalMeasuredSources: 2,
+      withClusterAttribution: 1,
+      withSignalContribution: 1,
+      degradedOrFailing: 0,
+      byTrustOutcome: { supportive: 1, mixed: 0, degraded: 0, none: 1 },
+      attributionCoverage: { clusterAttributedRatio: 0.5 },
+      topImpactSources: [],
+      measurementNotes: { directClusterAttribution: 'available' },
+      workflow: {
+        attributionDiagnostics: { version: 'source-attribution-diagnostics-v1', summary: { aliasCollisionCount: 1 } },
+        attributionHeadlines: [],
+        confidenceCaveats: [],
+        validationViews: { trustOutcomes: [] },
+      },
+    },
     inventory: {
       total: 30,
       active: 29,
@@ -164,6 +181,7 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(Array.isArray(contract.sourceConsole.lifecycleActions.queue.evaluations), true);
   assert.equal(Array.isArray(contract.sourceConsole.inventory), true);
   assert.equal(contract.sourceConsole.performanceWorkflow.version, 'source-performance-workflow-v1');
+  assert.equal(contract.sourceConsole.performanceWorkflow.attributionDiagnostics.version, 'source-attribution-diagnostics-v1');
   assert.equal(Array.isArray(contract.sourceConsole.performanceWorkflow.attributionHeadlines), true);
   assert.equal(Array.isArray(contract.sourceConsole.performanceWorkflow.confidenceCaveats), true);
   assert.equal(contract.sourceConsole.sourceControls.version, 'source-ops-control-v1');

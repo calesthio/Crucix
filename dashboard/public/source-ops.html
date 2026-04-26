@@ -105,6 +105,7 @@ function render(){
   </div>`;
   const perf = consoleData.performanceWorkflow || {};
   const perfSummary = perf.summary || {};
+  const perfDiagnostics = perf.attributionDiagnostics || {};
   const perfHistory = consoleData.performanceHistory || {};
   const latestDelta = (perfHistory.deltaViews || [])[0] || null;
   performance.hidden = false;
@@ -122,6 +123,13 @@ function render(){
   <div style="margin-top:12px;font-size:13px;line-height:1.5">
     <strong>Confidence caveats:</strong>
     <div class="muted">${esc((perf.confidenceCaveats || []).join(' · ') || 'No global caveats')}</div>
+  </div>
+  <div style="margin-top:12px;font-size:13px;line-height:1.5">
+    <strong>Attribution uncertainty diagnostics:</strong>
+    <div class="muted">Alias collisions ${esc(perfDiagnostics.summary?.aliasCollisionCount ?? 0)} · Ambiguous mappings ${esc(perfDiagnostics.summary?.ambiguousMappingCount ?? 0)} · Double-count risks ${esc(perfDiagnostics.summary?.doubleCountRiskCount ?? 0)} · Uncertain clusters ${esc(perfDiagnostics.summary?.uncertainClusterCount ?? 0)}</div>
+    ${(perfDiagnostics.aliasCollisions || []).slice(0, 3).map(item => `<div style="margin-top:8px"><strong>${esc(item.runtimeSource)}</strong> aliases ${esc(item.aliasCount)} across ${esc(item.clusterCount)} cluster${item.clusterCount === 1 ? '' : 's'}<div class="muted">${esc((item.sourceNames || []).map(source => `${source.name}(${source.count})`).join('; '))}</div></div>`).join('') || '<div class="muted">No alias collisions detected in current cluster provenance.</div>'}
+    ${(perfDiagnostics.ambiguousMappings || []).slice(0, 3).map(item => `<div style="margin-top:8px"><strong>${esc(item.sourceName)}</strong> resolves to ${esc((item.runtimeSources || []).join(', '))}<div class="muted">Seen in ${esc(item.clusterCount)} cluster${item.clusterCount === 1 ? '' : 's'}</div></div>`).join('')}
+    ${(perfDiagnostics.doubleCountRisks || []).slice(0, 3).map(item => `<div style="margin-top:8px"><strong>${esc(item.headline)}</strong> · ${esc(item.region)} · risk ${esc(item.riskScore)}<div class="muted">${esc((item.duplicateRuntimeSources || []).join(', ') || 'No alias groups')} ${(item.ambiguousSourceMappings || []).length ? `· ambiguous labels ${(item.ambiguousSourceMappings || []).map(mapping => mapping.sourceToken).join(', ')}` : ''}${item.unattributedEntries ? ` · unattributed entries ${item.unattributedEntries}` : ''}</div></div>`).join('')}
   </div>
   <div style="margin-top:12px;font-size:13px;line-height:1.5">
     <strong>Validation views:</strong>

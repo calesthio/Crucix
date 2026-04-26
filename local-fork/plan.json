@@ -807,7 +807,7 @@
           {
             "id": "effort-32.3",
             "title": "Expose attribution uncertainty and alias-collision diagnostics so inferred runtime-source mappings, duplicate publisher aliases, and double-count risks are visible to operators",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-32.4",
