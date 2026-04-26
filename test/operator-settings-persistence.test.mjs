@@ -131,7 +131,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(exported.preferences.agentAnalysis.deterministicFallbackMode, 'disabled');
 
     const page = await fetch(`http://127.0.0.1:${BASE_PORT}/settings`).then(r => r.text());
-    assert.match(page, /Diagnostics/i);
+    assert.match(page, /activeSurface: 'settings'/i);
     assert.doesNotMatch(page, /id="saveBtn"/i);
     assert.doesNotMatch(page, /id="exportBtn"/i);
 
@@ -139,8 +139,9 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.match(diagnosticsPage, /Runtime and review diagnostics/i);
 
     const adminPage = await fetch(`http://127.0.0.1:${BASE_PORT}/admin/settings`).then(r => r.text());
-    assert.match(adminPage, /id="saveBtn"/i);
-    assert.match(adminPage, /id="exportBtn"/i);
+    assert.match(adminPage, /saveBtn/i);
+    assert.match(adminPage, /exportBtn/i);
+    assert.match(adminPage, /activeSurface: 'admin-settings'/i);
 
     const operatorContract = await fetchJson(settingsUrl);
     assert.equal(operatorContract.persistence.capabilities.writeApi, false);

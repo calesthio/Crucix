@@ -4,57 +4,35 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CRUCIX Source Operations</title>
+<link rel="stylesheet" href="/ops-shell.css">
 <style>
-:root{--bg:#020408;--panel:rgba(6,14,22,.92);--border:rgba(100,240,200,.18);--text:#e8f4f0;--dim:#7b9a92;--accent:#64f0c8;--accent2:#44ccff;--mono:ui-monospace,SFMono-Regular,Menlo,monospace;--sans:Inter,system-ui,sans-serif}
-*{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--sans)}
-body{padding:18px} a{color:var(--accent2)}
-.wrap{max-width:1320px;margin:0 auto;display:flex;flex-direction:column;gap:14px}.top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;padding:16px 18px;border:1px solid var(--border);background:var(--panel)}
-.kicker,.pill,.mini,.tag{font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em}.kicker{font-size:11px;color:var(--accent2)} h1{margin:6px 0 4px;font-size:28px}.sub{color:var(--dim);max-width:860px;line-height:1.45}
-.pill{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--border);font-size:11px;color:var(--dim);text-decoration:none}.pill strong{color:var(--text)}
-.note{padding:12px 14px;border:1px solid rgba(255,184,76,.22);background:rgba(255,184,76,.08);color:#ffe3bd;line-height:1.45}
 .controls,.summary,.table{padding:14px 16px;border:1px solid var(--border);background:var(--panel)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.stat{padding:10px 12px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02)}.label{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}.value{font-size:20px;margin-top:4px}
-.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px}select,input,button{padding:8px 10px;background:#07111a;color:var(--text);border:1px solid rgba(255,255,255,.12)} input,select{width:100%}
-.tags{display:flex;flex-wrap:wrap;gap:6px}.tag{padding:4px 7px;border:1px solid rgba(100,240,200,.18);font-size:10px;color:var(--accent);background:rgba(100,240,200,.05)}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px}input,select{width:100%}
 .actions-cell{display:flex;flex-wrap:wrap;gap:6px}.mini-btn{font-size:11px;cursor:pointer}.mini-btn[disabled]{opacity:.45;cursor:not-allowed}
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px 8px;border-top:1px solid rgba(255,255,255,.06);vertical-align:top}th{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}.muted{color:var(--dim)}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="top">
-    <div>
-      <div class="kicker">Crucix source operations</div>
-      <h1>Operator source console</h1>
-      <div class="sub">This operator-facing source management console centralizes source inventory, role grouping, category filtering, and per-source selection state without requiring direct edits to raw config files. Persisted changes still route through the existing local admin write boundary.</div>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-      <a class="pill" href="/">Dashboard</a>
-      <a class="pill" href="/settings">Operator settings</a>
-      <a class="pill" href="/diagnostics">Diagnostics</a>
-      <a class="pill" href="/admin/settings">Admin settings</a>
-    </div>
-  </div>
-  <div id="status" class="note">Loading source console…</div>
-  <section class="summary" id="summary" hidden></section>
-  <section class="controls" id="controls" hidden></section>
-  <section class="summary" id="actions" hidden></section>
-  <section class="summary" id="performance" hidden></section>
-  <section class="table" id="table" hidden></section>
-</div>
+<div id="app"></div>
+<script src="/ops-shell.js"></script>
 <script>
-function esc(value){return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+const { esc, mountOpsShell } = window.CRUCIX_OPS_SHELL;
+const shell = mountOpsShell({
+  activeSurface: 'source-ops',
+  kicker: 'Crucix source operations',
+  title: 'Operator source console',
+  subtitle: 'This operator-facing source management console centralizes source inventory, role grouping, category filtering, and per-source selection state without requiring direct edits to raw config files. Persisted changes still route through the existing local admin write boundary.',
+  loadingText: 'Loading source console…',
+  width: 'wide',
+});
+shell.content.innerHTML = '<section class="summary" id="summary" hidden></section><section class="controls" id="controls" hidden></section><section class="summary" id="actions" hidden></section><section class="summary" id="performance" hidden></section><section class="table" id="table" hidden></section>';
 function sourceEnabled(item, selection){const cat=selection?.enabledCategories||[]; const ids=selection?.enabledSourceIds||[]; const catOk=!cat.length || cat.includes(item.category); const idOk=!ids.length || ids.includes(item.id); return catOk && idOk;}
 function sourceSuppressed(item, selection){return (selection?.suppressedSourceIds || []).includes(item.id);}
 function sourceQuarantined(item, selection){return (selection?.quarantinedSourceIds || []).includes(item.id);}
-async function postControl(action, sourceId){
-  const res = await fetch('/api/source-ops/control', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action, sourceId }) });
-  if(!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
+async function postControl(action, sourceId){ const res = await fetch('/api/source-ops/control', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action, sourceId }) }); if(!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); }
 function render(){
   const consoleData = window.__SOURCE_CONSOLE__;
-  const status = document.getElementById('status');
   const summary = document.getElementById('summary');
   const controls = document.getElementById('controls');
   const actions = document.getElementById('actions');
@@ -73,111 +51,31 @@ function render(){
     return true;
   });
   const enabledCount = items.filter(item => sourceEnabled(item, selection)).length;
-  status.textContent = `Loaded ${consoleData.version} with ${items.length} visible sources. Persisted writes remain local-admin only.`;
+  shell.status.textContent = `Loaded ${consoleData.version} with ${items.length} visible sources. Persisted writes remain local-admin only.`;
   summary.hidden = false;
   const history = consoleData.healthHistory || {};
-  summary.innerHTML = `<div class="grid">
-    <div class="stat"><div class="label">Visible sources</div><div class="value">${esc(items.length)}</div></div>
-    <div class="stat"><div class="label">Visible enabled</div><div class="value">${esc(enabledCount)}</div></div>
-    <div class="stat"><div class="label">Quarantined</div><div class="value">${esc((consoleData.selection?.quarantinedSourceIds || []).length)}</div></div>
-    <div class="stat"><div class="label">Suppressed</div><div class="value">${esc((consoleData.selection?.suppressedSourceIds || []).length)}</div></div>
-    <div class="stat"><div class="label">Selection persistence</div><div class="value">${esc(consoleData.selection?.persistence || 'unknown')}</div></div>
-    <div class="stat"><div class="label">Failing now</div><div class="value">${esc(history.current?.failingNow ?? 0)}</div></div>
-  </div>
-  <div style="margin-top:12px;font-size:13px;line-height:1.5">
-    <strong>Health windows:</strong>
-    ${(history.windows || []).map(window => `${esc(window.hours)}h failed-runs=${esc(window.failedRuns)} degraded-runs=${esc(window.degradedRuns)} max-failed=${esc(window.maxFailed ?? 'n/a')}`).join(' · ') || 'No trend history yet'}
-  </div>`;
+  summary.innerHTML = `<div class="grid"><div class="stat"><div class="label">Visible sources</div><div class="value">${esc(items.length)}</div></div><div class="stat"><div class="label">Visible enabled</div><div class="value">${esc(enabledCount)}</div></div><div class="stat"><div class="label">Quarantined</div><div class="value">${esc((consoleData.selection?.quarantinedSourceIds || []).length)}</div></div><div class="stat"><div class="label">Suppressed</div><div class="value">${esc((consoleData.selection?.suppressedSourceIds || []).length)}</div></div><div class="stat"><div class="label">Selection persistence</div><div class="value">${esc(consoleData.selection?.persistence || 'unknown')}</div></div><div class="stat"><div class="label">Failing now</div><div class="value">${esc(history.current?.failingNow ?? 0)}</div></div></div><div style="margin-top:12px;font-size:13px;line-height:1.5"><strong>Health windows:</strong> ${(history.windows || []).map(window => `${esc(window.hours)}h failed-runs=${esc(window.failedRuns)} degraded-runs=${esc(window.degradedRuns)} max-failed=${esc(window.maxFailed ?? 'n/a')}`).join(' · ') || 'No trend history yet'}</div>`;
   const lifecycle = consoleData.lifecycleActions || {};
   actions.hidden = false;
-  actions.innerHTML = `<div class="grid">
-    <div class="stat"><div class="label">Blocked lifecycle actions</div><div class="value">${esc(lifecycle.policyBlockers?.batchBlockedCount ?? 0)}</div></div>
-    <div class="stat"><div class="label">Advanceable candidates</div><div class="value">${esc(lifecycle.policyBlockers?.advanceableCount ?? 0)}</div></div>
-    <div class="stat"><div class="label">Human approval boundary</div><div class="value">${esc((lifecycle.humanApprovalBoundary?.humanApprovalBoundaryStates || []).join(', ') || 'none')}</div></div>
-    <div class="stat"><div class="label">Prune recommendation</div><div class="value">${esc(lifecycle.pruneRecommendation?.recommendedAction || 'none')}</div></div>
-  </div>
-  <div class="tags" style="margin-top:10px">${(lifecycle.humanApprovalBoundary?.autoAdvanceStates || []).map(state => `<span class="tag">auto: ${esc(state)}</span>`).join('')}${(lifecycle.humanApprovalBoundary?.humanApprovalBoundaryStates || []).map(state => `<span class="tag">review: ${esc(state)}</span>`).join('')}</div>
-  <div style="margin-top:12px;font-size:13px;line-height:1.5">
-    <strong>Example lifecycle evaluation:</strong>
-    ${esc(lifecycle.exampleEvaluation?.candidateId || 'n/a')} → next ${esc(lifecycle.exampleEvaluation?.nextAllowedState || 'n/a')} (${esc(lifecycle.exampleEvaluation?.recommendedAction || 'n/a')})
-    ${lifecycle.exampleEvaluation?.blocked ? `<div class="muted">Blocked: ${esc((lifecycle.exampleEvaluation?.blockedReasons || []).join('; '))}</div>` : ''}
-    ${lifecycle.pruneRecommendation ? `<div style="margin-top:8px"><strong>Prune recommendation:</strong> ${esc(lifecycle.pruneRecommendation.targetId || 'n/a')} → ${esc(lifecycle.pruneRecommendation.recommendedAction || 'n/a')} (${esc(lifecycle.pruneRecommendation.confidence || 'unknown')})<div class="muted">${esc((lifecycle.pruneRecommendation.blockingIssues || []).join('; ') || 'No blocking issues')}</div></div>` : ''}
-  </div>`;
+  actions.innerHTML = `<div class="grid"><div class="stat"><div class="label">Blocked lifecycle actions</div><div class="value">${esc(lifecycle.policyBlockers?.batchBlockedCount ?? 0)}</div></div><div class="stat"><div class="label">Advanceable candidates</div><div class="value">${esc(lifecycle.policyBlockers?.advanceableCount ?? 0)}</div></div><div class="stat"><div class="label">Human approval boundary</div><div class="value">${esc((lifecycle.humanApprovalBoundary?.humanApprovalBoundaryStates || []).join(', ') || 'none')}</div></div><div class="stat"><div class="label">Prune recommendation</div><div class="value">${esc(lifecycle.pruneRecommendation?.recommendedAction || 'none')}</div></div></div><div class="tags" style="margin-top:10px">${(lifecycle.humanApprovalBoundary?.autoAdvanceStates || []).map(state => `<span class="tag">auto: ${esc(state)}</span>`).join('')}${(lifecycle.humanApprovalBoundary?.humanApprovalBoundaryStates || []).map(state => `<span class="tag">review: ${esc(state)}</span>`).join('')}</div><div style="margin-top:12px;font-size:13px;line-height:1.5"><strong>Example lifecycle evaluation:</strong> ${esc(lifecycle.exampleEvaluation?.candidateId || 'n/a')} → next ${esc(lifecycle.exampleEvaluation?.nextAllowedState || 'n/a')} (${esc(lifecycle.exampleEvaluation?.recommendedAction || 'n/a')}) ${lifecycle.exampleEvaluation?.blocked ? `<div class="muted">Blocked: ${esc((lifecycle.exampleEvaluation?.blockedReasons || []).join('; '))}</div>` : ''} ${lifecycle.pruneRecommendation ? `<div style="margin-top:8px"><strong>Prune recommendation:</strong> ${esc(lifecycle.pruneRecommendation.targetId || 'n/a')} → ${esc(lifecycle.pruneRecommendation.recommendedAction || 'n/a')} (${esc(lifecycle.pruneRecommendation.confidence || 'unknown')})<div class="muted">${esc((lifecycle.pruneRecommendation.blockingIssues || []).join('; ') || 'No blocking issues')}</div></div>` : ''}</div>`;
   const perf = consoleData.performanceWorkflow || {};
   const perfSummary = perf.summary || {};
   const perfDiagnostics = perf.attributionDiagnostics || {};
   const perfHistory = consoleData.performanceHistory || {};
   const latestDelta = (perfHistory.deltaViews || [])[0] || null;
   performance.hidden = false;
-  performance.innerHTML = `<div class="grid">
-    <div class="stat"><div class="label">Performance workflow</div><div class="value">${esc(perf.version || 'n/a')}</div></div>
-    <div class="stat"><div class="label">Cluster-attributed</div><div class="value">${esc(perfSummary.withClusterAttribution ?? 0)} / ${esc(perfSummary.totalMeasuredSources ?? 0)}</div></div>
-    <div class="stat"><div class="label">Signal-active</div><div class="value">${esc(perfSummary.withSignalContribution ?? 0)}</div></div>
-    <div class="stat"><div class="label">Degraded or failing</div><div class="value">${esc(perfSummary.degradedOrFailing ?? 0)}</div></div>
-    <div class="stat"><div class="label">Historical snapshots</div><div class="value">${esc(perfHistory.snapshotCount ?? 0)}</div></div>
-  </div>
-  <div style="margin-top:12px;font-size:13px;line-height:1.5">
-    <strong>Attribution explanations:</strong>
-    ${(perf.attributionHeadlines || []).map(item => `<div style="margin-top:8px"><strong>${esc(item.name)}</strong> · ${esc(item.impactLabel)} · ${esc(item.trustOutcome)}<div class="muted">${esc((item.explanation || []).join('; ') || 'No explanation')}</div>${(item.caveats || []).length ? `<div class="muted">Confidence caveats: ${esc(item.caveats.join('; '))}</div>` : ''}</div>`).join('') || '<div class="muted">No attributed sources yet</div>'}
-  </div>
-  <div style="margin-top:12px;font-size:13px;line-height:1.5">
-    <strong>Confidence caveats:</strong>
-    <div class="muted">${esc((perf.confidenceCaveats || []).join(' · ') || 'No global caveats')}</div>
-  </div>
-  <div style="margin-top:12px;font-size:13px;line-height:1.5">
-    <strong>Attribution uncertainty diagnostics:</strong>
-    <div class="muted">Alias collisions ${esc(perfDiagnostics.summary?.aliasCollisionCount ?? 0)} · Ambiguous mappings ${esc(perfDiagnostics.summary?.ambiguousMappingCount ?? 0)} · Double-count risks ${esc(perfDiagnostics.summary?.doubleCountRiskCount ?? 0)} · Uncertain clusters ${esc(perfDiagnostics.summary?.uncertainClusterCount ?? 0)}</div>
-    ${(perfDiagnostics.aliasCollisions || []).slice(0, 3).map(item => `<div style="margin-top:8px"><strong>${esc(item.runtimeSource)}</strong> aliases ${esc(item.aliasCount)} across ${esc(item.clusterCount)} cluster${item.clusterCount === 1 ? '' : 's'}<div class="muted">${esc((item.sourceNames || []).map(source => `${source.name}(${source.count})`).join('; '))}</div></div>`).join('') || '<div class="muted">No alias collisions detected in current cluster provenance.</div>'}
-    ${(perfDiagnostics.ambiguousMappings || []).slice(0, 3).map(item => `<div style="margin-top:8px"><strong>${esc(item.sourceName)}</strong> resolves to ${esc((item.runtimeSources || []).join(', '))}<div class="muted">Seen in ${esc(item.clusterCount)} cluster${item.clusterCount === 1 ? '' : 's'}</div></div>`).join('')}
-    ${(perfDiagnostics.doubleCountRisks || []).slice(0, 3).map(item => `<div style="margin-top:8px"><strong>${esc(item.headline)}</strong> · ${esc(item.region)} · risk ${esc(item.riskScore)}<div class="muted">${esc((item.duplicateRuntimeSources || []).join(', ') || 'No alias groups')} ${(item.ambiguousSourceMappings || []).length ? `· ambiguous labels ${(item.ambiguousSourceMappings || []).map(mapping => mapping.sourceToken).join(', ')}` : ''}${item.unattributedEntries ? ` · unattributed entries ${item.unattributedEntries}` : ''}</div></div>`).join('')}
-  </div>
-  <div style="margin-top:12px;font-size:13px;line-height:1.5">
-    <strong>Validation views:</strong>
-    <div class="muted">Cluster quality: ${(perf.validationViews?.clusterQuality || []).map(item => `${esc(item.label)}=${esc(item.value)}`).join(' · ') || 'n/a'}</div>
-    <div class="muted">Review pressure: ${(perf.validationViews?.reviewPressure || []).map(item => `${esc(item.label)}=${esc(item.value)}`).join(' · ') || 'n/a'}</div>
-    <div class="muted">Trust outcomes: ${(perf.validationViews?.trustOutcomes || []).map(item => `${esc(item.label)}=${esc(item.value)}`).join(' · ') || 'n/a'}</div>
-  </div>
-  <div style="margin-top:12px;font-size:13px;line-height:1.5">
-    <strong>Latest delta view:</strong>
-    ${latestDelta ? `<div class="muted">${esc(latestDelta.currentTimestamp)} vs ${esc(latestDelta.previousTimestamp)}</div>
-    <div class="muted">Cluster-attributed Δ ${esc(latestDelta.summaryDelta?.withClusterAttribution ?? 0)} · Signal-active Δ ${esc(latestDelta.summaryDelta?.withSignalContribution ?? 0)} · Degraded/failing Δ ${esc(latestDelta.summaryDelta?.degradedOrFailing ?? 0)}</div>
-    <div class="muted">Trust outcome Δ: ${Object.entries(latestDelta.summaryDelta?.byTrustOutcome || {}).map(([key, value]) => `${esc(key)}=${esc(value)}`).join(' · ') || 'n/a'}</div>
-    <div class="muted">Cluster quality Δ: ${Object.entries(latestDelta.summaryDelta?.clusterQuality || {}).map(([key, value]) => `${esc(key)}=${esc(value)}`).join(' · ') || 'n/a'}</div>
-    <div class="muted">Review pressure Δ: ${Object.entries(latestDelta.summaryDelta?.reviewPressure || {}).map(([key, value]) => `${esc(key)}=${esc(value)}`).join(' · ') || 'n/a'}</div>
-    <div class="muted">Source shifts: ${(latestDelta.topSourceShifts || []).map(item => `${esc(item.name)} ${esc(item.status)} Δ${esc(item.attentionScoreDelta)}`).join(' · ') || 'n/a'}</div>` : '<div class="muted">Need at least two source-performance snapshots before deltas appear</div>'}
-  </div>
-  <div style="margin-top:12px;font-size:13px;line-height:1.5">
-    <strong>Recent snapshots:</strong>
-    ${(perfHistory.snapshots || []).slice(0, 4).map(item => `<div style="margin-top:8px"><strong>${esc(item.timestamp)}</strong><div class="muted">Cluster-attributed ${esc(item.summary?.withClusterAttribution ?? 0)} / ${esc(item.summary?.totalMeasuredSources ?? 0)} · Signal-active ${esc(item.summary?.withSignalContribution ?? 0)} · Degraded/failing ${esc(item.summary?.degradedOrFailing ?? 0)}</div><div class="muted">Trust outcomes: ${Object.entries(item.summary?.byTrustOutcome || {}).map(([key, value]) => `${esc(key)}=${esc(value)}`).join(' · ') || 'n/a'}</div><div class="muted">Top sources: ${(item.topImpactSources || []).slice(0, 3).map(source => `${esc(source.name)}(${esc(source.attentionScore)})`).join(' · ') || 'n/a'}</div></div>`).join('') || '<div class="muted">No historical source-performance snapshots yet</div>'}
-  </div>`;
+  performance.innerHTML = `<div class="grid"><div class="stat"><div class="label">Performance workflow</div><div class="value">${esc(perf.version || 'n/a')}</div></div><div class="stat"><div class="label">Cluster-attributed</div><div class="value">${esc(perfSummary.withClusterAttribution ?? 0)} / ${esc(perfSummary.totalMeasuredSources ?? 0)}</div></div><div class="stat"><div class="label">Signal-active</div><div class="value">${esc(perfSummary.withSignalContribution ?? 0)}</div></div><div class="stat"><div class="label">Degraded or failing</div><div class="value">${esc(perfSummary.degradedOrFailing ?? 0)}</div></div><div class="stat"><div class="label">Historical snapshots</div><div class="value">${esc(perfHistory.snapshotCount ?? 0)}</div></div></div><div style="margin-top:12px;font-size:13px;line-height:1.5"><strong>Attribution explanations:</strong> ${(perf.attributionHeadlines || []).map(item => `<div style="margin-top:8px"><strong>${esc(item.name)}</strong> · ${esc(item.impactLabel)} · ${esc(item.trustOutcome)}<div class="muted">${esc((item.explanation || []).join('; ') || 'No explanation')}</div>${(item.caveats || []).length ? `<div class="muted">Confidence caveats: ${esc(item.caveats.join('; '))}</div>` : ''}</div>`).join('') || '<div class="muted">No attributed sources yet</div>'}</div><div style="margin-top:12px;font-size:13px;line-height:1.5"><strong>Confidence caveats:</strong><div class="muted">${esc((perf.confidenceCaveats || []).join(' · ') || 'No global caveats')}</div></div><div style="margin-top:12px;font-size:13px;line-height:1.5"><strong>Attribution uncertainty diagnostics:</strong><div class="muted">Alias collisions ${esc(perfDiagnostics.summary?.aliasCollisionCount ?? 0)} · Ambiguous mappings ${esc(perfDiagnostics.summary?.ambiguousMappingCount ?? 0)} · Double-count risks ${esc(perfDiagnostics.summary?.doubleCountRiskCount ?? 0)} · Uncertain clusters ${esc(perfDiagnostics.summary?.uncertainClusterCount ?? 0)}</div>${(perfDiagnostics.aliasCollisions || []).slice(0, 3).map(item => `<div style="margin-top:8px"><strong>${esc(item.runtimeSource)}</strong> aliases ${esc(item.aliasCount)} across ${esc(item.clusterCount)} cluster${item.clusterCount === 1 ? '' : 's'}<div class="muted">${esc((item.sourceNames || []).map(source => `${source.name}(${source.count})`).join('; '))}</div></div>`).join('') || '<div class="muted">No alias collisions detected in current cluster provenance.</div>'}${(perfDiagnostics.ambiguousMappings || []).slice(0, 3).map(item => `<div style="margin-top:8px"><strong>${esc(item.sourceName)}</strong> resolves to ${esc((item.runtimeSources || []).join(', '))}<div class="muted">Seen in ${esc(item.clusterCount)} cluster${item.clusterCount === 1 ? '' : 's'}</div></div>`).join('')}${(perfDiagnostics.doubleCountRisks || []).slice(0, 3).map(item => `<div style="margin-top:8px"><strong>${esc(item.headline)}</strong> · ${esc(item.region)} · risk ${esc(item.riskScore)}<div class="muted">${esc((item.duplicateRuntimeSources || []).join(', ') || 'No alias groups')} ${(item.ambiguousSourceMappings || []).length ? `· ambiguous labels ${(item.ambiguousSourceMappings || []).map(mapping => mapping.sourceToken).join(', ')}` : ''}${item.unattributedEntries ? ` · unattributed entries ${item.unattributedEntries}` : ''}</div></div>`).join('')}</div><div style="margin-top:12px;font-size:13px;line-height:1.5"><strong>Validation views:</strong><div class="muted">Cluster quality: ${(perf.validationViews?.clusterQuality || []).map(item => `${esc(item.label)}=${esc(item.value)}`).join(' · ') || 'n/a'}</div><div class="muted">Review pressure: ${(perf.validationViews?.reviewPressure || []).map(item => `${esc(item.label)}=${esc(item.value)}`).join(' · ') || 'n/a'}</div><div class="muted">Trust outcomes: ${(perf.validationViews?.trustOutcomes || []).map(item => `${esc(item.label)}=${esc(item.value)}`).join(' · ') || 'n/a'}</div></div><div style="margin-top:12px;font-size:13px;line-height:1.5"><strong>Latest delta view:</strong>${latestDelta ? `<div class="muted">${esc(latestDelta.currentTimestamp)} vs ${esc(latestDelta.previousTimestamp)}</div><div class="muted">Cluster-attributed Δ ${esc(latestDelta.summaryDelta?.withClusterAttribution ?? 0)} · Signal-active Δ ${esc(latestDelta.summaryDelta?.withSignalContribution ?? 0)} · Degraded/failing Δ ${esc(latestDelta.summaryDelta?.degradedOrFailing ?? 0)}</div><div class="muted">Trust outcome Δ: ${Object.entries(latestDelta.summaryDelta?.byTrustOutcome || {}).map(([key, value]) => `${esc(key)}=${esc(value)}`).join(' · ') || 'n/a'}</div><div class="muted">Cluster quality Δ: ${Object.entries(latestDelta.summaryDelta?.clusterQuality || {}).map(([key, value]) => `${esc(key)}=${esc(value)}`).join(' · ') || 'n/a'}</div><div class="muted">Review pressure Δ: ${Object.entries(latestDelta.summaryDelta?.reviewPressure || {}).map(([key, value]) => `${esc(key)}=${esc(value)}`).join(' · ') || 'n/a'}</div><div class="muted">Source shifts: ${(latestDelta.topSourceShifts || []).map(item => `${esc(item.name)} ${esc(item.status)} Δ${esc(item.attentionScoreDelta)}`).join(' · ') || 'n/a'}</div>` : '<div class="muted">Need at least two source-performance snapshots before deltas appear</div>'}</div><div style="margin-top:12px;font-size:13px;line-height:1.5"><strong>Recent snapshots:</strong>${(perfHistory.snapshots || []).slice(0, 4).map(item => `<div style="margin-top:8px"><strong>${esc(item.timestamp)}</strong><div class="muted">Cluster-attributed ${esc(item.summary?.withClusterAttribution ?? 0)} / ${esc(item.summary?.totalMeasuredSources ?? 0)} · Signal-active ${esc(item.summary?.withSignalContribution ?? 0)} · Degraded/failing ${esc(item.summary?.degradedOrFailing ?? 0)}</div><div class="muted">Trust outcomes: ${Object.entries(item.summary?.byTrustOutcome || {}).map(([key, value]) => `${esc(key)}=${esc(value)}`).join(' · ') || 'n/a'}</div><div class="muted">Top sources: ${(item.topImpactSources || []).slice(0, 3).map(source => `${esc(source.name)}(${esc(source.attentionScore)})`).join(' · ') || 'n/a'}</div></div>`).join('') || '<div class="muted">No historical source-performance snapshots yet</div>'}</div>`;
   table.hidden = false;
-  table.innerHTML = `<table>
-    <thead><tr><th>Enabled</th><th>Name</th><th>Category</th><th>Role</th><th>Lifecycle</th><th>Live state</th><th>Freshness</th><th>Failure class</th><th>Admin controls</th><th>ID</th></tr></thead>
-    <tbody>${items.map(item => `<tr>
-      <td>${sourceEnabled(item, selection) ? 'yes' : 'no'}</td>
-      <td><strong>${esc(item.name)}</strong>${sourceQuarantined(item, selection) ? '<div class="muted">quarantined</div>' : ''}${sourceSuppressed(item, selection) ? '<div class="muted">suppressed</div>' : ''}</td>
-      <td>${esc(item.category)}</td>
-      <td>${esc(item.fusionRole || 'unassigned')}</td>
-      <td>${esc(item.lifecycle || 'unknown')}</td>
-      <td>${esc(item.liveState || 'unknown')}</td>
-      <td>${esc(item.freshnessTargetMinutes ?? 'n/a')}m / age ${esc(item.liveAgeMinutes ?? 'n/a')}m</td>
-      <td>${esc(item.liveFailureClass || 'none')}</td>
-      <td><div class="actions-cell">
-        <button class="mini-btn" data-action="${sourceQuarantined(item, selection) ? 'clear-quarantine' : 'quarantine-source'}" data-source="${esc(item.id)}">${sourceQuarantined(item, selection) ? 'Clear quarantine' : 'Quarantine'}</button>
-        <button class="mini-btn" data-action="${sourceSuppressed(item, selection) ? 'unsuppress-source' : 'suppress-source'}" data-source="${esc(item.id)}">${sourceSuppressed(item, selection) ? 'Unsuppress' : 'Suppress'}</button>
-      </div></td>
-      <td class="muted">${esc(item.id)}</td>
-    </tr>`).join('')}</tbody>
-  </table>`;
+  table.innerHTML = `<table><thead><tr><th>Enabled</th><th>Name</th><th>Category</th><th>Role</th><th>Lifecycle</th><th>Live state</th><th>Freshness</th><th>Failure class</th><th>Admin controls</th><th>ID</th></tr></thead><tbody>${items.map(item => `<tr><td>${sourceEnabled(item, selection) ? 'yes' : 'no'}</td><td><strong>${esc(item.name)}</strong>${sourceQuarantined(item, selection) ? '<div class="muted">quarantined</div>' : ''}${sourceSuppressed(item, selection) ? '<div class="muted">suppressed</div>' : ''}</td><td>${esc(item.category)}</td><td>${esc(item.fusionRole || 'unassigned')}</td><td>${esc(item.lifecycle || 'unknown')}</td><td>${esc(item.liveState || 'unknown')}</td><td>${esc(item.freshnessTargetMinutes ?? 'n/a')}m / age ${esc(item.liveAgeMinutes ?? 'n/a')}m</td><td>${esc(item.liveFailureClass || 'none')}</td><td><div class="actions-cell"><button class="mini-btn" data-action="${sourceQuarantined(item, selection) ? 'clear-quarantine' : 'quarantine-source'}" data-source="${esc(item.id)}">${sourceQuarantined(item, selection) ? 'Clear quarantine' : 'Quarantine'}</button><button class="mini-btn" data-action="${sourceSuppressed(item, selection) ? 'unsuppress-source' : 'suppress-source'}" data-source="${esc(item.id)}">${sourceSuppressed(item, selection) ? 'Unsuppress' : 'Suppress'}</button></div></td><td class="muted">${esc(item.id)}</td></tr>`).join('')}</tbody></table>`;
   table.querySelectorAll('button[data-action]').forEach(btn => btn.addEventListener('click', async () => {
     try {
       await postControl(btn.dataset.action, btn.dataset.source);
       const refreshed = await fetch('/api/settings').then(r => r.json());
       window.__SOURCE_CONSOLE__ = refreshed.sourceConsole;
-      document.getElementById('status').textContent = `Updated ${btn.dataset.source} via ${btn.dataset.action}.`;
+      shell.status.textContent = `Updated ${btn.dataset.source} via ${btn.dataset.action}.`;
       render();
     } catch (err) {
-      document.getElementById('status').textContent = `Source control failed: ${err.message}`;
+      shell.status.textContent = `Source control failed: ${err.message}`;
     }
   }));
 }
@@ -190,17 +88,11 @@ async function boot(){
     const consoleData = data.sourceConsole;
     window.__SOURCE_CONSOLE__ = consoleData;
     controls.hidden = false;
-    controls.innerHTML = `<div class="tags">${(consoleData.roleGrouping?.groups || []).map(group => `<span class="tag">${esc(group.role)}: ${esc(group.count)}</span>`).join('')}</div>
-      <div class="filters">
-        <label><div class="label">Category</div><select id="categoryFilter"><option value="all">All categories</option>${(consoleData.filtering?.categoryOptions || []).map(item => `<option value="${esc(item.category)}">${esc(item.category)} (${esc(item.count)})</option>`).join('')}</select></label>
-        <label><div class="label">Role</div><select id="roleFilter"><option value="all">All roles</option>${(consoleData.roleGrouping?.groups || []).map(item => `<option value="${esc(item.role)}">${esc(item.role)} (${esc(item.count)})</option>`).join('')}</select></label>
-        <label><div class="label">Lifecycle</div><select id="lifecycleFilter"><option value="all">All lifecycle</option>${(consoleData.filtering?.lifecycleOptions || []).map(item => `<option value="${esc(item.lifecycle)}">${esc(item.lifecycle)} (${esc(item.count)})</option>`).join('')}</select></label>
-        <label><div class="label">Search</div><input id="searchFilter" type="search" placeholder="source name or id"></label>
-      </div>`;
+    controls.innerHTML = `<div class="tags">${(consoleData.roleGrouping?.groups || []).map(group => `<span class="tag">${esc(group.role)}: ${esc(group.count)}</span>`).join('')}</div><div class="filters"><label><div class="label">Category</div><select id="categoryFilter"><option value="all">All categories</option>${(consoleData.filtering?.categoryOptions || []).map(item => `<option value="${esc(item.category)}">${esc(item.category)} (${esc(item.count)})</option>`).join('')}</select></label><label><div class="label">Role</div><select id="roleFilter"><option value="all">All roles</option>${(consoleData.roleGrouping?.groups || []).map(item => `<option value="${esc(item.role)}">${esc(item.role)} (${esc(item.count)})</option>`).join('')}</select></label><label><div class="label">Lifecycle</div><select id="lifecycleFilter"><option value="all">All lifecycle</option>${(consoleData.filtering?.lifecycleOptions || []).map(item => `<option value="${esc(item.lifecycle)}">${esc(item.lifecycle)} (${esc(item.count)})</option>`).join('')}</select></label><label><div class="label">Search</div><input id="searchFilter" type="search" placeholder="source name or id"></label></div>`;
     ['categoryFilter','roleFilter','lifecycleFilter','searchFilter'].forEach(id => controls.querySelector('#'+id)?.addEventListener('input', render));
     render();
   } catch (err) {
-    document.getElementById('status').textContent = `Failed to load source console: ${err.message}`;
+    shell.status.textContent = `Failed to load source console: ${err.message}`;
   }
 }
 boot();

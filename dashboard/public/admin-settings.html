@@ -4,241 +4,63 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CRUCIX Admin Settings</title>
-<style>
-:root{--bg:#020408;--panel:rgba(6,14,22,.92);--border:rgba(100,240,200,.18);--text:#e8f4f0;--dim:#7b9a92;--accent:#64f0c8;--accent2:#44ccff;--warn:#ffb84c;--mono:ui-monospace,SFMono-Regular,Menlo,monospace;--sans:Inter,system-ui,sans-serif}
-*{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--sans)}
-body{padding:18px} a{color:var(--accent2)}
-.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
-.top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;padding:16px 18px;border:1px solid var(--border);background:var(--panel)}
-.kicker,.pill,.mini{font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em}.kicker{font-size:11px;color:var(--accent2)} h1{margin:6px 0 4px;font-size:28px} .sub{color:var(--dim);max-width:780px;line-height:1.45}
-.pill{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--border);font-size:11px;color:var(--dim);background:transparent;text-decoration:none} .pill strong{color:var(--text)}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
-.card{padding:14px 16px;border:1px solid var(--border);background:var(--panel)} .card h2{margin:0 0 10px;font-size:16px}.mini{font-size:10px;color:var(--dim)}
-.row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)}.row:first-child{border-top:0;padding-top:0}.key{color:var(--dim)}.val{text-align:right}
-.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.tag{padding:4px 7px;border:1px solid rgba(100,240,200,.18);font-family:var(--mono);font-size:10px;color:var(--accent);background:rgba(100,240,200,.05)}
-.note{padding:12px 14px;border:1px solid rgba(255,184,76,.22);background:rgba(255,184,76,.08);color:#ffe3bd;line-height:1.45}
-pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.5 var(--mono);color:#cfe5de}
-</style>
+<link rel="stylesheet" href="/ops-shell.css">
 </head>
 <body>
-<div class="wrap">
-  <div class="top">
-    <div>
-      <div class="kicker">Crucix admin settings</div>
-      <h1>Local control plane</h1>
-      <div class="sub">This surface is for local-only admin writes, export/import, and other debug-adjacent control-plane actions. It is intentionally separated from the read-only operator view.</div>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-      <a class="pill" href="/settings">Operator view</a>
-      <a class="pill" href="/source-ops">Source ops</a>
-      <a class="pill" href="/llm-ops">LLM ops</a>
-      <a class="pill" href="/diagnostics">Diagnostics</a>
-      <a class="pill" href="/">Dashboard</a>
-      <button class="pill" id="saveBtn" type="button" style="cursor:pointer">Save</button>
-      <button class="pill" id="exportBtn" type="button" style="cursor:pointer">Export</button>
-      <button class="pill" id="restartBtn" type="button" style="cursor:pointer">Restart</button>
-      <button class="pill" id="stopBtn" type="button" style="cursor:pointer">Stop</button>
-      <a class="pill" href="/api/settings/admin" target="_blank" rel="noreferrer">Raw Admin JSON</a>
-    </div>
-  </div>
-  <div id="status" class="note">Loading admin settings…</div>
-  <div id="grid" class="grid" hidden></div>
-</div>
+<div id="app"></div>
+<script src="/ops-shell.js"></script>
 <script>
-function esc(value){return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function row(key, value){return `<div class="row"><div class="key">${esc(key)}</div><div class="val">${value}</div></div>`;}
-function tags(items){return `<div class="tags">${items.map(item => `<span class="tag">${esc(item)}</span>`).join('')}</div>`;}
-function renderCard(title, subtitle, body){return `<section class="card"><div class="mini">${esc(subtitle)}</div><h2>${esc(title)}</h2>${body}</section>`;}
+const { esc, row, tags, renderCard, mountOpsShell } = window.CRUCIX_OPS_SHELL;
+const shell = mountOpsShell({
+  activeSurface: 'admin-settings',
+  kicker: 'Crucix admin settings',
+  title: 'Local control plane',
+  subtitle: 'This surface is for local-only admin writes, export/import, and other debug-adjacent control-plane actions. It is intentionally separated from the read-only operator view.',
+  loadingText: 'Loading admin settings…',
+  contentClass: 'grid',
+  actions: [
+    { label: 'Save', type: 'button', id: 'saveBtn' },
+    { label: 'Export', type: 'button', id: 'exportBtn' },
+    { label: 'Restart', type: 'button', id: 'restartBtn' },
+    { label: 'Stop', type: 'button', id: 'stopBtn' },
+    { label: 'Raw Admin JSON', href: '/api/settings/admin', target: '_blank', rel: 'noreferrer' },
+  ],
+});
 function selectRow(label, id, value, options){return `<div class="row"><label class="key" for="${esc(id)}">${esc(label)}</label><div class="val"><select id="${esc(id)}">${options.map(option => `<option value="${esc(option.value)}" ${option.value===value?'selected':''}>${esc(option.label)}</option>`).join('')}</select></div></div>`;}
 function checkboxGroup(title, name, items, selectedValues){const selected=new Set(selectedValues||[]);return `<div class="row"><div class="key">${esc(title)}</div><div class="val"><div class="tags">${items.map(item => `<label class="tag"><input type="checkbox" name="${esc(name)}" value="${esc(item.value)}" ${selected.has(item.value)?'checked':''}> ${esc(item.label)}</label>`).join('')}</div></div></div>`;}
 function checkboxRow(label, id, checked){return `<div class="row"><label class="key" for="${esc(id)}">${esc(label)}</label><div class="val"><input id="${esc(id)}" type="checkbox" ${checked?'checked':''}></div></div>`;}
 function numberRow(label, id, value, min, max){return `<div class="row"><label class="key" for="${esc(id)}">${esc(label)}</label><div class="val"><input id="${esc(id)}" type="number" min="${esc(min)}" max="${esc(max)}" value="${esc(value)}" style="width:72px"></div></div>`;}
 function sourceRuleRows(activeRules, suggestedRules){const rows=[...(activeRules||[]), ...(suggestedRules||[]).map(item => ({ sourceId:item.sourceId, sourceName:item.sourceName, action:item.suggestedAction||'suppress', reason:item.suggestedReason||'', enabled:false, suggested:true }))]; if(!rows.length) return '<div class="mini">No active or suggested source-specific suppression rules right now.</div>'; return rows.map(rule => `<div class="row" data-noise-source-rule data-source-id="${esc(rule.sourceId)}"><div class="key"><strong>${esc(rule.sourceName||rule.sourceId)}</strong><div class="mini">${rule.suggested?'suggested from current weak-cluster noise':''}</div></div><div class="val" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end"><label class="mini">on <input data-field="enabled" type="checkbox" ${rule.enabled?'checked':''}></label><select data-field="action"><option value="suppress" ${rule.action==='suppress'?'selected':''}>SUPPRESS</option><option value="review-only" ${rule.action==='review-only'?'selected':''}>REVIEW ONLY</option></select><input data-field="reason" value="${esc(rule.reason||'')}" placeholder="reason" style="min-width:220px"></div></div>`).join('');}
-async function savePreferences(){
-  const payload = {
-    preferences: {
-      layout: {
-        visualsMode: document.getElementById('visualsMode')?.value || 'full',
-        mapMode: document.getElementById('mapMode')?.value || 'auto',
-        displayMode: document.getElementById('displayMode')?.value || 'auto',
-        defaultRegion: document.getElementById('defaultRegion')?.value || 'world',
-        activeLayer: document.getElementById('activeLayer')?.value || null,
-        panels: window.__CRUCIX_PANEL_PREFS__ || {},
-      },
-      sources: {
-        enabledCategories: Array.from(document.querySelectorAll('input[name="enabledCategories"]:checked')).map(el => el.value),
-        enabledSourceIds: Array.from(document.querySelectorAll('input[name="enabledSourceIds"]:checked')).map(el => el.value),
-        noiseSuppression: {
-          duplicateBurst: {
-            enabled: Boolean(document.getElementById('duplicateBurstEnabled')?.checked),
-            minSimilarClusters: Number(document.getElementById('duplicateBurstMinSimilarClusters')?.value || 2),
-          },
-          repetitiveLowValue: {
-            enabled: Boolean(document.getElementById('repetitiveLowValueEnabled')?.checked),
-            maxStoryCount: Number(document.getElementById('repetitiveLowValueMaxStoryCount')?.value || 1),
-            maxSourceCount: Number(document.getElementById('repetitiveLowValueMaxSourceCount')?.value || 1),
-          },
-          sourceRules: Array.from(document.querySelectorAll('[data-noise-source-rule]')).map(row => ({
-            sourceId: row.dataset.sourceId || '',
-            action: row.querySelector('[data-field="action"]')?.value || 'suppress',
-            reason: row.querySelector('[data-field="reason"]')?.value || '',
-            enabled: Boolean(row.querySelector('[data-field="enabled"]')?.checked),
-          })).filter(rule => rule.sourceId),
-        },
-      },
-      llm: {
-        newsModeDefault: document.getElementById('newsModeDefault')?.value || 'auto',
-      },
-      agentAnalysis: {
-        detailLevel: document.getElementById('analysisDetailLevel')?.value || 'standard',
-        publishPolicy: document.getElementById('analysisPublishPolicy')?.value || 'strict',
-        deterministicFallbackMode: document.getElementById('analysisFallbackMode')?.value || 'always',
-        horizonBehavior: document.getElementById('analysisHorizonBehavior')?.value || 'balanced',
-        tippingPointMinProbability: document.getElementById('analysisTippingMinProbability')?.value || 'HIGH',
-        maxPublishedTippingPoints: Number(document.getElementById('analysisMaxTippingPoints')?.value || 5),
-      },
-    },
-  };
-  const res = await fetch('/api/settings/operator', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-  if(!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
-async function exportPreferences(){
-  const res = await fetch('/api/settings/export');
-  if(!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'crucix-operator-settings.json';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-async function runtimeControl(action){
-  const res = await fetch('/api/runtime/control', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action }) });
-  if(!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
+async function savePreferences(){ const payload = { preferences: { layout: { visualsMode: document.getElementById('visualsMode')?.value || 'full', mapMode: document.getElementById('mapMode')?.value || 'auto', displayMode: document.getElementById('displayMode')?.value || 'auto', defaultRegion: document.getElementById('defaultRegion')?.value || 'world', activeLayer: document.getElementById('activeLayer')?.value || null, panels: window.__CRUCIX_PANEL_PREFS__ || {} }, sources: { enabledCategories: Array.from(document.querySelectorAll('input[name="enabledCategories"]:checked')).map(el => el.value), enabledSourceIds: Array.from(document.querySelectorAll('input[name="enabledSourceIds"]:checked')).map(el => el.value), noiseSuppression: { duplicateBurst: { enabled: Boolean(document.getElementById('duplicateBurstEnabled')?.checked), minSimilarClusters: Number(document.getElementById('duplicateBurstMinSimilarClusters')?.value || 2) }, repetitiveLowValue: { enabled: Boolean(document.getElementById('repetitiveLowValueEnabled')?.checked), maxStoryCount: Number(document.getElementById('repetitiveLowValueMaxStoryCount')?.value || 1), maxSourceCount: Number(document.getElementById('repetitiveLowValueMaxSourceCount')?.value || 1) }, sourceRules: Array.from(document.querySelectorAll('[data-noise-source-rule]')).map(row => ({ sourceId: row.dataset.sourceId || '', action: row.querySelector('[data-field="action"]')?.value || 'suppress', reason: row.querySelector('[data-field="reason"]')?.value || '', enabled: Boolean(row.querySelector('[data-field="enabled"]')?.checked) })).filter(rule => rule.sourceId) } }, llm: { newsModeDefault: document.getElementById('newsModeDefault')?.value || 'auto' }, agentAnalysis: { detailLevel: document.getElementById('analysisDetailLevel')?.value || 'standard', publishPolicy: document.getElementById('analysisPublishPolicy')?.value || 'strict', deterministicFallbackMode: document.getElementById('analysisFallbackMode')?.value || 'always', horizonBehavior: document.getElementById('analysisHorizonBehavior')?.value || 'balanced', tippingPointMinProbability: document.getElementById('analysisTippingMinProbability')?.value || 'HIGH', maxPublishedTippingPoints: Number(document.getElementById('analysisMaxTippingPoints')?.value || 5) } } }; const res = await fetch('/api/settings/operator', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }); if(!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); }
+async function exportPreferences(){ const res = await fetch('/api/settings/export'); if(!res.ok) throw new Error(`HTTP ${res.status}`); const data = await res.json(); const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'crucix-operator-settings.json'; a.click(); URL.revokeObjectURL(url); }
+async function runtimeControl(action){ const res = await fetch('/api/runtime/control', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action }) }); if(!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); }
 async function boot(){
-  const status = document.getElementById('status');
-  const grid = document.getElementById('grid');
   try {
     const res = await fetch('/api/settings/admin');
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    status.textContent = `Loaded ${data.version} at ${new Date(data.generatedAt).toLocaleString()}`;
+    shell.status.textContent = `Loaded ${data.version} at ${new Date(data.generatedAt).toLocaleString()}`;
     const categories = (data.sources?.categories || []).map(item => `${item.category}: ${item.count}`);
     const lifecycle = (data.sources?.lifecycleStates || []).map(item => `${item.lifecycle}: ${item.count}`);
     const layouts = (data.layout?.available || []).map(item => `${item.id} (${item.status})`);
-    grid.hidden = false;
-    grid.innerHTML = [
-      renderCard('Access', 'Surface role and boundaries', [
-        row('Role', esc(data.access?.role || 'admin')),
-        row('Mode', esc(data.access?.mode || 'local-write')),
-        row('Local admin required', esc(String(Boolean(data.access?.localAdminRequired)))),
-        row('Operator surface', esc(data.access?.operatorSurface || '/settings')),
-      ].join('')),
-      renderCard('Layout', 'UI posture', [
-        row('Current', esc(data.layout?.current || 'unknown')),
-        selectRow('Visuals mode', 'visualsMode', data.layout?.controls?.visualsMode || 'full', [{value:'full',label:'FULL'},{value:'lite',label:'LITE'}]),
-        selectRow('Map mode', 'mapMode', data.layout?.controls?.mapMode || 'auto', [{value:'auto',label:'AUTO'},{value:'flat',label:'FLAT'},{value:'globe',label:'GLOBE'}]),
-        selectRow('Display mode', 'displayMode', data.layout?.controls?.displayMode || 'auto', [{value:'auto',label:'AUTO'},{value:'narrow',label:'NARROW'},{value:'desktop',label:'DESKTOP'},{value:'wallboard',label:'WALLBOARD'}]),
-        selectRow('Default region', 'defaultRegion', data.layout?.controls?.defaultRegion || 'world', [{value:'world',label:'WORLD'},{value:'americas',label:'AMERICAS'},{value:'europe',label:'EUROPE'},{value:'middleEast',label:'MIDDLE EAST'},{value:'asiaPacific',label:'ASIA PACIFIC'},{value:'africa',label:'AFRICA'}]),
-        selectRow('Active layer', 'activeLayer', data.layout?.controls?.activeLayer || '', [{value:'',label:'ALL'},{value:'air',label:'AIR'},{value:'thermal',label:'THERMAL'},{value:'sdr',label:'SDR'},{value:'maritime',label:'MARITIME'},{value:'nuke',label:'NUKE'},{value:'conflict',label:'CONFLICT'},{value:'health',label:'HEALTH'},{value:'news',label:'NEWS'},{value:'osint',label:'OSINT'},{value:'space',label:'SPACE'}]),
-        row('Persistence', esc(data.layout?.controls?.persistence || 'unknown')),
-        tags(layouts),
-      ].join('')),
-      renderCard('Sources', 'Inventory and selection', [
-        row('Total', esc(data.sources?.total ?? 0)),
-        row('Active', esc(data.sources?.active ?? 0)),
-        row('Selection mode', esc(data.sources?.selection?.mode || 'unknown')),
-        row('Per-source controls', esc(String(Boolean(data.sources?.selection?.supportsPerSourceControl)))),
-        checkboxGroup('Enabled categories', 'enabledCategories', (data.sources?.categories || []).map(item => ({ value: item.category, label: `${item.category}: ${item.count}` })), data.sources?.selection?.enabledCategories || []),
-        checkboxGroup('Enabled sources', 'enabledSourceIds', (data.sources?.availableSources || []).map(item => ({ value: item.id, label: `${item.name} [${item.category}/${item.lifecycle}]` })), data.sources?.selection?.enabledSourceIds || []),
-        categories.length ? tags(categories) : '',
-        lifecycle.length ? tags(lifecycle) : '',
-      ].join('')),
-      renderCard('Noise suppression', 'Tune duplicate bursts, repetitive low-value events, and source rules', [
-        row('Duplicate burst candidates', esc(String(data.sourceConsole?.noiseSuppression?.summary?.duplicateBurstCandidateCount ?? 0))),
-        row('Low-value candidates', esc(String(data.sourceConsole?.noiseSuppression?.summary?.repetitiveLowValueCandidateCount ?? 0))),
-        checkboxRow('Enable duplicate burst suppression', 'duplicateBurstEnabled', Boolean(data.sourceConsole?.noiseSuppression?.controls?.duplicateBurst?.enabled)),
-        numberRow('Min similar clusters', 'duplicateBurstMinSimilarClusters', data.sourceConsole?.noiseSuppression?.controls?.duplicateBurst?.minSimilarClusters || 2, 2, 6),
-        checkboxRow('Enable repetitive low-value suppression', 'repetitiveLowValueEnabled', Boolean(data.sourceConsole?.noiseSuppression?.controls?.repetitiveLowValue?.enabled)),
-        numberRow('Max story count', 'repetitiveLowValueMaxStoryCount', data.sourceConsole?.noiseSuppression?.controls?.repetitiveLowValue?.maxStoryCount || 1, 1, 3),
-        numberRow('Max source count', 'repetitiveLowValueMaxSourceCount', data.sourceConsole?.noiseSuppression?.controls?.repetitiveLowValue?.maxSourceCount || 1, 1, 3),
-        sourceRuleRows(data.sourceConsole?.noiseSuppression?.sourceRules?.activeRules || [], data.sourceConsole?.noiseSuppression?.sourceRules?.suggestedRules || []),
-      ].join('')),
-      renderCard('LLM', 'Provider and runtime state', [
-        row('Provider', esc(data.llm?.provider || 'disabled')),
-        row('Model', esc(data.llm?.model || 'none')),
-        row('Configured', esc(String(Boolean(data.llm?.configured)))),
-        row('State', esc(data.llm?.state?.label || data.llm?.state?.status || 'unknown')),
-        selectRow('Default news mode', 'newsModeDefault', data.llm?.defaultMode || 'auto', [{value:'auto',label:'AUTO'},{value:'off',label:'OFF'},{value:'force',label:'FORCE'}]),
-      ].join('')),
-      renderCard('Agent analysis', 'Published reasoning behavior', [
-        row('Status', esc(data.agentAnalysis?.current?.status || 'unavailable')),
-        row('Confidence', esc(data.agentAnalysis?.current?.confidenceLabel || 'n/a')),
-        row('Source', esc(data.agentAnalysis?.current?.source || 'n/a')),
-        row('Refinement', esc(data.agentAnalysis?.current?.refinementState || 'n/a')),
-        selectRow('Publish policy', 'analysisPublishPolicy', data.agentAnalysis?.controls?.publishMode || 'strict', [{value:'strict',label:'STRICT'},{value:'balanced',label:'BALANCED'},{value:'exploratory',label:'EXPLORATORY'}]),
-        selectRow('Fallback mode', 'analysisFallbackMode', data.agentAnalysis?.controls?.deterministicFallbackMode || 'always', [{value:'always',label:'ALWAYS'},{value:'llm-unavailable-only',label:'LLM UNAVAILABLE ONLY'},{value:'disabled',label:'DISABLED'}]),
-        selectRow('Horizon behavior', 'analysisHorizonBehavior', data.agentAnalysis?.controls?.horizonBehavior || 'balanced', [{value:'short-only',label:'SHORT ONLY'},{value:'balanced',label:'BALANCED'},{value:'extended',label:'EXTENDED'}]),
-        selectRow('Tipping min probability', 'analysisTippingMinProbability', data.agentAnalysis?.controls?.tippingPointMinProbability || 'HIGH', [{value:'HIGH',label:'HIGH'},{value:'MEDIUM',label:'MEDIUM'},{value:'LOW',label:'LOW'}]),
-        `<div class="row"><label class="key" for="analysisMaxTippingPoints">Max published tipping points</label><div class="val"><input id="analysisMaxTippingPoints" type="number" min="1" max="8" value="${esc(data.agentAnalysis?.controls?.maxPublishedTippingPoints || 5)}" style="width:72px"></div></div>`,
-        selectRow('Detail level', 'analysisDetailLevel', data.agentAnalysis?.controls?.detailLevel || 'standard', [{value:'standard',label:'STANDARD'},{value:'compact',label:'COMPACT'},{value:'expanded',label:'EXPANDED'}]),
-      ].join('')),
-      renderCard('Admin controls', 'Persistence and boundaries', [
-        row('Settings path', esc(data.persistence?.path || 'hidden')),
-        row('Export enabled', esc(String(Boolean(data.persistence?.capabilities?.export)))),
-        row('Import enabled', esc(String(Boolean(data.persistence?.capabilities?.import)))),
-        row('Write API enabled', esc(String(Boolean(data.persistence?.capabilities?.writeApi)))),
-        row('Requires local request', esc(String(Boolean(data.admin?.boundaries?.requiresLocalRequest)))),
-      ].join('')),
-      renderCard('Runtime control', 'Process identity and bounded local actions', [
-        row('PID', esc(data.runtimeControl?.process?.pid || 'unknown')),
-        row('Port', esc(data.runtimeControl?.process?.port || 'unknown')),
-        row('Current phase', esc(data.runtimeControl?.sweep?.currentPhase || 'idle')),
-        row('Last success', esc(data.runtimeControl?.lastSuccess?.publishedAt || 'none')),
-        row('Last recovery phase', esc(data.runtimeControl?.sweep?.lastRecoveryPhase || 'none')),
-        row('Allowed actions', esc((data.runtimeControl?.controls?.allowedActions || []).join(', '))),
-      ].join('')),
+    shell.content.hidden = false;
+    shell.content.innerHTML = [
+      renderCard('Access', 'Surface role and boundaries', [row('Role', esc(data.access?.role || 'admin')), row('Mode', esc(data.access?.mode || 'local-write')), row('Local admin required', esc(String(Boolean(data.access?.localAdminRequired)))), row('Operator surface', esc(data.access?.operatorSurface || '/settings'))].join('')),
+      renderCard('Layout', 'UI posture', [row('Current', esc(data.layout?.current || 'unknown')), selectRow('Visuals mode', 'visualsMode', data.layout?.controls?.visualsMode || 'full', [{value:'full',label:'FULL'},{value:'lite',label:'LITE'}]), selectRow('Map mode', 'mapMode', data.layout?.controls?.mapMode || 'auto', [{value:'auto',label:'AUTO'},{value:'flat',label:'FLAT'},{value:'globe',label:'GLOBE'}]), selectRow('Display mode', 'displayMode', data.layout?.controls?.displayMode || 'auto', [{value:'auto',label:'AUTO'},{value:'narrow',label:'NARROW'},{value:'desktop',label:'DESKTOP'},{value:'wallboard',label:'WALLBOARD'}]), selectRow('Default region', 'defaultRegion', data.layout?.controls?.defaultRegion || 'world', [{value:'world',label:'WORLD'},{value:'americas',label:'AMERICAS'},{value:'europe',label:'EUROPE'},{value:'middleEast',label:'MIDDLE EAST'},{value:'asiaPacific',label:'ASIA PACIFIC'},{value:'africa',label:'AFRICA'}]), selectRow('Active layer', 'activeLayer', data.layout?.controls?.activeLayer || '', [{value:'',label:'ALL'},{value:'air',label:'AIR'},{value:'thermal',label:'THERMAL'},{value:'sdr',label:'SDR'},{value:'maritime',label:'MARITIME'},{value:'nuke',label:'NUKE'},{value:'conflict',label:'CONFLICT'},{value:'health',label:'HEALTH'},{value:'news',label:'NEWS'},{value:'osint',label:'OSINT'},{value:'space',label:'SPACE'}]), row('Persistence', esc(data.layout?.controls?.persistence || 'unknown')), tags(layouts)].join('')),
+      renderCard('Sources', 'Inventory and selection', [row('Total', esc(data.sources?.total ?? 0)), row('Active', esc(data.sources?.active ?? 0)), row('Selection mode', esc(data.sources?.selection?.mode || 'unknown')), row('Per-source controls', esc(String(Boolean(data.sources?.selection?.supportsPerSourceControl)))), checkboxGroup('Enabled categories', 'enabledCategories', (data.sources?.categories || []).map(item => ({ value: item.category, label: `${item.category}: ${item.count}` })), data.sources?.selection?.enabledCategories || []), checkboxGroup('Enabled sources', 'enabledSourceIds', (data.sources?.availableSources || []).map(item => ({ value: item.id, label: `${item.name} [${item.category}/${item.lifecycle}]` })), data.sources?.selection?.enabledSourceIds || []), categories.length ? tags(categories) : '', lifecycle.length ? tags(lifecycle) : ''].join('')),
+      renderCard('Noise suppression', 'Tune duplicate bursts, repetitive low-value events, and source rules', [row('Duplicate burst candidates', esc(String(data.sourceConsole?.noiseSuppression?.summary?.duplicateBurstCandidateCount ?? 0))), row('Low-value candidates', esc(String(data.sourceConsole?.noiseSuppression?.summary?.repetitiveLowValueCandidateCount ?? 0))), checkboxRow('Enable duplicate burst suppression', 'duplicateBurstEnabled', Boolean(data.sourceConsole?.noiseSuppression?.controls?.duplicateBurst?.enabled)), numberRow('Min similar clusters', 'duplicateBurstMinSimilarClusters', data.sourceConsole?.noiseSuppression?.controls?.duplicateBurst?.minSimilarClusters || 2, 2, 6), checkboxRow('Enable repetitive low-value suppression', 'repetitiveLowValueEnabled', Boolean(data.sourceConsole?.noiseSuppression?.controls?.repetitiveLowValue?.enabled)), numberRow('Max story count', 'repetitiveLowValueMaxStoryCount', data.sourceConsole?.noiseSuppression?.controls?.repetitiveLowValue?.maxStoryCount || 1, 1, 3), numberRow('Max source count', 'repetitiveLowValueMaxSourceCount', data.sourceConsole?.noiseSuppression?.controls?.repetitiveLowValue?.maxSourceCount || 1, 1, 3), sourceRuleRows(data.sourceConsole?.noiseSuppression?.sourceRules?.activeRules || [], data.sourceConsole?.noiseSuppression?.sourceRules?.suggestedRules || [])].join('')),
+      renderCard('LLM', 'Provider and runtime state', [row('Provider', esc(data.llm?.provider || 'disabled')), row('Model', esc(data.llm?.model || 'none')), row('Configured', esc(String(Boolean(data.llm?.configured)))), row('State', esc(data.llm?.state?.label || data.llm?.state?.status || 'unknown')), selectRow('Default news mode', 'newsModeDefault', data.llm?.defaultMode || 'auto', [{value:'auto',label:'AUTO'},{value:'off',label:'OFF'},{value:'force',label:'FORCE'}])].join('')),
+      renderCard('Agent analysis', 'Published reasoning behavior', [row('Status', esc(data.agentAnalysis?.current?.status || 'unavailable')), row('Confidence', esc(data.agentAnalysis?.current?.confidenceLabel || 'n/a')), row('Source', esc(data.agentAnalysis?.current?.source || 'n/a')), row('Refinement', esc(data.agentAnalysis?.current?.refinementState || 'n/a')), selectRow('Publish policy', 'analysisPublishPolicy', data.agentAnalysis?.controls?.publishMode || 'strict', [{value:'strict',label:'STRICT'},{value:'balanced',label:'BALANCED'},{value:'exploratory',label:'EXPLORATORY'}]), selectRow('Fallback mode', 'analysisFallbackMode', data.agentAnalysis?.controls?.deterministicFallbackMode || 'always', [{value:'always',label:'ALWAYS'},{value:'llm-unavailable-only',label:'LLM UNAVAILABLE ONLY'},{value:'disabled',label:'DISABLED'}]), selectRow('Horizon behavior', 'analysisHorizonBehavior', data.agentAnalysis?.controls?.horizonBehavior || 'balanced', [{value:'short-only',label:'SHORT ONLY'},{value:'balanced',label:'BALANCED'},{value:'extended',label:'EXTENDED'}]), selectRow('Tipping min probability', 'analysisTippingMinProbability', data.agentAnalysis?.controls?.tippingPointMinProbability || 'HIGH', [{value:'HIGH',label:'HIGH'},{value:'MEDIUM',label:'MEDIUM'},{value:'LOW',label:'LOW'}]), `<div class="row"><label class="key" for="analysisMaxTippingPoints">Max published tipping points</label><div class="val"><input id="analysisMaxTippingPoints" type="number" min="1" max="8" value="${esc(data.agentAnalysis?.controls?.maxPublishedTippingPoints || 5)}" style="width:72px"></div></div>`, selectRow('Detail level', 'analysisDetailLevel', data.agentAnalysis?.controls?.detailLevel || 'standard', [{value:'standard',label:'STANDARD'},{value:'compact',label:'COMPACT'},{value:'expanded',label:'EXPANDED'}])].join('')),
+      renderCard('Admin controls', 'Persistence and boundaries', [row('Settings path', esc(data.persistence?.path || 'hidden')), row('Export enabled', esc(String(Boolean(data.persistence?.capabilities?.export)))), row('Import enabled', esc(String(Boolean(data.persistence?.capabilities?.import)))), row('Write API enabled', esc(String(Boolean(data.persistence?.capabilities?.writeApi)))), row('Requires local request', esc(String(Boolean(data.admin?.boundaries?.requiresLocalRequest))))].join('')),
+      renderCard('Runtime control', 'Process identity and bounded local actions', [row('PID', esc(data.runtimeControl?.process?.pid || 'unknown')), row('Port', esc(data.runtimeControl?.process?.port || 'unknown')), row('Current phase', esc(data.runtimeControl?.sweep?.currentPhase || 'idle')), row('Last success', esc(data.runtimeControl?.lastSuccess?.publishedAt || 'none')), row('Last recovery phase', esc(data.runtimeControl?.sweep?.lastRecoveryPhase || 'none')), row('Allowed actions', esc((data.runtimeControl?.controls?.allowedActions || []).join(', ')))].join('')),
       renderCard('Operator notes', 'Boundaries and honesty', `<pre>${esc((data.notes || []).join('\n- ')).replace(/^/, '- ')}</pre>`),
     ].join('');
-    document.getElementById('saveBtn')?.addEventListener('click', async () => {
-      try {
-        await savePreferences();
-        status.textContent = `Saved admin settings at ${new Date().toLocaleTimeString()}`;
-      } catch (err) {
-        status.textContent = `Failed to save settings: ${err.message}`;
-      }
-    });
-    document.getElementById('exportBtn')?.addEventListener('click', async () => {
-      try {
-        await exportPreferences();
-        status.textContent = `Exported settings at ${new Date().toLocaleTimeString()}`;
-      } catch (err) {
-        status.textContent = `Failed to export settings: ${err.message}`;
-      }
-    });
-    document.getElementById('restartBtn')?.addEventListener('click', async () => {
-      try {
-        await runtimeControl('restart-safe');
-        status.textContent = 'Queued safe runtime restart.';
-      } catch (err) {
-        status.textContent = `Failed to queue restart: ${err.message}`;
-      }
-    });
-    document.getElementById('stopBtn')?.addEventListener('click', async () => {
-      try {
-        await runtimeControl('stop');
-        status.textContent = 'Queued local runtime stop.';
-      } catch (err) {
-        status.textContent = `Failed to queue stop: ${err.message}`;
-      }
-    });
+    document.getElementById('saveBtn')?.addEventListener('click', async () => { try { await savePreferences(); shell.status.textContent = `Saved admin settings at ${new Date().toLocaleTimeString()}`; } catch (err) { shell.status.textContent = `Failed to save settings: ${err.message}`; } });
+    document.getElementById('exportBtn')?.addEventListener('click', async () => { try { await exportPreferences(); shell.status.textContent = `Exported settings at ${new Date().toLocaleTimeString()}`; } catch (err) { shell.status.textContent = `Failed to export settings: ${err.message}`; } });
+    document.getElementById('restartBtn')?.addEventListener('click', async () => { try { await runtimeControl('restart-safe'); shell.status.textContent = 'Queued safe runtime restart.'; } catch (err) { shell.status.textContent = `Failed to queue restart: ${err.message}`; } });
+    document.getElementById('stopBtn')?.addEventListener('click', async () => { try { await runtimeControl('stop'); shell.status.textContent = 'Queued local runtime stop.'; } catch (err) { shell.status.textContent = `Failed to queue stop: ${err.message}`; } });
   } catch (err) {
-    status.textContent = `Failed to load settings: ${err.message}`;
+    shell.status.textContent = `Failed to load settings: ${err.message}`;
   }
 }
 boot();

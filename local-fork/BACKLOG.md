@@ -25,3 +25,5 @@ Recent promotions:
 - Rolling noise-suppression match history and per-rule hit counters were promoted into `local-fork/plan.json` as Epic 32, effort 32.7 on 2026-04-26.
 
 New items can be added here when they do not yet belong in the active roadmap.
+
+- Add browser-level regression coverage for the shared operator surface shell so active-nav state, boundary copy, and admin action availability are validated after client-side render instead of only by static HTML fetches.

@@ -170,11 +170,16 @@ test('booted operator and admin settings surfaces stay role-separated with local
 
     const page = await fetch(pageUrl).then(r => r.text());
     assert.match(page, /read-only operator view/i);
+    assert.match(page, /ops-shell\.js/i);
+    assert.match(page, /activeSurface: 'settings'/i);
+    assert.match(page, /ops-shell\.css/i);
     assert.doesNotMatch(page, /id="saveBtn"/i);
     assert.doesNotMatch(page, /id="exportBtn"/i);
 
     const sourceOpsPage = await fetch(`http://127.0.0.1:${BASE_PORT}/source-ops`).then(r => r.text());
     assert.match(sourceOpsPage, /Operator source console/i);
+    assert.match(sourceOpsPage, /ops-shell\.js/i);
+    assert.match(sourceOpsPage, /activeSurface: 'source-ops'/i);
     assert.match(sourceOpsPage, /source management console/i);
     assert.match(sourceOpsPage, /Blocked lifecycle actions/i);
     assert.match(sourceOpsPage, /Prune recommendation/i);
@@ -188,13 +193,15 @@ test('booted operator and admin settings surfaces stay role-separated with local
 
     const diagnosticsPage = await fetch(`http://127.0.0.1:${BASE_PORT}/diagnostics`).then(r => r.text());
     assert.match(diagnosticsPage, /Runtime and review diagnostics/i);
-    assert.match(diagnosticsPage, /Operator settings/i);
+    assert.match(diagnosticsPage, /ops-shell\.js/i);
+    assert.match(diagnosticsPage, /activeSurface: 'diagnostics'/i);
     assert.match(diagnosticsPage, /Noise suppression/i);
 
     const llmOpsPage = await fetch(llmOpsPageUrl).then(r => r.text());
     assert.match(llmOpsPage, /Provider health and fallback operations/i);
+    assert.match(llmOpsPage, /ops-shell\.js/i);
+    assert.match(llmOpsPage, /activeSurface: 'llm-ops'/i);
     assert.match(llmOpsPage, /Raw JSON/i);
-    assert.match(llmOpsPage, /Admin settings/i);
     assert.match(llmOpsPage, /Clustering prompt debug/i);
     assert.match(llmOpsPage, /Reasoning surface validation/i);
     assert.match(llmOpsPage, /Operator-visible cost, latency, and completion telemetry/i);
@@ -204,12 +211,12 @@ test('booted operator and admin settings surfaces stay role-separated with local
 
     const adminPage = await fetch(adminPageUrl).then(r => r.text());
     assert.match(adminPage, /Local control plane/i);
-    assert.match(adminPage, /Diagnostics/i);
-    assert.match(adminPage, /id="saveBtn"/i);
-    assert.match(adminPage, /id="exportBtn"/i);
-    assert.match(adminPage, /id="restartBtn"/i);
-    assert.match(adminPage, /id="stopBtn"/i);
-    assert.match(adminPage, /Source ops/i);
+    assert.match(adminPage, /ops-shell\.js/i);
+    assert.match(adminPage, /activeSurface: 'admin-settings'/i);
+    assert.match(adminPage, /saveBtn/i);
+    assert.match(adminPage, /exportBtn/i);
+    assert.match(adminPage, /restartBtn/i);
+    assert.match(adminPage, /stopBtn/i);
     assert.match(adminPage, /Noise suppression/i);
   });
 });

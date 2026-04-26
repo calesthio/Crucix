@@ -817,7 +817,7 @@
           {
             "id": "effort-32.5",
             "title": "Add a shared navigation and page-shell component for dashboard-adjacent operator, diagnostics, admin, and LLM operations surfaces so labels, links, and boundary explanations do not drift",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-32.6",
@@ -967,8 +967,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 114,
+    "sequence": 115,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-26-cycle-114"
+    "lastCompletedCycleId": "2026-04-26-cycle-115"
   }
 }

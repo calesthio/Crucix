@@ -4,50 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CRUCIX Diagnostics</title>
-<style>
-:root{--bg:#020408;--panel:rgba(6,14,22,.92);--border:rgba(100,240,200,.18);--text:#e8f4f0;--dim:#7b9a92;--accent:#64f0c8;--accent2:#44ccff;--warn:#ffb84c;--mono:ui-monospace,SFMono-Regular,Menlo,monospace;--sans:Inter,system-ui,sans-serif}
-*{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--sans)}
-body{padding:18px} a{color:var(--accent2)}
-.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
-.top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;padding:16px 18px;border:1px solid var(--border);background:var(--panel)}
-.kicker,.pill,.mini{font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em}.kicker{font-size:11px;color:var(--accent2)} h1{margin:6px 0 4px;font-size:28px} .sub{color:var(--dim);max-width:820px;line-height:1.45}
-.pill{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--border);font-size:11px;color:var(--dim)} .pill strong{color:var(--text)}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
-.card{padding:14px 16px;border:1px solid var(--border);background:var(--panel)} .card h2{margin:0 0 10px;font-size:16px}.mini{font-size:10px;color:var(--dim)}
-.row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.05)}.row:first-child{border-top:0;padding-top:0}.key{color:var(--dim)}.val{text-align:right}
-.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.tag{padding:4px 7px;border:1px solid rgba(100,240,200,.18);font-family:var(--mono);font-size:10px;color:var(--accent);background:rgba(100,240,200,.05)}
-.note{padding:12px 14px;border:1px solid rgba(255,184,76,.22);background:rgba(255,184,76,.08);color:#ffe3bd;line-height:1.45}
-.list{display:flex;flex-direction:column;gap:8px}.list a{display:block;padding:8px 10px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);text-decoration:none}
-pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.5 var(--mono);color:#cfe5de}
-</style>
+<link rel="stylesheet" href="/ops-shell.css">
 </head>
 <body>
-<div class="wrap">
-  <div class="top">
-    <div>
-      <div class="kicker">Crucix diagnostics</div>
-      <h1>Runtime and review diagnostics</h1>
-      <div class="sub">This surface is for runtime review, clustering diagnostics, and debug-adjacent inspection. It is intentionally separate from the normal operator view and from local-write administration.</div>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-      <a class="pill" href="/">Dashboard</a>
-      <a class="pill" href="/settings">Operator settings</a>
-      <a class="pill" href="/llm-ops">LLM ops</a>
-      <a class="pill" href="/admin/settings">Admin settings</a>
-    </div>
-  </div>
-  <div id="status" class="note">Loading diagnostics…</div>
-  <div id="grid" class="grid" hidden></div>
-</div>
+<div id="app"></div>
+<script src="/ops-shell.js"></script>
 <script>
-function esc(value){return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function row(key, value){return `<div class="row"><div class="key">${esc(key)}</div><div class="val">${value}</div></div>`;}
+const { esc, row, renderCard, mountOpsShell } = window.CRUCIX_OPS_SHELL;
+const shell = mountOpsShell({
+  activeSurface: 'diagnostics',
+  kicker: 'Crucix diagnostics',
+  title: 'Runtime and review diagnostics',
+  subtitle: 'This surface is for runtime review, clustering diagnostics, and debug-adjacent inspection. It is intentionally separate from the normal operator view and from local-write administration.',
+  loadingText: 'Loading diagnostics…',
+  contentClass: 'grid',
+});
 function tags(items){return `<div class="tags">${items.map(item => `<span class="tag">${esc(item)}</span>`).join('')}</div>`;}
-function renderCard(title, subtitle, body){return `<section class="card"><div class="mini">${esc(subtitle)}</div><h2>${esc(title)}</h2>${body}</section>`;}
 async function fetchJson(url){ const res = await fetch(url); if(!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); }
 async function boot(){
-  const status = document.getElementById('status');
-  const grid = document.getElementById('grid');
   try {
     const [settings, reviewStats, analysisReview, reviewWorkflow] = await Promise.all([
       fetchJson('/api/settings/admin'),
@@ -55,57 +29,20 @@ async function boot(){
       fetchJson('/api/analysis/review'),
       fetchJson('/api/brief/news/review'),
     ]);
-    status.textContent = `Loaded diagnostics at ${new Date(settings.generatedAt).toLocaleString()}`;
-    grid.hidden = false;
-    grid.innerHTML = [
-      renderCard('Surface boundaries', 'Separated information architecture', [
-        row('Operator surface', esc(settings.access?.operatorSurface || '/settings')),
-        row('Diagnostics surface', esc(settings.access?.diagnosticsSurface || '/diagnostics')),
-        row('Admin surface', esc('/admin/settings')),
-        row('Debug exposure', esc(settings.admin?.boundaries?.debugExposure || 'unknown')),
-      ].join('')),
-      renderCard('Review pressure', 'Queue and ack posture', [
-        row('Active dismissals', esc(String(reviewStats?.summary?.active ?? 0))),
-        row('Repeat acknowledgements', esc(String(reviewStats?.summary?.repeatAckCount ?? 0))),
-        row('Tracked failure regions', esc(String(reviewStats?.stats?.trackedRegionCount ?? 0))),
-        row('Chronic failures', esc(String(reviewStats?.stats?.chronicFailureCount ?? 0))),
-      ].join('')),
-      renderCard('Analysis review', 'Published reasoning diagnostics', [
-        row('Status', esc(analysisReview?.analysis?.status || 'unknown')),
-        row('Confidence', esc(analysisReview?.analysis?.confidenceLabel || 'unknown')),
-        row('Refinement', esc(analysisReview?.analysis?.refinementState || 'unknown')),
-        row('Review endpoint', '<a href="/api/analysis/review" target="_blank" rel="noreferrer">/api/analysis/review</a>'),
-      ].join('')),
-      renderCard('Workflow controls', 'Direct review actions with audit trail', `<div class="list">
-        ${(reviewWorkflow?.workflow?.lowConfidenceSources || []).slice(0, 3).map(item => `<div><strong>${esc(item.name)}</strong><div class="mini">trust ${esc(item.trustOutcome || 'unknown')} • attention ${esc(String(item.attentionScore || 0))}</div><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${(item.actions || []).map(action => `<button data-review-action="${esc(action.id)}" data-source="${esc(action.sourceId || '')}">${esc(action.label)}</button>`).join('')}</div></div>`).join('') || '<div>No low-confidence source workflow recommendations right now.</div>'}
-        ${(reviewWorkflow?.workflow?.promoteCandidates || []).slice(0, 2).map(item => `<div><strong>${esc(item.name)}</strong><div class="mini">${esc(item.promotionReadiness || 'unknown')}</div><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button data-review-action="promote-shadow" data-candidate="${esc(item.candidateId || '')}">Promote to approved</button></div></div>`).join('')}
-      </div>`),
-      renderCard('Weak cluster repair helpers', 'Why weak, and which bounded action fits', `<div class="list">
-        ${(reviewWorkflow?.workflow?.clusterRepair?.weakClusters || []).slice(0, 4).map(item => `<div><strong>${esc(item.headline || item.clusterId || 'cluster')}</strong><div class="mini">${esc(item.region || 'Unknown')} • quality ${esc(item.quality || 'unknown')} • stories ${esc(String(item.storyCount || 0))} • sources ${esc(String(item.sourceCount || 0))}</div><div class="mini" style="margin-top:6px">${(item.weaknessReasons || []).map(reason => esc(reason)).join(' • ') || 'No explicit weakness reasons captured.'}</div><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${(item.actions || []).map(action => `<button data-review-action="${esc(action.id)}" data-cluster="${esc(action.clusterId || item.clusterId || '')}" data-target-cluster="${esc(action.targetClusterId || '')}">${esc(action.label)}</button>`).join('') || '<span class="mini">No bounded repair actions available.</span>'}</div></div>`).join('') || '<div>No weak cluster repair helpers are available right now.</div>'}
-      </div>`),
-      renderCard('Noise suppression', 'Current suppression candidates and tunable rules', `<div class="list">
-        <div><strong>Duplicate bursts</strong><div class="mini">${esc(String(reviewWorkflow?.workflow?.noiseSuppression?.summary?.duplicateBurstCandidateCount || 0))} current candidate groups</div></div>
-        ${(reviewWorkflow?.workflow?.noiseSuppression?.duplicateBursts || []).slice(0, 3).map(item => `<div><strong>${esc(item.headline || item.id)}</strong><div class="mini">${esc(item.region || 'Unknown')} • similarity ${esc(String(item.similarity || 0))} • clusters ${(item.clusterIds || []).map(id => esc(id)).join(', ')}</div></div>`).join('') || '<div class="mini">No duplicate-burst candidates right now.</div>'}
-        <div><strong>Repetitive low-value events</strong><div class="mini">${esc(String(reviewWorkflow?.workflow?.noiseSuppression?.summary?.repetitiveLowValueCandidateCount || 0))} current candidates</div></div>
-        ${(reviewWorkflow?.workflow?.noiseSuppression?.repetitiveLowValueEvents || []).slice(0, 3).map(item => `<div><strong>${esc(item.headline || item.clusterId)}</strong><div class="mini">${esc(item.region || 'Unknown')} • source ${esc(item.sourceName || item.sourceId || 'unknown')}</div></div>`).join('') || '<div class="mini">No repetitive low-value candidates right now.</div>'}
-        <div><strong>Source rules</strong><div class="mini">${esc(String(reviewWorkflow?.workflow?.noiseSuppression?.summary?.activeSourceRuleCount || 0))} active • ${esc(String(reviewWorkflow?.workflow?.noiseSuppression?.summary?.suggestedSourceRuleCount || 0))} suggested</div></div>
-        ${(reviewWorkflow?.workflow?.noiseSuppression?.sourceRules?.activeRules || []).slice(0, 3).map(item => `<div><strong>${esc(item.sourceName || item.sourceId)}</strong><div class="mini">${esc(item.action || 'suppress')} • ${esc(item.reason || 'no reason')}</div></div>`).join('') || '<div class="mini">No active source-specific rules.</div>'}
-      </div>`),
-      renderCard('Workflow audit', 'Recent operator workflow trail', `<div class="list">
-        ${(reviewWorkflow?.workflow?.auditTrail || []).map(item => `<div><strong>${esc(item.action || 'action')}</strong><div class="mini">${esc(item.recordedAt || '')} • ${esc(item.status || 'unknown')}</div><div class="mini">${esc(item.sourceId || item.region || item.candidateId || '')}</div></div>`).join('') || '<div>No workflow audit entries yet.</div>'}
-      </div>`),
-      renderCard('Diagnostic endpoints', 'Direct inspection links', `<div class="list">
-        <a href="/api/brief/news/review" target="_blank" rel="noreferrer">News review payload</a>
-        <a href="/api/brief/news/review/stats" target="_blank" rel="noreferrer">News review stats</a>
-        <a href="/api/brief/news/review/acks" target="_blank" rel="noreferrer">Review acknowledgements</a>
-        <a href="/api/review-workflow/audit" target="_blank" rel="noreferrer">Review workflow audit</a>
-        <a href="/api/settings/admin" target="_blank" rel="noreferrer">Admin settings contract</a>
-      </div>`),
-      renderCard('Notes', 'Intent', `<pre>- Diagnostics now exposes direct local-admin review workflow controls with audit capture.
-- Operator settings remains the normal read-only control view.
-- Admin settings remains the broader local-write control plane.</pre>`),
+    shell.status.textContent = `Loaded diagnostics at ${new Date(settings.generatedAt).toLocaleString()}`;
+    shell.content.hidden = false;
+    shell.content.innerHTML = [
+      renderCard('Surface boundaries', 'Separated information architecture', [row('Operator surface', esc(settings.access?.operatorSurface || '/settings')), row('Diagnostics surface', esc(settings.access?.diagnosticsSurface || '/diagnostics')), row('Admin surface', esc('/admin/settings')), row('Debug exposure', esc(settings.admin?.boundaries?.debugExposure || 'unknown'))].join('')),
+      renderCard('Review pressure', 'Queue and ack posture', [row('Active dismissals', esc(String(reviewStats?.summary?.active ?? 0))), row('Repeat acknowledgements', esc(String(reviewStats?.summary?.repeatAckCount ?? 0))), row('Tracked failure regions', esc(String(reviewStats?.stats?.trackedRegionCount ?? 0))), row('Chronic failures', esc(String(reviewStats?.stats?.chronicFailureCount ?? 0)))].join('')),
+      renderCard('Analysis review', 'Published reasoning diagnostics', [row('Status', esc(analysisReview?.analysis?.status || 'unknown')), row('Confidence', esc(analysisReview?.analysis?.confidenceLabel || 'unknown')), row('Refinement', esc(analysisReview?.analysis?.refinementState || 'unknown')), row('Review endpoint', '<a href="/api/analysis/review" target="_blank" rel="noreferrer">/api/analysis/review</a>')].join('')),
+      renderCard('Workflow controls', 'Direct review actions with audit trail', `<div class="list">${(reviewWorkflow?.workflow?.lowConfidenceSources || []).slice(0, 3).map(item => `<div><strong>${esc(item.name)}</strong><div class="mini">trust ${esc(item.trustOutcome || 'unknown')} • attention ${esc(String(item.attentionScore || 0))}</div><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${(item.actions || []).map(action => `<button data-review-action="${esc(action.id)}" data-source="${esc(action.sourceId || '')}">${esc(action.label)}</button>`).join('')}</div></div>`).join('') || '<div>No low-confidence source workflow recommendations right now.</div>'}${(reviewWorkflow?.workflow?.promoteCandidates || []).slice(0, 2).map(item => `<div><strong>${esc(item.name)}</strong><div class="mini">${esc(item.promotionReadiness || 'unknown')}</div><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button data-review-action="promote-shadow" data-candidate="${esc(item.candidateId || '')}">Promote to approved</button></div></div>`).join('')}</div>`),
+      renderCard('Weak cluster repair helpers', 'Why weak, and which bounded action fits', `<div class="list">${(reviewWorkflow?.workflow?.clusterRepair?.weakClusters || []).slice(0, 4).map(item => `<div><strong>${esc(item.headline || item.clusterId || 'cluster')}</strong><div class="mini">${esc(item.region || 'Unknown')} • quality ${esc(item.quality || 'unknown')} • stories ${esc(String(item.storyCount || 0))} • sources ${esc(String(item.sourceCount || 0))}</div><div class="mini" style="margin-top:6px">${(item.weaknessReasons || []).map(reason => esc(reason)).join(' • ') || 'No explicit weakness reasons captured.'}</div><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${(item.actions || []).map(action => `<button data-review-action="${esc(action.id)}" data-cluster="${esc(action.clusterId || item.clusterId || '')}" data-target-cluster="${esc(action.targetClusterId || '')}">${esc(action.label)}</button>`).join('') || '<span class="mini">No bounded repair actions available.</span>'}</div></div>`).join('') || '<div>No weak cluster repair helpers are available right now.</div>'}</div>`),
+      renderCard('Noise suppression', 'Current suppression candidates and tunable rules', `<div class="list"><div><strong>Duplicate bursts</strong><div class="mini">${esc(String(reviewWorkflow?.workflow?.noiseSuppression?.summary?.duplicateBurstCandidateCount || 0))} current candidate groups</div></div>${(reviewWorkflow?.workflow?.noiseSuppression?.duplicateBursts || []).slice(0, 3).map(item => `<div><strong>${esc(item.headline || item.id)}</strong><div class="mini">${esc(item.region || 'Unknown')} • similarity ${esc(String(item.similarity || 0))} • clusters ${(item.clusterIds || []).map(id => esc(id)).join(', ')}</div></div>`).join('') || '<div class="mini">No duplicate-burst candidates right now.</div>'}<div><strong>Repetitive low-value events</strong><div class="mini">${esc(String(reviewWorkflow?.workflow?.noiseSuppression?.summary?.repetitiveLowValueCandidateCount || 0))} current candidates</div></div>${(reviewWorkflow?.workflow?.noiseSuppression?.repetitiveLowValueEvents || []).slice(0, 3).map(item => `<div><strong>${esc(item.headline || item.clusterId)}</strong><div class="mini">${esc(item.region || 'Unknown')} • source ${esc(item.sourceName || item.sourceId || 'unknown')}</div></div>`).join('') || '<div class="mini">No repetitive low-value candidates right now.</div>'}<div><strong>Source rules</strong><div class="mini">${esc(String(reviewWorkflow?.workflow?.noiseSuppression?.summary?.activeSourceRuleCount || 0))} active • ${esc(String(reviewWorkflow?.workflow?.noiseSuppression?.summary?.suggestedSourceRuleCount || 0))} suggested</div></div>${(reviewWorkflow?.workflow?.noiseSuppression?.sourceRules?.activeRules || []).slice(0, 3).map(item => `<div><strong>${esc(item.sourceName || item.sourceId)}</strong><div class="mini">${esc(item.action || 'suppress')} • ${esc(item.reason || 'no reason')}</div></div>`).join('') || '<div class="mini">No active source-specific rules.</div>'}</div>`),
+      renderCard('Workflow audit', 'Recent operator workflow trail', `<div class="list">${(reviewWorkflow?.workflow?.auditTrail || []).map(item => `<div><strong>${esc(item.action || 'action')}</strong><div class="mini">${esc(item.recordedAt || '')} • ${esc(item.status || 'unknown')}</div><div class="mini">${esc(item.sourceId || item.region || item.candidateId || '')}</div></div>`).join('') || '<div>No workflow audit entries yet.</div>'}</div>`),
+      renderCard('Diagnostic endpoints', 'Direct inspection links', `<div class="list"><a href="/api/brief/news/review" target="_blank" rel="noreferrer">News review payload</a><a href="/api/brief/news/review/stats" target="_blank" rel="noreferrer">News review stats</a><a href="/api/brief/news/review/acks" target="_blank" rel="noreferrer">Review acknowledgements</a><a href="/api/review-workflow/audit" target="_blank" rel="noreferrer">Review workflow audit</a><a href="/api/settings/admin" target="_blank" rel="noreferrer">Admin settings contract</a></div>`),
+      renderCard('Notes', 'Intent', `<pre>- Diagnostics now exposes direct local-admin review workflow controls with audit capture.\n- Operator settings remains the normal read-only control view.\n- Admin settings remains the broader local-write control plane.</pre>`),
     ].join('');
-    grid.querySelectorAll('button[data-review-action]').forEach(btn => btn.addEventListener('click', async () => {
+    shell.content.querySelectorAll('button[data-review-action]').forEach(btn => btn.addEventListener('click', async () => {
       const payload = { action: btn.dataset.reviewAction };
       if (btn.dataset.source) payload.sourceId = btn.dataset.source;
       if (btn.dataset.candidate) payload.candidateId = btn.dataset.candidate;
@@ -114,15 +51,14 @@ async function boot(){
       try {
         const res = await fetch('/api/review-workflow/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        status.textContent = `Applied ${payload.action}. Reloading diagnostics.`;
+        shell.status.textContent = `Applied ${payload.action}. Reloading diagnostics.`;
         boot();
       } catch (err) {
-        status.textContent = `Workflow action failed: ${err.message}`;
+        shell.status.textContent = `Workflow action failed: ${err.message}`;
       }
     }));
-    ].join('');
   } catch (err) {
-    status.textContent = `Failed to load diagnostics: ${err.message}`;
+    shell.status.textContent = `Failed to load diagnostics: ${err.message}`;
   }
 }
 boot();
