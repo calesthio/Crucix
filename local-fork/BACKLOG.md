@@ -30,3 +30,5 @@ Recent promotions:
 - Noise-suppression history decay and prune telemetry surfacing was promoted into `local-fork/plan.json` as Epic 29, effort 29.6 on 2026-04-26.
 
 New items can be added here when they do not yet belong in the active roadmap.
+
+- Add rolling per-sweep noise-suppression telemetry snapshots and a small diagnostics trend view so operators can tell whether aged-out history and prune activity are one-off events or a sustained state-growth pattern over time.

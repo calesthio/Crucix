@@ -620,6 +620,17 @@ function noiseSuppressionHistoryDefaults() {
     duplicateBursts: {},
     repetitiveLowValueEvents: {},
     sourceRuleHits: {},
+    telemetry: {
+      lastPrunedAt: null,
+      pruningActive: false,
+      buckets: {},
+      summary: {
+        totalEntries: 0,
+        retainedEntries: 0,
+        expiredEntriesRemoved: 0,
+        overflowEntriesRemoved: 0,
+      },
+    },
   };
 }
 
@@ -638,26 +649,54 @@ function pruneNoiseSuppressionHistoryBucket(bucket = {}, options = {}) {
   const recordedAt = options.recordedAt || new Date().toISOString();
   const retentionMs = Math.max(1, Number(options.retentionMs || NOISE_SUPPRESSION_HISTORY_RETENTION_MS) || 1);
   const maxEntries = Math.max(1, Number(options.maxEntries || Number.MAX_SAFE_INTEGER) || 1);
-  const kept = Object.entries(bucket || {})
-    .filter(([, value]) => value && typeof value === 'object')
+  const entries = Object.entries(bucket || {})
+    .filter(([, value]) => value && typeof value === 'object');
+  const withinRetention = entries
     .filter(([, value]) => {
       const lastSeenMs = Date.parse(value.lastSeenAt || value.updatedAt || value.firstSeenAt || '') || 0;
       if (!lastSeenMs) return true;
       return ((Date.parse(recordedAt) || Date.now()) - lastSeenMs) <= retentionMs;
     })
-    .sort((a, b) => (Date.parse(b[1].lastSeenAt || b[1].updatedAt || b[1].firstSeenAt || '') || 0) - (Date.parse(a[1].lastSeenAt || a[1].updatedAt || a[1].firstSeenAt || '') || 0))
-    .slice(0, maxEntries);
+    .sort((a, b) => (Date.parse(b[1].lastSeenAt || b[1].updatedAt || b[1].firstSeenAt || '') || 0) - (Date.parse(a[1].lastSeenAt || a[1].updatedAt || a[1].firstSeenAt || '') || 0));
+  const kept = withinRetention.slice(0, maxEntries);
   for (const key of Object.keys(bucket || {})) delete bucket[key];
   for (const [key, value] of kept) bucket[key] = value;
-  return bucket;
+  return {
+    bucket,
+    telemetry: {
+      totalEntries: entries.length,
+      retainedEntries: kept.length,
+      expiredEntriesRemoved: Math.max(0, entries.length - withinRetention.length),
+      overflowEntriesRemoved: Math.max(0, withinRetention.length - kept.length),
+      maxEntries,
+    },
+  };
 }
 
 function pruneNoiseSuppressionHistory(historyState = noiseSuppressionHistory, recordedAt = new Date().toISOString()) {
   historyState.retentionMs = NOISE_SUPPRESSION_HISTORY_RETENTION_MS;
   historyState.halfLifeMs = NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS;
-  pruneNoiseSuppressionHistoryBucket(historyState.duplicateBursts, { recordedAt, retentionMs: NOISE_SUPPRESSION_HISTORY_RETENTION_MS, maxEntries: NOISE_SUPPRESSION_HISTORY_MAX_DUPLICATE_BURSTS });
-  pruneNoiseSuppressionHistoryBucket(historyState.repetitiveLowValueEvents, { recordedAt, retentionMs: NOISE_SUPPRESSION_HISTORY_RETENTION_MS, maxEntries: NOISE_SUPPRESSION_HISTORY_MAX_LOW_VALUE_EVENTS });
-  pruneNoiseSuppressionHistoryBucket(historyState.sourceRuleHits, { recordedAt, retentionMs: NOISE_SUPPRESSION_HISTORY_RETENTION_MS, maxEntries: NOISE_SUPPRESSION_HISTORY_MAX_SOURCE_RULE_HITS });
+  const duplicateBursts = pruneNoiseSuppressionHistoryBucket(historyState.duplicateBursts, { recordedAt, retentionMs: NOISE_SUPPRESSION_HISTORY_RETENTION_MS, maxEntries: NOISE_SUPPRESSION_HISTORY_MAX_DUPLICATE_BURSTS }).telemetry;
+  const repetitiveLowValueEvents = pruneNoiseSuppressionHistoryBucket(historyState.repetitiveLowValueEvents, { recordedAt, retentionMs: NOISE_SUPPRESSION_HISTORY_RETENTION_MS, maxEntries: NOISE_SUPPRESSION_HISTORY_MAX_LOW_VALUE_EVENTS }).telemetry;
+  const sourceRuleHits = pruneNoiseSuppressionHistoryBucket(historyState.sourceRuleHits, { recordedAt, retentionMs: NOISE_SUPPRESSION_HISTORY_RETENTION_MS, maxEntries: NOISE_SUPPRESSION_HISTORY_MAX_SOURCE_RULE_HITS }).telemetry;
+  const summary = {
+    totalEntries: duplicateBursts.totalEntries + repetitiveLowValueEvents.totalEntries + sourceRuleHits.totalEntries,
+    retainedEntries: duplicateBursts.retainedEntries + repetitiveLowValueEvents.retainedEntries + sourceRuleHits.retainedEntries,
+    expiredEntriesRemoved: duplicateBursts.expiredEntriesRemoved + repetitiveLowValueEvents.expiredEntriesRemoved + sourceRuleHits.expiredEntriesRemoved,
+    overflowEntriesRemoved: duplicateBursts.overflowEntriesRemoved + repetitiveLowValueEvents.overflowEntriesRemoved + sourceRuleHits.overflowEntriesRemoved,
+  };
+  const previousTelemetry = historyState.telemetry && historyState.telemetry.lastPrunedAt === recordedAt ? historyState.telemetry : null;
+  historyState.telemetry = {
+    lastPrunedAt: recordedAt,
+    pruningActive: Boolean(summary.expiredEntriesRemoved || summary.overflowEntriesRemoved || previousTelemetry?.pruningActive),
+    buckets: { duplicateBursts, repetitiveLowValueEvents, sourceRuleHits },
+    summary: {
+      totalEntries: summary.totalEntries,
+      retainedEntries: summary.retainedEntries,
+      expiredEntriesRemoved: summary.expiredEntriesRemoved + (previousTelemetry?.summary?.expiredEntriesRemoved || 0),
+      overflowEntriesRemoved: summary.overflowEntriesRemoved + (previousTelemetry?.summary?.overflowEntriesRemoved || 0),
+    },
+  };
   return historyState;
 }
 
@@ -673,6 +712,7 @@ function loadNoiseSuppressionHistory() {
     duplicateBursts: base.duplicateBursts && typeof base.duplicateBursts === 'object' ? base.duplicateBursts : {},
     repetitiveLowValueEvents: base.repetitiveLowValueEvents && typeof base.repetitiveLowValueEvents === 'object' ? base.repetitiveLowValueEvents : {},
     sourceRuleHits: base.sourceRuleHits && typeof base.sourceRuleHits === 'object' ? base.sourceRuleHits : {},
+    telemetry: base.telemetry && typeof base.telemetry === 'object' ? base.telemetry : noiseSuppressionHistoryDefaults().telemetry,
   };
   pruneNoiseSuppressionHistory(normalized, normalized.lastSweepAt || normalized.updatedAt || new Date().toISOString());
   return normalized;
@@ -778,6 +818,31 @@ function findSourceByAttribution(sourceName = '', snapshot = currentData || null
 function findSourceForCluster(cluster = {}, snapshot = currentData || null) {
   const topSource = cluster?.sourceProvenance?.topSources?.[0] || null;
   return findSourceByAttribution(topSource?.runtimeSource || topSource?.source || '', snapshot);
+}
+
+function summarizeNoiseSuppressionDecayTelemetry(history = noiseSuppressionHistory, referenceAt = new Date().toISOString()) {
+  const duplicateBursts = Object.values(history?.duplicateBursts || {});
+  const repetitiveLowValueEvents = Object.values(history?.repetitiveLowValueEvents || {});
+  const sourceRuleHits = Object.values(history?.sourceRuleHits || {});
+  const countAgedOut = (items = [], countSelector, lastSeenSelector) => items.reduce((sum, item) => (
+    decayNoiseSuppressionCount(countSelector(item), lastSeenSelector(item), referenceAt) < 1 ? sum + 1 : sum
+  ), 0);
+  return {
+    referenceAt,
+    agedOutSuggestionCount: countAgedOut(duplicateBursts, item => item?.hitCount, item => item?.lastSeenAt)
+      + countAgedOut(repetitiveLowValueEvents, item => item?.hitCount, item => item?.lastSeenAt)
+      + countAgedOut(sourceRuleHits, item => item?.totalHitCount, item => item?.lastSeenAt),
+    bucketCounts: {
+      duplicateBursts: duplicateBursts.length,
+      repetitiveLowValueEvents: repetitiveLowValueEvents.length,
+      sourceRuleHits: sourceRuleHits.length,
+    },
+    agedOutByBucket: {
+      duplicateBursts: countAgedOut(duplicateBursts, item => item?.hitCount, item => item?.lastSeenAt),
+      repetitiveLowValueEvents: countAgedOut(repetitiveLowValueEvents, item => item?.hitCount, item => item?.lastSeenAt),
+      sourceRuleHits: countAgedOut(sourceRuleHits, item => item?.totalHitCount, item => item?.lastSeenAt),
+    },
+  };
 }
 
 function buildNoiseSuppressionContract(snapshot = currentData || null, options = {}) {
@@ -904,6 +969,8 @@ function buildNoiseSuppressionContract(snapshot = currentData || null, options =
       lastSweepAt: history?.lastSweepAt || null,
       retentionMs: history?.retentionMs || NOISE_SUPPRESSION_HISTORY_RETENTION_MS,
       halfLifeMs: history?.halfLifeMs || NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS,
+      decayTelemetry: summarizeNoiseSuppressionDecayTelemetry(history, referenceAt),
+      pruneTelemetry: history?.telemetry || noiseSuppressionHistoryDefaults().telemetry,
     },
     controls,
     tuningBounds: {
@@ -4897,6 +4964,7 @@ app.get('/api/health', (req, res) => {
     clusterReviewStats: summarizeClusterReviewStats(),
     clusterPressureStats: summarizeClusterPressureStats(),
     clusterRepairArtifacts: summarizeClusterRepairArtifacts(),
+    noiseSuppressionTelemetry: buildNoiseSuppressionContract(currentData || null).history,
     trendSummary: memory.getTrendSummary(),
     agentAnalysis: currentData?.agentAnalysis ? {
       status: currentData.agentAnalysis.status,

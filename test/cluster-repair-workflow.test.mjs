@@ -23,7 +23,7 @@ const context = {
   operatorSettingsDefaults: () => ({ preferences: { sources: { noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 2 }, repetitiveLowValue: { enabled: true, maxStoryCount: 1, maxSourceCount: 1 }, sourceRules: [] } } } }),
   inventoryItems: [],
   buildOperatorSourceOps: snapshot => snapshot?.sourceOps || { inventory: { items: context.inventoryItems || [] } },
-  noiseSuppressionHistory: { version: 'noise-suppression-history-v2', updatedAt: null, lastSweepAt: null, retentionMs: 14 * 24 * 60 * 60 * 1000, halfLifeMs: 5 * 24 * 60 * 60 * 1000, duplicateBursts: {}, repetitiveLowValueEvents: {}, sourceRuleHits: {} },
+  noiseSuppressionHistory: { version: 'noise-suppression-history-v2', updatedAt: null, lastSweepAt: null, retentionMs: 14 * 24 * 60 * 60 * 1000, halfLifeMs: 5 * 24 * 60 * 60 * 1000, duplicateBursts: {}, repetitiveLowValueEvents: {}, sourceRuleHits: {}, telemetry: { lastPrunedAt: null, pruningActive: false, buckets: {}, summary: { totalEntries: 0, retainedEntries: 0, expiredEntriesRemoved: 0, overflowEntriesRemoved: 0 } } },
   NOISE_SUPPRESSION_HISTORY_PATH: '/tmp/noise-suppression-history.json',
   NOISE_SUPPRESSION_HISTORY_RETENTION_MS: 14 * 24 * 60 * 60 * 1000,
   NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS: 5 * 24 * 60 * 60 * 1000,
@@ -128,13 +128,17 @@ test('buildNoiseSuppressionContract derives duplicate, low-value, and source-rul
   assert.equal(suppression.repetitiveLowValueEvents[0].historyHitCount, 2);
   assert.equal(suppression.sourceRules.activeRules[0].sourceId, 'src-a');
   assert.equal(suppression.sourceRules.activeRules[0].hitCount, 5);
+  assert.equal(suppression.history.decayTelemetry.bucketCounts.duplicateBursts, 1);
+  assert.equal(suppression.history.decayTelemetry.bucketCounts.repetitiveLowValueEvents, 1);
+  assert.equal(suppression.history.decayTelemetry.bucketCounts.sourceRuleHits, 1);
+  assert.equal(typeof suppression.history.pruneTelemetry.summary.retainedEntries, 'number');
 });
 
 test('recordNoiseSuppressionHistory persists rolling counters for repeated sweeps', () => {
   writes.length = 0;
   context.inventoryItems = [{ id: 'src-a', name: 'Source A' }];
   context.loadOperatorSettings = () => ({ preferences: { sources: { noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 2 }, repetitiveLowValue: { enabled: true, maxStoryCount: 1, maxSourceCount: 1 }, sourceRules: [] } } } });
-  context.noiseSuppressionHistory = { version: 'noise-suppression-history-v2', updatedAt: null, lastSweepAt: null, retentionMs: context.NOISE_SUPPRESSION_HISTORY_RETENTION_MS, halfLifeMs: context.NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS, duplicateBursts: {}, repetitiveLowValueEvents: {}, sourceRuleHits: {} };
+  context.noiseSuppressionHistory = { version: 'noise-suppression-history-v2', updatedAt: null, lastSweepAt: null, retentionMs: context.NOISE_SUPPRESSION_HISTORY_RETENTION_MS, halfLifeMs: context.NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS, duplicateBursts: {}, repetitiveLowValueEvents: {}, sourceRuleHits: {}, telemetry: { lastPrunedAt: null, pruningActive: false, buckets: {}, summary: { totalEntries: 0, retainedEntries: 0, expiredEntriesRemoved: 0, overflowEntriesRemoved: 0 } } };
   const snapshot = {
     meta: { timestamp: '2026-04-26T12:30:00.000Z' },
     newsClusters: [{ id: 'cluster-a', headline: 'A', region: 'Iran', storyCount: 1, sourceCount: 1, quality: 'low', confidenceLabel: 'weak', qualityFlags: ['single-source'], sourceProvenance: { topSources: [{ runtimeSource: 'Source A' }] } }],
@@ -187,4 +191,7 @@ test('noise suppression history decays stale suggestion weight and prunes expire
   };
   recordNoiseSuppressionHistory(snapshot);
   assert.equal(Object.keys(context.noiseSuppressionHistory.duplicateBursts).length, 0);
+  assert.equal(context.noiseSuppressionHistory.telemetry.pruningActive, true);
+  assert.equal(context.noiseSuppressionHistory.telemetry.summary.expiredEntriesRemoved > 0, true);
+  assert.equal(suppression.history.decayTelemetry.agedOutSuggestionCount > 0, true);
 });

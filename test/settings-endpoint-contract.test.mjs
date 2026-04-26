@@ -94,6 +94,9 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal('recoveryClassification' in health.sweepWatchdog, true);
     assert.equal('publishedAt' in health.lastSuccess, true);
     assert.equal(typeof health.llmProviderReadiness?.status, 'string');
+    assert.equal(health.noiseSuppressionTelemetry.version, 'noise-suppression-history-v2');
+    assert.equal(typeof health.noiseSuppressionTelemetry.decayTelemetry.agedOutSuggestionCount, 'number');
+    assert.equal(typeof health.noiseSuppressionTelemetry.pruneTelemetry.summary.retainedEntries, 'number');
 
     const settings = await waitFor(settingsUrl, payload => payload?.version === 'operator-settings-v1', 30000);
     assert.deepEqual(settings.sections, ['layout', 'sources', 'sourceConsole', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']);
@@ -113,6 +116,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(Array.isArray(settings.sources.availableSources), true);
     assert.equal(settings.sources.selection.noiseSuppression.duplicateBurst.enabled, true);
     assert.equal(settings.sourceConsole.noiseSuppression.version, 'noise-suppression-v1');
+    assert.equal(typeof settings.sourceConsole.noiseSuppression.history.decayTelemetry.agedOutSuggestionCount, 'number');
+    assert.equal(typeof settings.sourceConsole.noiseSuppression.history.pruneTelemetry.summary.retainedEntries, 'number');
     assert.equal(settings.persistence.capabilities.export, false);
     assert.equal(settings.persistence.capabilities.writeApi, false);
     assert.equal(settings.sourceConsole.version, 'source-console-v1');
