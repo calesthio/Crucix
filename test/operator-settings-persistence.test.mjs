@@ -82,6 +82,17 @@ test('operator settings persist, export, and influence runtime bootstrap state',
             tippingPointMinProbability: 'LOW',
             maxPublishedTippingPoints: 2,
           },
+          alerts: {
+            operational: {
+              enabled: true,
+              defaultRoute: ['telegram'],
+              escalationRoute: ['telegram', 'discord'],
+              staleSweep: { enabled: true, cooldownMinutes: 25, escalationAfter: 2 },
+              sourceFailures: { enabled: true, minFailedSources: 4, minDegradedSources: 2, cooldownMinutes: 75, escalationAfter: 3 },
+              reviewPressure: { enabled: true, minChronicRegions: 2, minPressuredRegions: 2, minLowConfidenceCount: 5, cooldownMinutes: 80, escalationAfter: 2 },
+              inferenceDegraded: { enabled: true, heuristicFallbackCount: 4, cooldownMinutes: 55, escalationAfter: 2 },
+            },
+          },
         },
       }),
     });
@@ -94,6 +105,8 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(updated.settings.preferences.agentAnalysis.horizonBehavior, 'short-only');
     assert.equal(updated.settings.preferences.agentAnalysis.tippingPointMinProbability, 'LOW');
     assert.equal(updated.settings.preferences.agentAnalysis.maxPublishedTippingPoints, 2);
+    assert.deepEqual(updated.settings.preferences.alerts.operational.defaultRoute, ['telegram']);
+    assert.deepEqual(updated.settings.preferences.alerts.operational.escalationRoute, ['telegram', 'discord']);
 
     const settings = await waitFor(settingsUrl, payload => payload?.layout?.controls?.visualsMode === 'lite', 30000);
     assert.equal(settings.layout.controls.mapMode, 'flat');
@@ -118,6 +131,9 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(settings.agentAnalysis.controls.maxPublishedTippingPoints, 2);
     assert.equal(settings.persistence.persistedPreferences.layout.visualsMode, 'lite');
     assert.equal(settings.persistence.persistedPreferences.sources.noiseSuppression.sourceRules[0].sourceId, 'gdelt-global');
+    assert.equal(settings.alerts.operational.version, 'operational-alert-routing-v1');
+    assert.equal(settings.alerts.persistedPreferences.operational.staleSweep.cooldownMinutes, 25);
+    assert.equal(settings.alerts.operational.defaultRoute[0], 'telegram');
 
     const exported = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/settings/export`);
     assert.equal(exported.preferences.layout.visualsMode, 'lite');
@@ -129,6 +145,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(exported.preferences.sources.noiseSuppression.duplicateBurst.minSimilarClusters, 3);
     assert.equal(exported.preferences.agentAnalysis.publishPolicy, 'exploratory');
     assert.equal(exported.preferences.agentAnalysis.deterministicFallbackMode, 'disabled');
+    assert.equal(exported.preferences.alerts.operational.sourceFailures.minFailedSources, 4);
 
     const page = await fetch(`http://127.0.0.1:${BASE_PORT}/settings`).then(r => r.text());
     assert.match(page, /activeSurface: 'settings'/i);

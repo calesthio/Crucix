@@ -884,7 +884,7 @@
           {
             "id": "effort-33.3",
             "title": "Add configurable alert routing and escalation for stale sweeps, source failures, elevated review pressure, and degraded inference paths",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-33.4",
@@ -1017,8 +1017,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 124,
+    "sequence": 125,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-26-cycle-124"
+    "lastCompletedCycleId": "2026-04-26-cycle-125"
   }
 }

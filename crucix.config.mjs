@@ -37,6 +37,12 @@ export default {
     sweepWatchdogPollSeconds: parseInt(process.env.SWEEP_WATCHDOG_POLL_SECONDS) || 30,
   },
 
+  alerting: {
+    enabled: process.env.OPERATIONAL_ALERTS_ENABLED !== '0',
+    cooldownMinutes: parseInt(process.env.OPERATIONAL_ALERTS_COOLDOWN_MINUTES) || 30,
+    escalationCooldownMinutes: parseInt(process.env.OPERATIONAL_ALERTS_ESCALATION_COOLDOWN_MINUTES) || 120,
+  },
+
   debugEndpoints: {
     exposure: process.env.DEBUG_ENDPOINT_EXPOSURE || 'local-only', // local-only | open
   },

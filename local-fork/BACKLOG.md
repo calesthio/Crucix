@@ -7,6 +7,7 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 All current backlog items were integrated into `local-fork/plan.json` on 2026-04-26.
 
 Recent promotions:
+- Operational alert delivery audit/history and last-send outcome visibility is not yet scheduled and would help operators verify route success, cooldown behavior, and escalation state without log inspection.
 - SQLite runtime-history diagnostics or export visibility was promoted into `local-fork/plan.json` as Epic 33, effort 33.7 on 2026-04-26.
 - Deployment-packaging follow-on work such as checked example `launchd` or `systemd` service definitions plus restart-policy guidance was promoted into `local-fork/plan.json` as Epic 33, effort 33.6 on 2026-04-26.
 - Schema-level validation helpers were promoted into `local-fork/plan.json` as Epic 34, effort 34.1 on 2026-04-25.
@@ -35,3 +36,5 @@ Recent promotions:
 - Runtime-bucket drift history and delta trends were promoted into `local-fork/plan.json` as Epic 32, effort 32.9 on 2026-04-26.
 
 New items can be added here when they do not yet belong in the active roadmap.
+
+- Add operator-visible alert delivery audit history with per-route success/failure timestamps and last-escalation provenance so routing policy changes can be validated without scraping Telegram or Discord logs.

@@ -23,6 +23,7 @@ const context = {
     telegram: { botToken: 'x', chatId: 'y' },
     discord: { webhookUrl: 'https://discord.example/webhook' },
     debugEndpoints: { exposure: 'local-only' },
+    alerting: { enabled: true, cooldownMinutes: 30, escalationCooldownMinutes: 120 },
   },
   llmProvider: { model: 'qwen', isConfigured: true },
   currentLanguage: 'en',
@@ -32,6 +33,14 @@ const context = {
   sweepInProgress: false,
   sweepStartedAt: null,
   process: { env: {} },
+  operatorSettingsDefaults: () => ({ version: 'operator-settings-store-v1', updatedAt: null, preferences: { alerts: { operational: { enabled: true, defaultRoute: ['telegram'], escalationRoute: ['telegram', 'discord'], staleSweep: { enabled: true, cooldownMinutes: 30, escalationAfter: 2 }, sourceFailures: { enabled: true, minFailedSources: 3, minDegradedSources: 2, cooldownMinutes: 60, escalationAfter: 3 }, reviewPressure: { enabled: true, minChronicRegions: 2, minPressuredRegions: 2, minLowConfidenceCount: 4, cooldownMinutes: 60, escalationAfter: 2 }, inferenceDegraded: { enabled: true, heuristicFallbackCount: 3, cooldownMinutes: 45, escalationAfter: 2 } } } } }),
+  memory: {
+    getSignalState: () => ({ policies: {} }),
+    getLlmFailureHistory: () => ({ snapshots: [{ summary: { heuristicFallbackCount: 2, weakClusterCount: 3 } }] }),
+    getNoiseSuppressionTelemetryHistory: () => ({ snapshots: [], summary: { snapshotCount: 0 } }),
+  },
+  summarizeClusterReviewStats: () => ({ chronicFailureCount: 1, recentFailureCount: 1 }),
+  summarizeClusterPressureStats: () => ({ pressuredRegionCount: 1 }),
   loadOperatorSettings: () => ({
     version: 'operator-settings-store-v1',
     updatedAt: null,
@@ -47,6 +56,7 @@ const context = {
         deterministicFallbackMode: 'llm-unavailable-only',
         horizonBehavior: 'extended',
       },
+      alerts: { operational: { enabled: true, defaultRoute: ['telegram'], escalationRoute: ['telegram', 'discord'], staleSweep: { enabled: true, cooldownMinutes: 30, escalationAfter: 2 }, sourceFailures: { enabled: true, minFailedSources: 3, minDegradedSources: 2, cooldownMinutes: 60, escalationAfter: 3 }, reviewPressure: { enabled: true, minChronicRegions: 2, minPressuredRegions: 2, minLowConfidenceCount: 4, cooldownMinutes: 60, escalationAfter: 2 }, inferenceDegraded: { enabled: true, heuristicFallbackCount: 3, cooldownMinutes: 45, escalationAfter: 2 } } },
     },
   }),
   buildNewsClusterSummary: snapshot => ({ sourceReasoning: snapshot?.newsSourceReasoning || null }),
@@ -167,6 +177,8 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.debug.endpointExposure, 'local-only');
   assert.equal(contract.alerts.telegramEnabled, true);
   assert.equal(contract.alerts.discordEnabled, true);
+  assert.equal(contract.alerts.operational.version, 'operational-alert-routing-v1');
+  assert.equal(contract.alerts.persistedPreferences.operational.inferenceDegraded.heuristicFallbackCount, 3);
   assert.equal(contract.config.contract.version, 'runtime-config-v1');
   assert.equal(typeof contract.config.driftSummary.driftedEntries, 'number');
   assert.equal(Array.isArray(contract.config.contract.entries), true);

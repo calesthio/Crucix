@@ -352,6 +352,17 @@ function operatorSettingsDefaults() {
         deterministicFallbackMode: 'always',
         horizonBehavior: 'balanced',
       },
+      alerts: {
+        operational: {
+          enabled: true,
+          defaultRoute: ['telegram'],
+          escalationRoute: ['telegram', 'discord'],
+          staleSweep: { enabled: true, cooldownMinutes: 30, escalationAfter: 2 },
+          sourceFailures: { enabled: true, minFailedSources: 3, minDegradedSources: 2, cooldownMinutes: 60, escalationAfter: 3 },
+          reviewPressure: { enabled: true, minChronicRegions: 2, minPressuredRegions: 2, minLowConfidenceCount: 4, cooldownMinutes: 60, escalationAfter: 2 },
+          inferenceDegraded: { enabled: true, heuristicFallbackCount: 3, cooldownMinutes: 45, escalationAfter: 2 },
+        },
+      },
     },
   };
 }
@@ -362,6 +373,8 @@ function normalizeOperatorSettings(input = {}) {
   const sources = input?.preferences?.sources || {};
   const llm = input?.preferences?.llm || {};
   const agentAnalysis = input?.preferences?.agentAnalysis || {};
+  const alertPrefs = input?.preferences?.alerts || {};
+  const operationalAlerts = alertPrefs.operational && typeof alertPrefs.operational === 'object' ? alertPrefs.operational : {};
   const allowedRegions = ['world', 'americas', 'europe', 'middleEast', 'asiaPacific', 'africa'];
   const allowedLayers = ['air', 'thermal', 'sdr', 'maritime', 'nuke', 'conflict', 'health', 'news', 'osint', 'space'];
   const allowedMapModes = ['auto', 'flat', 'globe'];
@@ -375,6 +388,10 @@ function normalizeOperatorSettings(input = {}) {
   const allowedHorizonBehaviors = ['short-only', 'balanced', 'extended'];
   const allowedPanelSizes = ['compact', 'normal', 'wide'];
   const allowedWorkspacePresets = ['operator', 'diagnostics', 'source-ops', 'executive-briefing'];
+  const allowedAlertRoutes = ['telegram', 'discord'];
+  const normalizeAlertRoute = value => Array.isArray(value)
+    ? Array.from(new Set(value.map(item => String(item || '').trim().toLowerCase()).filter(item => allowedAlertRoutes.includes(item))))
+    : [];
   const noiseSuppression = sources.noiseSuppression && typeof sources.noiseSuppression === 'object' ? sources.noiseSuppression : {};
   const duplicateBurst = noiseSuppression.duplicateBurst && typeof noiseSuppression.duplicateBurst === 'object' ? noiseSuppression.duplicateBurst : {};
   const repetitiveLowValue = noiseSuppression.repetitiveLowValue && typeof noiseSuppression.repetitiveLowValue === 'object' ? noiseSuppression.repetitiveLowValue : {};
@@ -434,6 +451,39 @@ function normalizeOperatorSettings(input = {}) {
         deterministicFallbackMode: allowedFallbackModes.includes(agentAnalysis.deterministicFallbackMode) ? agentAnalysis.deterministicFallbackMode : defaults.preferences.agentAnalysis.deterministicFallbackMode,
         horizonBehavior: allowedHorizonBehaviors.includes(agentAnalysis.horizonBehavior) ? agentAnalysis.horizonBehavior : defaults.preferences.agentAnalysis.horizonBehavior,
       },
+      alerts: {
+        operational: {
+          enabled: operationalAlerts.enabled !== undefined ? Boolean(operationalAlerts.enabled) : defaults.preferences.alerts.operational.enabled,
+          defaultRoute: normalizeAlertRoute(operationalAlerts.defaultRoute).length ? normalizeAlertRoute(operationalAlerts.defaultRoute) : defaults.preferences.alerts.operational.defaultRoute,
+          escalationRoute: normalizeAlertRoute(operationalAlerts.escalationRoute).length ? normalizeAlertRoute(operationalAlerts.escalationRoute) : defaults.preferences.alerts.operational.escalationRoute,
+          staleSweep: {
+            enabled: operationalAlerts.staleSweep?.enabled !== undefined ? Boolean(operationalAlerts.staleSweep.enabled) : defaults.preferences.alerts.operational.staleSweep.enabled,
+            cooldownMinutes: Math.max(5, Math.min(360, Number.isFinite(Number(operationalAlerts.staleSweep?.cooldownMinutes)) ? Number(operationalAlerts.staleSweep.cooldownMinutes) : defaults.preferences.alerts.operational.staleSweep.cooldownMinutes)),
+            escalationAfter: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.staleSweep?.escalationAfter)) ? Number(operationalAlerts.staleSweep.escalationAfter) : defaults.preferences.alerts.operational.staleSweep.escalationAfter)),
+          },
+          sourceFailures: {
+            enabled: operationalAlerts.sourceFailures?.enabled !== undefined ? Boolean(operationalAlerts.sourceFailures.enabled) : defaults.preferences.alerts.operational.sourceFailures.enabled,
+            minFailedSources: Math.max(1, Math.min(20, Number.isFinite(Number(operationalAlerts.sourceFailures?.minFailedSources)) ? Number(operationalAlerts.sourceFailures.minFailedSources) : defaults.preferences.alerts.operational.sourceFailures.minFailedSources)),
+            minDegradedSources: Math.max(1, Math.min(20, Number.isFinite(Number(operationalAlerts.sourceFailures?.minDegradedSources)) ? Number(operationalAlerts.sourceFailures.minDegradedSources) : defaults.preferences.alerts.operational.sourceFailures.minDegradedSources)),
+            cooldownMinutes: Math.max(5, Math.min(360, Number.isFinite(Number(operationalAlerts.sourceFailures?.cooldownMinutes)) ? Number(operationalAlerts.sourceFailures.cooldownMinutes) : defaults.preferences.alerts.operational.sourceFailures.cooldownMinutes)),
+            escalationAfter: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.sourceFailures?.escalationAfter)) ? Number(operationalAlerts.sourceFailures.escalationAfter) : defaults.preferences.alerts.operational.sourceFailures.escalationAfter)),
+          },
+          reviewPressure: {
+            enabled: operationalAlerts.reviewPressure?.enabled !== undefined ? Boolean(operationalAlerts.reviewPressure.enabled) : defaults.preferences.alerts.operational.reviewPressure.enabled,
+            minChronicRegions: Math.max(1, Math.min(10, Number.isFinite(Number(operationalAlerts.reviewPressure?.minChronicRegions)) ? Number(operationalAlerts.reviewPressure.minChronicRegions) : defaults.preferences.alerts.operational.reviewPressure.minChronicRegions)),
+            minPressuredRegions: Math.max(1, Math.min(10, Number.isFinite(Number(operationalAlerts.reviewPressure?.minPressuredRegions)) ? Number(operationalAlerts.reviewPressure.minPressuredRegions) : defaults.preferences.alerts.operational.reviewPressure.minPressuredRegions)),
+            minLowConfidenceCount: Math.max(1, Math.min(20, Number.isFinite(Number(operationalAlerts.reviewPressure?.minLowConfidenceCount)) ? Number(operationalAlerts.reviewPressure.minLowConfidenceCount) : defaults.preferences.alerts.operational.reviewPressure.minLowConfidenceCount)),
+            cooldownMinutes: Math.max(5, Math.min(360, Number.isFinite(Number(operationalAlerts.reviewPressure?.cooldownMinutes)) ? Number(operationalAlerts.reviewPressure.cooldownMinutes) : defaults.preferences.alerts.operational.reviewPressure.cooldownMinutes)),
+            escalationAfter: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.reviewPressure?.escalationAfter)) ? Number(operationalAlerts.reviewPressure.escalationAfter) : defaults.preferences.alerts.operational.reviewPressure.escalationAfter)),
+          },
+          inferenceDegraded: {
+            enabled: operationalAlerts.inferenceDegraded?.enabled !== undefined ? Boolean(operationalAlerts.inferenceDegraded.enabled) : defaults.preferences.alerts.operational.inferenceDegraded.enabled,
+            heuristicFallbackCount: Math.max(1, Math.min(20, Number.isFinite(Number(operationalAlerts.inferenceDegraded?.heuristicFallbackCount)) ? Number(operationalAlerts.inferenceDegraded.heuristicFallbackCount) : defaults.preferences.alerts.operational.inferenceDegraded.heuristicFallbackCount)),
+            cooldownMinutes: Math.max(5, Math.min(360, Number.isFinite(Number(operationalAlerts.inferenceDegraded?.cooldownMinutes)) ? Number(operationalAlerts.inferenceDegraded.cooldownMinutes) : defaults.preferences.alerts.operational.inferenceDegraded.cooldownMinutes)),
+            escalationAfter: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.inferenceDegraded?.escalationAfter)) ? Number(operationalAlerts.inferenceDegraded.escalationAfter) : defaults.preferences.alerts.operational.inferenceDegraded.escalationAfter)),
+          },
+        },
+      },
     },
   };
 }
@@ -472,6 +522,10 @@ function mergeOperatorSettingsPatch(patch = {}) {
       agentAnalysis: {
         ...current.preferences.agentAnalysis,
         ...(patch?.preferences?.agentAnalysis || {}),
+      },
+      alerts: {
+        ...current.preferences.alerts,
+        ...(patch?.preferences?.alerts || {}),
       },
     },
   };
@@ -3764,6 +3818,120 @@ function buildRuntimeConfigContract() {
   };
 }
 
+
+const OPERATIONAL_ALERTS_STATE_KEY = 'operational-alerts:state';
+
+function summarizeOperationalAlertState(snapshot = null) {
+  const operatorSettings = loadOperatorSettings();
+  const prefs = operatorSettings.preferences.alerts?.operational || operatorSettingsDefaults().preferences.alerts.operational;
+  const reviewStats = summarizeClusterReviewStats();
+  const pressureStats = summarizeClusterPressureStats();
+  const watchdog = getSweepWatchdogSnapshot();
+  const llmReadiness = getLlmProviderReadinessSnapshot();
+  const activeSnapshot = snapshot || currentData || {};
+  const lowConfidenceCount = activeSnapshot?.sourceOps?.performance?.workflow?.validationViews?.reviewPressure?.find(item => item.label === 'Low confidence')?.value || 0;
+  const llmFailureHistory = memory.getLlmFailureHistory(1);
+  const currentLlmFailure = llmFailureHistory.snapshots?.[0]?.summary || {};
+  const healthSummary = activeSnapshot?.healthSummary || {};
+  const activeRoutes = [
+    config.telegram?.botToken && config.telegram?.chatId ? 'telegram' : null,
+    config.discord?.botToken || config.discord?.webhookUrl ? 'discord' : null,
+  ].filter(Boolean);
+  const policies = {
+    staleSweep: {
+      active: Boolean(prefs.staleSweep?.enabled) && watchdog.overdue,
+      summary: watchdog.overdue ? `Sweep watchdog is overdue in phase ${watchdog.phase || 'unknown'} by ${Math.ceil((watchdog.overdueMs || 0) / 60000)} minute(s).` : 'Sweep cadence is currently within watchdog bounds.',
+      severity: watchdog.overdue ? 'critical' : 'ok',
+      metrics: { overdue: Boolean(watchdog.overdue), overdueMs: watchdog.overdueMs || 0, phase: watchdog.phase || null, recoveryClassification: watchdog.recoveryClassification || null },
+      config: prefs.staleSweep,
+    },
+    sourceFailures: {
+      active: Boolean(prefs.sourceFailures?.enabled) && ((healthSummary.failed || 0) >= (prefs.sourceFailures?.minFailedSources || 1) || (healthSummary.degraded || 0) >= (prefs.sourceFailures?.minDegradedSources || 1)),
+      summary: `Failed ${healthSummary.failed || 0}, degraded ${healthSummary.degraded || 0}, stale ${healthSummary.stale || 0} sources.`,
+      severity: (healthSummary.failed || 0) >= ((prefs.sourceFailures?.minFailedSources || 1) * 2) ? 'critical' : ((healthSummary.failed || 0) || (healthSummary.degraded || 0)) ? 'warning' : 'ok',
+      metrics: { failed: healthSummary.failed || 0, degraded: healthSummary.degraded || 0, stale: healthSummary.stale || 0, thresholds: { minFailedSources: prefs.sourceFailures?.minFailedSources || 1, minDegradedSources: prefs.sourceFailures?.minDegradedSources || 1 } },
+      config: prefs.sourceFailures,
+    },
+    reviewPressure: {
+      active: Boolean(prefs.reviewPressure?.enabled) && ((reviewStats.chronicFailureCount || 0) >= (prefs.reviewPressure?.minChronicRegions || 1) || (pressureStats.pressuredRegionCount || 0) >= (prefs.reviewPressure?.minPressuredRegions || 1) || lowConfidenceCount >= (prefs.reviewPressure?.minLowConfidenceCount || 1)),
+      summary: `Chronic regions ${reviewStats.chronicFailureCount || 0}, pressured regions ${pressureStats.pressuredRegionCount || 0}, low-confidence clusters ${lowConfidenceCount || 0}.`,
+      severity: (reviewStats.chronicFailureCount || 0) >= ((prefs.reviewPressure?.minChronicRegions || 1) * 2) ? 'critical' : ((reviewStats.chronicFailureCount || 0) || (pressureStats.pressuredRegionCount || 0) || lowConfidenceCount) ? 'warning' : 'ok',
+      metrics: { chronicFailureCount: reviewStats.chronicFailureCount || 0, pressuredRegionCount: pressureStats.pressuredRegionCount || 0, lowConfidenceCount, recentFailureCount: reviewStats.recentFailureCount || 0 },
+      config: prefs.reviewPressure,
+    },
+    inferenceDegraded: {
+      active: Boolean(prefs.inferenceDegraded?.enabled) && (llmReadiness.status === 'failed' || Boolean(activeSnapshot?.agentAnalysisMeta?.refinementTimedOut) || ['failed', 'timed-out'].includes(activeSnapshot?.agentAnalysisMeta?.refinementState) || (currentLlmFailure.heuristicFallbackCount || 0) >= (prefs.inferenceDegraded?.heuristicFallbackCount || 1) || activeSnapshot?.ideasSource === 'llm-failed'),
+      summary: `LLM readiness is ${llmReadiness.status || 'unknown'}, heuristic-only clusters ${currentLlmFailure.heuristicFallbackCount || 0}, ideas source ${activeSnapshot?.ideasSource || 'unknown'}.`,
+      severity: llmReadiness.status === 'failed' ? 'critical' : (currentLlmFailure.heuristicFallbackCount || 0) > 0 || activeSnapshot?.ideasSource === 'llm-failed' ? 'warning' : 'ok',
+      metrics: { llmReadinessStatus: llmReadiness.status || 'unknown', heuristicFallbackCount: currentLlmFailure.heuristicFallbackCount || 0, weakClusterCount: currentLlmFailure.weakClusterCount || 0, ideasSource: activeSnapshot?.ideasSource || null, analysisRefinementState: activeSnapshot?.agentAnalysisMeta?.refinementState || null },
+      config: prefs.inferenceDegraded,
+    },
+  };
+  const state = memory.getSignalState(OPERATIONAL_ALERTS_STATE_KEY) || { policies: {} };
+  return {
+    version: 'operational-alert-routing-v1',
+    enabled: Boolean(config.alerting?.enabled) && Boolean(prefs.enabled),
+    activeRoutes,
+    defaultRoute: Array.isArray(prefs.defaultRoute) ? prefs.defaultRoute : [],
+    escalationRoute: Array.isArray(prefs.escalationRoute) ? prefs.escalationRoute : [],
+    cooldownMinutesDefault: config.alerting?.cooldownMinutes || 30,
+    policies,
+    state,
+  };
+}
+
+async function dispatchOperationalAlert(policyKey, policy, route, occurrence, escalated) {
+  const title = escalated ? 'ESCALATED' : 'ALERT';
+  const metricsText = Object.entries(policy.metrics || {}).map(([key, value]) => `${key}=${typeof value === 'object' ? JSON.stringify(value) : value}`).join(', ');
+  const message = `⚠️ CRUCIX ${title}: ${policyKey}
+${policy.summary}
+Severity: ${policy.severity}
+Occurrence: ${occurrence}${escalated ? ' (escalated)' : ''}${metricsText ? `
+Metrics: ${metricsText}` : ''}`;
+  if (route === 'telegram' && telegramAlerter.isConfigured) return telegramAlerter.sendMessage(message);
+  if (route === 'discord' && discordAlerter.isConfigured) return discordAlerter.sendMessage(message);
+  return false;
+}
+
+async function processOperationalAlerts(snapshot = null) {
+  const contract = summarizeOperationalAlertState(snapshot);
+  const nextState = contract.state && typeof contract.state === 'object' ? JSON.parse(JSON.stringify(contract.state)) : { policies: {} };
+  nextState.policies = nextState.policies || {};
+  nextState.updatedAt = new Date().toISOString();
+  if (!contract.enabled) {
+    memory.setSignalState(OPERATIONAL_ALERTS_STATE_KEY, nextState);
+    return contract;
+  }
+  for (const [policyKey, policy] of Object.entries(contract.policies || {})) {
+    const state = nextState.policies[policyKey] && typeof nextState.policies[policyKey] === 'object' ? nextState.policies[policyKey] : { active: false, occurrenceCount: 0, lastSentAt: null, lastResolvedAt: null, lastEscalatedAt: null, lastSeverity: 'ok' };
+    state.lastSeverity = policy.severity || 'ok';
+    if (!policy.active) {
+      if (state.active) state.lastResolvedAt = new Date().toISOString();
+      state.active = false;
+      state.occurrenceCount = 0;
+      nextState.policies[policyKey] = state;
+      continue;
+    }
+    state.active = true;
+    state.occurrenceCount = Number(state.occurrenceCount || 0) + 1;
+    const cooldownMinutes = policy.config?.cooldownMinutes || contract.cooldownMinutesDefault || 30;
+    const sentMs = state.lastSentAt ? new Date(state.lastSentAt).getTime() : 0;
+    const escalated = state.occurrenceCount >= (policy.config?.escalationAfter || 2);
+    const escalationSentMs = state.lastEscalatedAt ? new Date(state.lastEscalatedAt).getTime() : 0;
+    const shouldSendBase = !sentMs || (Date.now() - sentMs) >= (cooldownMinutes * 60 * 1000);
+    const shouldSendEscalation = escalated && (!escalationSentMs || (Date.now() - escalationSentMs) >= ((config.alerting?.escalationCooldownMinutes || 120) * 60 * 1000));
+    if (shouldSendBase || shouldSendEscalation) {
+      const routes = shouldSendEscalation ? contract.escalationRoute : contract.defaultRoute;
+      for (const route of routes) await dispatchOperationalAlert(policyKey, policy, route, state.occurrenceCount, shouldSendEscalation);
+      state.lastSentAt = new Date().toISOString();
+      if (shouldSendEscalation) state.lastEscalatedAt = state.lastSentAt;
+    }
+    nextState.policies[policyKey] = state;
+  }
+  memory.setSignalState(OPERATIONAL_ALERTS_STATE_KEY, nextState);
+  return summarizeOperationalAlertState(snapshot);
+}
+
 function buildOperatorSettingsContract(snapshot = null) {
   const activeSnapshot = snapshot || currentData || {};
   const sourceOps = buildOperatorSourceOps(activeSnapshot);
@@ -3810,6 +3978,7 @@ function buildOperatorSettingsContract(snapshot = null) {
     config.telegram?.botToken && config.telegram?.chatId ? 'telegram' : null,
     config.discord?.botToken || config.discord?.webhookUrl ? 'discord' : null,
   ].filter(Boolean);
+  const operationalAlerts = summarizeOperationalAlertState(activeSnapshot);
 
   return {
     version: 'operator-settings-v1',
@@ -4020,6 +4189,8 @@ function buildOperatorSettingsContract(snapshot = null) {
       enabled: enabledAlerts,
       telegramEnabled: Boolean(config.telegram?.botToken && config.telegram?.chatId),
       discordEnabled: Boolean(config.discord?.botToken || config.discord?.webhookUrl),
+      operational: operationalAlerts,
+      persistedPreferences: operatorSettings.preferences.alerts,
     },
     config: {
       contract: runtimeConfig,
@@ -4037,6 +4208,7 @@ function buildOperatorSettingsContract(snapshot = null) {
         writeApi: false,
       },
       persistedPreferences: operatorSettings.preferences,
+      alertStateKey: OPERATIONAL_ALERTS_STATE_KEY,
     },
     access: {
       role: 'operator',
@@ -5083,6 +5255,7 @@ app.get('/api/health', (req, res) => {
       }
     : readOpenSkyRuntimeState();
   const sourceOps = buildOperatorSourceOps(currentData || null);
+  const operationalAlerts = summarizeOperationalAlertState(currentData || null);
   const responseStatus = shuttingDown ? 503 : 200;
   res.status(responseStatus).json({
     status: shuttingDown ? 'shutting-down' : 'ok',
@@ -5149,6 +5322,7 @@ app.get('/api/health', (req, res) => {
       refinementTimedOut: Boolean(currentData.agentAnalysisMeta?.refinementTimedOut),
       llmTelemetry: currentData.agentAnalysisMeta?.llmTelemetry || null,
     } : null,
+    operationalAlerts,
   });
 });
 
@@ -5216,6 +5390,7 @@ async function enrichIdeasAndPublish(synthesized, delta) {
   if (runtimeJobState.phase === 'llm-ideas-refinement') completeRuntimePhase('llm-ideas-refinement');
   currentData = synthesized;
   broadcast({ type: 'ideas_update', data: currentData });
+  await processOperationalAlerts(currentData);
   return synthesized;
 }
 
@@ -5299,6 +5474,7 @@ async function enrichAgentAnalysisAndPublish(synthesized) {
 
   currentData = synthesized;
   broadcast({ type: 'analysis_update', data: currentData });
+  await processOperationalAlerts(currentData);
   return synthesized;
 }
 
@@ -5380,6 +5556,7 @@ async function runSweepCycle() {
 
     currentData = synthesized;
     broadcast({ type: 'update', data: currentData });
+    await processOperationalAlerts(currentData);
 
     // 6. Alert evaluation — Telegram + Discord (LLM with rule-based fallback, multi-tier, semantic dedup)
     if (delta?.summary?.totalChanges > 0) {
