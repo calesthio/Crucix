@@ -696,7 +696,7 @@
       {
         "id": "epic-29",
         "title": "Runtime control, restart safety, and sweep reliability",
-        "status": "completed",
+        "status": "in_progress",
         "efforts": [
           {
             "id": "effort-29.1",
@@ -722,6 +722,11 @@
             "id": "effort-29.5",
             "title": "Add bounded retention or time-decay for noise-suppression history so one-off duplicate bursts and retired sources do not accumulate indefinite suggestion weight or unbounded state growth across repeated sweeps",
             "status": "completed"
+          },
+          {
+            "id": "effort-29.6",
+            "title": "Surface noise-suppression history decay and prune telemetry in health and review diagnostics so operators can see when stale suggestion weight has aged out, how many retained history entries remain, and whether pruning is actively keeping state bounded",
+            "status": "pending"
           }
         ]
       },
