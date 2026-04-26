@@ -261,6 +261,8 @@ test('llm operations contract exposes provider health, mode forcing, fallback ch
   assert.equal(contract.surface, '/llm-ops');
   assert.equal(contract.provider.name, 'ollama');
   assert.equal(contract.provider.activeModel, 'qwen');
+  assert.equal(contract.provider.readiness.status, 'unknown');
+  assert.equal(contract.provider.readiness.lastSuccess.at, null);
   assert.equal(contract.modes.defaultNewsMode, 'auto');
   assert.equal(Array.isArray(contract.fallbackChains), true);
   assert.equal(contract.fallbackChains[0].surface, 'news-clustering');
@@ -272,6 +274,7 @@ test('llm operations contract exposes provider health, mode forcing, fallback ch
   assert.equal(contract.reasoningValidation.analysis.reasoningSurfacePresent, true);
   assert.deepEqual(contract.reasoningValidation.analysis.sourceReasoning.cautionRoles, ['exploratory']);
   assert.equal(contract.navigation.api, '/api/llm/operations');
+  assert.match(contract.notes[2], /active readiness probe heartbeat/i);
   assert.equal(contract.recentFailures.some(item => item.surface === 'news-clustering'), true);
   assert.equal(contract.recentFailures.some(item => item.surface === 'analysis'), true);
 });

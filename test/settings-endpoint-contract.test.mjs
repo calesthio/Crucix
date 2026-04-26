@@ -89,6 +89,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(typeof health.sweepWatchdog.phase, 'string');
     assert.equal('recoveryClassification' in health.sweepWatchdog, true);
     assert.equal('publishedAt' in health.lastSuccess, true);
+    assert.equal(typeof health.llmProviderReadiness?.status, 'string');
 
     const settings = await waitFor(settingsUrl, payload => payload?.version === 'operator-settings-v1', 30000);
     assert.deepEqual(settings.sections, ['layout', 'sources', 'sourceConsole', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']);
@@ -154,6 +155,9 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(typeof llmOps.clusteringDebug.parseFailureArtifacts.totalArtifacts, 'number');
     assert.equal(llmOps.reasoningValidation.analysis.endpoint, '/api/analysis/validation-summary');
     assert.equal(typeof llmOps.reasoningValidation.analysis.reasoningSurfacePresent, 'boolean');
+    assert.equal(typeof llmOps.provider.readiness.status, 'string');
+    assert.equal('lastSuccess' in llmOps.provider.readiness, true);
+    assert.equal('lastFailure' in llmOps.provider.readiness, true);
 
     const page = await fetch(pageUrl).then(r => r.text());
     assert.match(page, /read-only operator view/i);
@@ -183,6 +187,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.match(llmOpsPage, /Clustering prompt debug/i);
     assert.match(llmOpsPage, /Reasoning surface validation/i);
     assert.match(llmOpsPage, /Operator-visible cost, latency, and completion telemetry/i);
+    assert.match(llmOpsPage, /Provider readiness heartbeat/i);
 
     const adminPage = await fetch(adminPageUrl).then(r => r.text());
     assert.match(adminPage, /Local control plane/i);

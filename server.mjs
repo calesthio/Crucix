@@ -129,6 +129,39 @@ const runtimeJobTelemetry = {
     timeoutMs: 90000,
   },
 };
+const LLM_PROVIDER_PROBE_TTL_MS = 5 * 60 * 1000;
+const LLM_PROVIDER_PROBE_TIMEOUT_MS = 4000;
+let llmProviderProbeState = {
+  version: 'llm-provider-readiness-v1',
+  configured: Boolean(config.llm?.provider),
+  available: false,
+  status: !config.llm?.provider ? 'disabled' : 'unknown',
+  checkedAt: null,
+  inFlight: false,
+  stale: false,
+  summary: !config.llm?.provider
+    ? 'No LLM provider configured.'
+    : 'No active readiness probe has completed yet.',
+  probeTtlMs: LLM_PROVIDER_PROBE_TTL_MS,
+  timeoutMs: LLM_PROVIDER_PROBE_TIMEOUT_MS,
+  consecutiveFailures: 0,
+  lastLatencyMs: null,
+  lastModel: config.llm?.model || null,
+  lastCheckedReason: null,
+  lastSuccess: {
+    at: null,
+    latencyMs: null,
+    model: null,
+    detail: null,
+  },
+  lastFailure: {
+    at: null,
+    latencyMs: null,
+    reason: null,
+    detail: null,
+  },
+};
+let llmProviderProbePromise = null;
 
 function loadJsonFile(path, fallback) {
   try {
@@ -2264,6 +2297,15 @@ const memory = new MemoryManager(RUNS_DIR);
 
 // === LLM + Telegram + Discord ===
 const llmProvider = createLLMProvider(config.llm);
+llmProviderProbeState = {
+  ...llmProviderProbeState,
+  available: Boolean(llmProvider?.isConfigured),
+  status: !config.llm?.provider ? 'disabled' : (llmProvider?.isConfigured ? 'unknown' : 'misconfigured'),
+  summary: !config.llm?.provider
+    ? 'No LLM provider configured.'
+    : (llmProvider?.isConfigured ? 'No active readiness probe has completed yet.' : 'Provider configuration is incomplete.'),
+  lastModel: llmProvider?.model || config.llm?.model || null,
+};
 const telegramAlerter = new TelegramAlerter(config.telegram);
 const discordAlerter = new DiscordAlerter(config.discord || {});
 
@@ -3161,6 +3203,160 @@ function buildRuntimeControlContract(snapshot = null) {
   };
 }
 
+function getLlmProviderReadinessSnapshot() {
+  const base = typeof llmProviderProbeState !== 'undefined' && llmProviderProbeState
+    ? llmProviderProbeState
+    : {
+        version: 'llm-provider-readiness-v1',
+        configured: Boolean(config.llm?.provider),
+        available: Boolean(llmProvider?.isConfigured),
+        status: !config.llm?.provider ? 'disabled' : (llmProvider?.isConfigured ? 'unknown' : 'misconfigured'),
+        checkedAt: null,
+        inFlight: false,
+        stale: false,
+        summary: !config.llm?.provider ? 'No LLM provider configured.' : (llmProvider?.isConfigured ? 'No active readiness probe has completed yet.' : 'Provider configuration is incomplete.'),
+        probeTtlMs: 5 * 60 * 1000,
+        timeoutMs: 4000,
+        consecutiveFailures: 0,
+        lastLatencyMs: null,
+        lastModel: llmProvider?.model || config.llm?.model || null,
+        lastCheckedReason: null,
+        lastSuccess: { at: null, latencyMs: null, model: null, detail: null },
+        lastFailure: { at: null, latencyMs: null, reason: null, detail: null },
+      };
+  const checkedAtMs = base?.checkedAt ? new Date(base.checkedAt).getTime() : 0;
+  const stale = Boolean(base?.configured && checkedAtMs && ((Date.now() - checkedAtMs) > Number(base?.probeTtlMs || 0)));
+  return {
+    ...base,
+    configured: Boolean(base?.configured ?? config.llm?.provider),
+    available: Boolean(base?.available ?? llmProvider?.isConfigured),
+    stale,
+    lastModel: base?.lastModel || llmProvider?.model || config.llm?.model || null,
+    lastSuccess: {
+      at: base?.lastSuccess?.at || null,
+      latencyMs: base?.lastSuccess?.latencyMs ?? null,
+      model: base?.lastSuccess?.model || null,
+      detail: base?.lastSuccess?.detail || null,
+    },
+    lastFailure: {
+      at: base?.lastFailure?.at || null,
+      latencyMs: base?.lastFailure?.latencyMs ?? null,
+      reason: base?.lastFailure?.reason || null,
+      detail: base?.lastFailure?.detail || null,
+    },
+  };
+}
+
+async function refreshLlmProviderReadiness({ force = false, reason = 'unspecified' } = {}) {
+  const configured = Boolean(config.llm?.provider);
+  const available = Boolean(llmProvider?.isConfigured);
+  if (!configured) {
+    llmProviderProbeState = {
+      ...getLlmProviderReadinessSnapshot(),
+      configured,
+      available,
+      status: 'disabled',
+      checkedAt: new Date().toISOString(),
+      inFlight: false,
+      stale: false,
+      summary: 'No LLM provider configured.',
+      lastCheckedReason: reason,
+    };
+    return getLlmProviderReadinessSnapshot();
+  }
+  if (!available || typeof llmProvider?.probe !== 'function') {
+    llmProviderProbeState = {
+      ...getLlmProviderReadinessSnapshot(),
+      configured,
+      available,
+      status: 'misconfigured',
+      checkedAt: new Date().toISOString(),
+      inFlight: false,
+      stale: false,
+      summary: 'Provider is configured in settings but is not probe-ready at runtime.',
+      lastCheckedReason: reason,
+    };
+    return getLlmProviderReadinessSnapshot();
+  }
+
+  const snapshot = getLlmProviderReadinessSnapshot();
+  if (!force && !snapshot.stale && snapshot.checkedAt) return snapshot;
+  if (llmProviderProbePromise) return llmProviderProbePromise;
+
+  llmProviderProbeState = {
+    ...snapshot,
+    configured,
+    available,
+    inFlight: true,
+    status: snapshot.lastSuccess.at ? 'probing' : 'unknown',
+    summary: snapshot.lastSuccess.at ? 'Refreshing active provider readiness probe.' : 'Running first active provider readiness probe.',
+    lastCheckedReason: reason,
+  };
+
+  llmProviderProbePromise = (async () => {
+    const startedAt = Date.now();
+    const startedIso = new Date().toISOString();
+    try {
+      const result = await llmProvider.probe({ timeout: LLM_PROVIDER_PROBE_TIMEOUT_MS, maxTokens: 8 });
+      llmProviderProbeState = {
+        ...llmProviderProbeState,
+        configured,
+        available,
+        status: 'ready',
+        checkedAt: startedIso,
+        inFlight: false,
+        stale: false,
+        summary: 'Active readiness probe succeeded. Provider is reachable and returned a model response.',
+        consecutiveFailures: 0,
+        lastLatencyMs: Number(result?.latencyMs) || (Date.now() - startedAt),
+        lastModel: result?.model || llmProvider?.model || config.llm?.model || null,
+        lastCheckedReason: reason,
+        lastSuccess: {
+          at: startedIso,
+          latencyMs: Number(result?.latencyMs) || (Date.now() - startedAt),
+          model: result?.model || llmProvider?.model || config.llm?.model || null,
+          detail: String(result?.text || '').trim().slice(0, 120) || null,
+        },
+      };
+      return getLlmProviderReadinessSnapshot();
+    } catch (error) {
+      const message = String(error?.message || error || 'probe-failed').trim();
+      llmProviderProbeState = {
+        ...llmProviderProbeState,
+        configured,
+        available,
+        status: 'failed',
+        checkedAt: startedIso,
+        inFlight: false,
+        stale: false,
+        summary: 'Active readiness probe failed. Provider reachability or model readiness is currently degraded.',
+        consecutiveFailures: Number(llmProviderProbeState?.consecutiveFailures || 0) + 1,
+        lastLatencyMs: Date.now() - startedAt,
+        lastModel: llmProvider?.model || config.llm?.model || null,
+        lastCheckedReason: reason,
+        lastFailure: {
+          at: startedIso,
+          latencyMs: Date.now() - startedAt,
+          reason: message,
+          detail: message.slice(0, 240),
+        },
+      };
+      return getLlmProviderReadinessSnapshot();
+    } finally {
+      llmProviderProbePromise = null;
+    }
+  })();
+
+  return llmProviderProbePromise;
+}
+
+function scheduleLlmProviderReadinessRefresh(reason = 'background-refresh') {
+  const snapshot = getLlmProviderReadinessSnapshot();
+  if (!snapshot.configured || llmProviderProbePromise || (!snapshot.stale && snapshot.checkedAt)) return;
+  refreshLlmProviderReadiness({ reason }).catch(error => {
+    console.warn('[Crucix] LLM readiness probe refresh failed:', error?.message || error);
+  });
+}
 
 function buildLlmOperationsContract(snapshot = null) {
   const activeSnapshot = snapshot || currentData || {};
@@ -3180,6 +3376,7 @@ function buildLlmOperationsContract(snapshot = null) {
   const emptyTelemetrySummary = { callCount: 0, measuredLatencyCount: 0, totalLatencyMs: 0, avgLatencyMs: null, maxLatencyMs: null, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 }, cost: { available: false, estimatedUsd: null, measuredCallCount: 0 }, completions: {} };
   const clusteringTelemetry = newsDebug?.telemetry || {};
   const analysisTelemetry = analysisMeta?.llmTelemetry || null;
+  const providerReadiness = getLlmProviderReadinessSnapshot();
   const recentFailures = [];
   const pushFailure = (surface, reason, detail = null, severity = 'warn') => {
     if (!reason) return;
@@ -3213,11 +3410,18 @@ function buildLlmOperationsContract(snapshot = null) {
         ? 'misconfigured'
         : !config.llm.provider
           ? 'disabled'
-          : llmProvider?.isConfigured
-            ? 'ready'
-            : 'degraded',
+          : !llmProvider?.isConfigured
+            ? 'degraded'
+            : providerReadiness.status === 'ready'
+              ? 'ready'
+              : providerReadiness.status === 'failed'
+                ? 'degraded'
+                : providerReadiness.status === 'probing'
+                  ? 'probing'
+                  : providerReadiness.status || 'unknown',
       warnings: providerWarnings,
       issues: providerIssues,
+      readiness: providerReadiness,
     },
     runtime: llmState,
     modes: {
@@ -3362,7 +3566,7 @@ function buildLlmOperationsContract(snapshot = null) {
     notes: [
       'This surface centralizes provider posture, active model, mode forcing, fallback chains, and recent LLM-related failure reasons.',
       'Prompt-debug previews, parse-failure artifact summaries, and reasoning-surface validation indicators are exposed here so operators do not need direct file inspection.',
-      'Provider health is configuration-derived here; it does not yet perform an active remote provider ping.',
+      'Provider health now includes an active readiness probe heartbeat with last-success and last-failure details rather than relying only on configuration posture.',
     ],
   };
 }
@@ -3446,6 +3650,7 @@ app.get('/api/settings/admin', requireDebugAccess, async (req, res) => {
 app.get('/api/llm/operations', async (req, res) => {
   const snapshot = await ensureCurrentData();
   if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  await refreshLlmProviderReadiness({ reason: 'llm-operations-endpoint' });
   res.json(buildLlmOperationsContract(snapshot));
 });
 
@@ -3811,6 +4016,7 @@ app.delete('/api/brief/context', (req, res) => {
 
 // API: health check
 app.get('/api/health', (req, res) => {
+  scheduleLlmProviderReadinessRefresh('health-endpoint');
   const openSkyRuntime = currentData?.airMeta?.runtimeState
     ? {
         ...currentData.airMeta.runtimeState,
@@ -3854,6 +4060,7 @@ app.get('/api/health', (req, res) => {
     sourceOps,
     llmEnabled: !!config.llm.provider,
     llmProvider: config.llm.provider,
+    llmProviderReadiness: getLlmProviderReadinessSnapshot(),
     llmState: buildOperatorLlmStateContract(currentData || {}, { provider: config.llm.provider, model: llmProvider?.model || null }),
     runtimeLlm: buildOperatorLlmStateContract(currentData || {}, { provider: config.llm.provider, model: llmProvider?.model || null }).runtimeLlm,
     telegramEnabled: !!(config.telegram.botToken && config.telegram.chatId),

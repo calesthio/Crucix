@@ -750,7 +750,7 @@
       {
         "id": "epic-31",
         "title": "LLM and agent operations console",
-        "status": "in_progress",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-31.1",
@@ -780,7 +780,7 @@
           {
             "id": "effort-31.6",
             "title": "Add an active LLM provider readiness probe plus last-success and last-failure heartbeat so `/llm-ops` health reflects live reachability and model readiness rather than only configuration-derived posture",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -942,8 +942,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 106,
+    "sequence": 109,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-26-cycle-106"
+    "lastCompletedCycleId": "2026-04-26-cycle-109"
   }
 }
