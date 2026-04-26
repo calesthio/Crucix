@@ -2859,6 +2859,22 @@ function buildOperatorSettingsContract(snapshot = null) {
         },
       },
       inventory: sourceItems,
+      performanceWorkflow: {
+        version: sourceOps?.performance?.version || 'source-performance-workflow-v1',
+        summary: {
+          totalMeasuredSources: sourceOps?.performance?.totalMeasuredSources || 0,
+          withClusterAttribution: sourceOps?.performance?.withClusterAttribution || 0,
+          withSignalContribution: sourceOps?.performance?.withSignalContribution || 0,
+          degradedOrFailing: sourceOps?.performance?.degradedOrFailing || 0,
+          byTrustOutcome: sourceOps?.performance?.byTrustOutcome || null,
+          attributionCoverage: sourceOps?.performance?.attributionCoverage || null,
+        },
+        attributionHeadlines: Array.isArray(sourceOps?.performance?.workflow?.attributionHeadlines) ? sourceOps.performance.workflow.attributionHeadlines : [],
+        confidenceCaveats: Array.isArray(sourceOps?.performance?.workflow?.confidenceCaveats) ? sourceOps.performance.workflow.confidenceCaveats : [],
+        validationViews: sourceOps?.performance?.workflow?.validationViews || null,
+        topImpactSources: Array.isArray(sourceOps?.performance?.topImpactSources) ? sourceOps.performance.topImpactSources : [],
+        measurementNotes: sourceOps?.performance?.measurementNotes || null,
+      },
       healthHistory: sourceOps?.history || null,
       sourceControls: {
         version: 'source-ops-control-v1',

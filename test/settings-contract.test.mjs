@@ -137,6 +137,9 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(Array.isArray(contract.sourceConsole.lifecycleActions.humanApprovalBoundary.humanApprovalBoundaryStates), true);
   assert.equal(Array.isArray(contract.sourceConsole.lifecycleActions.queue.evaluations), true);
   assert.equal(Array.isArray(contract.sourceConsole.inventory), true);
+  assert.equal(contract.sourceConsole.performanceWorkflow.version, 'source-performance-workflow-v1');
+  assert.equal(Array.isArray(contract.sourceConsole.performanceWorkflow.attributionHeadlines), true);
+  assert.equal(Array.isArray(contract.sourceConsole.performanceWorkflow.confidenceCaveats), true);
   assert.equal(contract.sourceConsole.sourceControls.version, 'source-ops-control-v1');
   assert.equal(contract.sourceConsole.sourceControls.endpoint, '/api/source-ops/control');
   assert.deepEqual(contract.sources.selection.enabledCategories, ['news']);

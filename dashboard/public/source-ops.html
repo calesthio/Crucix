@@ -39,6 +39,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   <section class="summary" id="summary" hidden></section>
   <section class="controls" id="controls" hidden></section>
   <section class="summary" id="actions" hidden></section>
+  <section class="summary" id="performance" hidden></section>
   <section class="table" id="table" hidden></section>
 </div>
 <script>
@@ -57,6 +58,7 @@ function render(){
   const summary = document.getElementById('summary');
   const controls = document.getElementById('controls');
   const actions = document.getElementById('actions');
+  const performance = document.getElementById('performance');
   const table = document.getElementById('table');
   const categoryFilter = document.getElementById('categoryFilter')?.value || 'all';
   const roleFilter = document.getElementById('roleFilter')?.value || 'all';
@@ -100,6 +102,29 @@ function render(){
     ${esc(lifecycle.exampleEvaluation?.candidateId || 'n/a')} → next ${esc(lifecycle.exampleEvaluation?.nextAllowedState || 'n/a')} (${esc(lifecycle.exampleEvaluation?.recommendedAction || 'n/a')})
     ${lifecycle.exampleEvaluation?.blocked ? `<div class="muted">Blocked: ${esc((lifecycle.exampleEvaluation?.blockedReasons || []).join('; '))}</div>` : ''}
     ${lifecycle.pruneRecommendation ? `<div style="margin-top:8px"><strong>Prune recommendation:</strong> ${esc(lifecycle.pruneRecommendation.targetId || 'n/a')} → ${esc(lifecycle.pruneRecommendation.recommendedAction || 'n/a')} (${esc(lifecycle.pruneRecommendation.confidence || 'unknown')})<div class="muted">${esc((lifecycle.pruneRecommendation.blockingIssues || []).join('; ') || 'No blocking issues')}</div></div>` : ''}
+  </div>`;
+  const perf = consoleData.performanceWorkflow || {};
+  const perfSummary = perf.summary || {};
+  performance.hidden = false;
+  performance.innerHTML = `<div class="grid">
+    <div class="stat"><div class="label">Performance workflow</div><div class="value">${esc(perf.version || 'n/a')}</div></div>
+    <div class="stat"><div class="label">Cluster-attributed</div><div class="value">${esc(perfSummary.withClusterAttribution ?? 0)} / ${esc(perfSummary.totalMeasuredSources ?? 0)}</div></div>
+    <div class="stat"><div class="label">Signal-active</div><div class="value">${esc(perfSummary.withSignalContribution ?? 0)}</div></div>
+    <div class="stat"><div class="label">Degraded or failing</div><div class="value">${esc(perfSummary.degradedOrFailing ?? 0)}</div></div>
+  </div>
+  <div style="margin-top:12px;font-size:13px;line-height:1.5">
+    <strong>Attribution explanations:</strong>
+    ${(perf.attributionHeadlines || []).map(item => `<div style="margin-top:8px"><strong>${esc(item.name)}</strong> · ${esc(item.impactLabel)} · ${esc(item.trustOutcome)}<div class="muted">${esc((item.explanation || []).join('; ') || 'No explanation')}</div>${(item.caveats || []).length ? `<div class="muted">Confidence caveats: ${esc(item.caveats.join('; '))}</div>` : ''}</div>`).join('') || '<div class="muted">No attributed sources yet</div>'}
+  </div>
+  <div style="margin-top:12px;font-size:13px;line-height:1.5">
+    <strong>Confidence caveats:</strong>
+    <div class="muted">${esc((perf.confidenceCaveats || []).join(' · ') || 'No global caveats')}</div>
+  </div>
+  <div style="margin-top:12px;font-size:13px;line-height:1.5">
+    <strong>Validation views:</strong>
+    <div class="muted">Cluster quality: ${(perf.validationViews?.clusterQuality || []).map(item => `${esc(item.label)}=${esc(item.value)}`).join(' · ') || 'n/a'}</div>
+    <div class="muted">Review pressure: ${(perf.validationViews?.reviewPressure || []).map(item => `${esc(item.label)}=${esc(item.value)}`).join(' · ') || 'n/a'}</div>
+    <div class="muted">Trust outcomes: ${(perf.validationViews?.trustOutcomes || []).map(item => `${esc(item.label)}=${esc(item.value)}`).join(' · ') || 'n/a'}</div>
   </div>`;
   table.hidden = false;
   table.innerHTML = `<table>

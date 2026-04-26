@@ -25,9 +25,13 @@ test('source ops surface summarizes contract, inventory, and needs from workspac
   assert.ok(surface.fusionRoles.byRole.anchor >= 1);
   assert.ok(surface.fusionRoles.byRole.exploratory >= 1);
   assert.ok(surface.fusionRoles.roles.find(item => item.role === 'context')?.count >= 1);
+  assert.equal(surface.performance.version, 'source-performance-workflow-v1');
   assert.equal(surface.performance.totalMeasuredSources, 30);
   assert.equal(surface.performance.targets.tippingPointCount, 0);
   assert.equal(surface.performance.measurementNotes.intendedValidationTargets.includes('review pressure'), true);
+  assert.equal(Array.isArray(surface.performance.workflow.attributionHeadlines), true);
+  assert.equal(Array.isArray(surface.performance.workflow.confidenceCaveats), true);
+  assert.equal(Array.isArray(surface.performance.workflow.validationViews.trustOutcomes), true);
   assert.equal(surface.history.version, 'source-health-history-v1');
   assert.equal(Array.isArray(surface.history.windows), true);
   assert.equal(surface.needs.total, 2);
@@ -193,6 +197,14 @@ test('source ops surface attaches live source-health state when snapshot health 
   assert.equal(surface.performance.withClusterAttribution >= 3, true);
   assert.equal(surface.performance.targets.reviewPressure.lowConfidenceCount, 3);
   assert.equal(surface.performance.withSignalContribution >= 3, true);
+  assert.equal(surface.performance.attributionCoverage.clusterAttributedRatio > 0, true);
+  assert.equal(surface.performance.workflow.validationViews.clusterQuality.find(item => item.label === 'Low quality')?.value, 3);
+  assert.equal(surface.performance.workflow.validationViews.trustOutcomes.find(item => item.label === 'degraded')?.value >= 1, true);
+  assert.ok(surface.performance.workflow.confidenceCaveats.some(item => /heuristic-only cluster/i.test(item)));
+  assert.ok(Array.isArray(telegramPerf.attributionExplanation));
+  assert.ok(telegramPerf.attributionExplanation.some(item => /clustered item/i.test(item)));
+  assert.ok(Array.isArray(blueskyPerf.confidenceCaveats));
+  assert.ok(blueskyPerf.confidenceCaveats.some(item => /failed|degradation/i.test(item)));
   assert.equal(surface.history.current.failingNow, 1);
   assert.equal(surface.history.current.failureCounts['external-limit'], 1);
 });

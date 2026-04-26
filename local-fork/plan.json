@@ -718,7 +718,7 @@
       {
         "id": "epic-30",
         "title": "Source operations console and lifecycle controls",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-30.1",
@@ -738,7 +738,7 @@
           {
             "id": "effort-30.4",
             "title": "Turn source performance measurement into an operator workflow surface with attribution explanations, confidence caveats, and validation views tied to cluster quality and trust outcomes",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },

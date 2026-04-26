@@ -112,6 +112,9 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(settings.sourceConsole.lifecycleActions.version, 'source-lifecycle-actions-v1');
     assert.equal(Array.isArray(settings.sourceConsole.lifecycleActions.queue.evaluations), true);
     assert.equal(typeof settings.sourceConsole.lifecycleActions.humanApprovalBoundary.activePromotionRequiresHumanApproval, 'boolean');
+    assert.equal(settings.sourceConsole.performanceWorkflow.version, 'source-performance-workflow-v1');
+    assert.equal(Array.isArray(settings.sourceConsole.performanceWorkflow.attributionHeadlines), true);
+    assert.equal(Array.isArray(settings.sourceConsole.performanceWorkflow.confidenceCaveats), true);
     assert.equal(settings.sourceConsole.sourceControls.endpoint, '/api/source-ops/control');
     assert.equal(settings.access.role, 'operator');
     assert.equal(settings.access.diagnosticsSurface, '/diagnostics');
@@ -148,6 +151,10 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.match(sourceOpsPage, /source management console/i);
     assert.match(sourceOpsPage, /Blocked lifecycle actions/i);
     assert.match(sourceOpsPage, /Prune recommendation/i);
+    assert.match(sourceOpsPage, /Performance workflow/i);
+    assert.match(sourceOpsPage, /Attribution explanations/i);
+    assert.match(sourceOpsPage, /Confidence caveats/i);
+    assert.match(sourceOpsPage, /Validation views/i);
     assert.match(sourceOpsPage, /Failing now/i);
     assert.match(sourceOpsPage, /Quarantine/i);
 
