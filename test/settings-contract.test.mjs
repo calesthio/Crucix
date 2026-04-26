@@ -37,7 +37,7 @@ const context = {
     updatedAt: null,
     preferences: {
       layout: { visualsMode: 'full', mapMode: 'auto', displayMode: 'desktop', defaultRegion: 'world', activeLayer: null, workspacePreset: 'diagnostics', panels: { reviewQueue: { collapsed: false, pinned: true, priority: 10, size: 'wide' } } },
-      sources: { enabledCategories: ['news'], enabledSourceIds: ['gdelt-global'], suppressedSourceIds: [], quarantinedSourceIds: [] },
+      sources: { enabledCategories: ['news'], enabledSourceIds: ['gdelt-global'], suppressedSourceIds: [], quarantinedSourceIds: [], noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 3 }, repetitiveLowValue: { enabled: true, maxStoryCount: 1, maxSourceCount: 1 }, sourceRules: [{ sourceId: 'gdelt-global', action: 'suppress', reason: 'duplicate burst source', enabled: true }] } },
       llm: { newsModeDefault: 'auto' },
       agentAnalysis: {
         detailLevel: 'standard',
@@ -83,6 +83,7 @@ const context = {
     },
   }),
   buildOperatorLlmStateContract: () => ({ status: 'applied', label: 'LLM APPLIED', summary: 'LLM participated', surfaces: { analysis: { label: 'LLM APPLIED' }, ideas: { label: 'STATIC BY DESIGN' } } }),
+  buildNoiseSuppressionContract: () => ({ version: 'noise-suppression-v1', summary: { activeSourceRuleCount: 1 }, sourceRules: { activeRules: [{ sourceId: 'gdelt-global' }], suggestedRules: [] } }),
   getSweepWatchdogSnapshot: () => ({ timeoutMinutes: 45, timeoutMs: 2700000, pollMs: 30000 }),
   module: { exports: {} },
   exports: {},
@@ -190,6 +191,9 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.deepEqual(contract.sources.selection.enabledSourceIds, ['gdelt-global']);
   assert.deepEqual(contract.sources.selection.suppressedSourceIds, []);
   assert.deepEqual(contract.sources.selection.quarantinedSourceIds, []);
+  assert.equal(contract.sources.selection.noiseSuppression.duplicateBurst.minSimilarClusters, 3);
+  assert.equal(contract.sourceConsole.noiseSuppression.version, 'noise-suppression-v1');
+  assert.equal(Array.isArray(contract.sourceConsole.noiseSuppression.sourceRules.activeRules), true);
   assert.equal(contract.persistence.capabilities.export, false);
   assert.equal(contract.persistence.capabilities.writeApi, false);
   assert.equal(contract.access.role, 'operator');
@@ -207,6 +211,7 @@ test('admin settings contract exposes local-write controls separately from opera
   assert.equal(contract.persistence.capabilities.import, true);
   assert.equal(contract.persistence.capabilities.writeApi, true);
   assert.equal(contract.persistence.path, '/tmp/test-operator-settings.json');
+  assert.equal(contract.persistence.persistedPreferences.sources.noiseSuppression.duplicateBurst.minSimilarClusters, 3);
   assert.equal(contract.access.role, 'admin');
   assert.equal(contract.access.mode, 'local-write');
   assert.equal(contract.access.diagnosticsSurface, '/diagnostics');

@@ -111,6 +111,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(settings.config.driftSummary.envOverrides >= 1, true);
     assert.equal(settings.sources.selection.supportsPerSourceControl, true);
     assert.equal(Array.isArray(settings.sources.availableSources), true);
+    assert.equal(settings.sources.selection.noiseSuppression.duplicateBurst.enabled, true);
+    assert.equal(settings.sourceConsole.noiseSuppression.version, 'noise-suppression-v1');
     assert.equal(settings.persistence.capabilities.export, false);
     assert.equal(settings.persistence.capabilities.writeApi, false);
     assert.equal(settings.sourceConsole.version, 'source-console-v1');
@@ -187,6 +189,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     const diagnosticsPage = await fetch(`http://127.0.0.1:${BASE_PORT}/diagnostics`).then(r => r.text());
     assert.match(diagnosticsPage, /Runtime and review diagnostics/i);
     assert.match(diagnosticsPage, /Operator settings/i);
+    assert.match(diagnosticsPage, /Noise suppression/i);
 
     const llmOpsPage = await fetch(llmOpsPageUrl).then(r => r.text());
     assert.match(llmOpsPage, /Provider health and fallback operations/i);
@@ -207,5 +210,6 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.match(adminPage, /id="restartBtn"/i);
     assert.match(adminPage, /id="stopBtn"/i);
     assert.match(adminPage, /Source ops/i);
+    assert.match(adminPage, /Noise suppression/i);
   });
 });

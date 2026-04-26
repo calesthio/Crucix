@@ -210,6 +210,18 @@ function operatorSettingsDefaults() {
         enabledSourceIds: [],
         suppressedSourceIds: [],
         quarantinedSourceIds: [],
+        noiseSuppression: {
+          duplicateBurst: {
+            enabled: true,
+            minSimilarClusters: 2,
+          },
+          repetitiveLowValue: {
+            enabled: true,
+            maxStoryCount: 1,
+            maxSourceCount: 1,
+          },
+          sourceRules: [],
+        },
       },
       llm: {
         newsModeDefault: 'auto',
@@ -245,6 +257,10 @@ function normalizeOperatorSettings(input = {}) {
   const allowedHorizonBehaviors = ['short-only', 'balanced', 'extended'];
   const allowedPanelSizes = ['compact', 'normal', 'wide'];
   const allowedWorkspacePresets = ['operator', 'diagnostics', 'source-ops', 'executive-briefing'];
+  const noiseSuppression = sources.noiseSuppression && typeof sources.noiseSuppression === 'object' ? sources.noiseSuppression : {};
+  const duplicateBurst = noiseSuppression.duplicateBurst && typeof noiseSuppression.duplicateBurst === 'object' ? noiseSuppression.duplicateBurst : {};
+  const repetitiveLowValue = noiseSuppression.repetitiveLowValue && typeof noiseSuppression.repetitiveLowValue === 'object' ? noiseSuppression.repetitiveLowValue : {};
+  const sourceRules = Array.isArray(noiseSuppression.sourceRules) ? noiseSuppression.sourceRules : [];
   return {
     version: defaults.version,
     updatedAt: input?.updatedAt || null,
@@ -268,6 +284,26 @@ function normalizeOperatorSettings(input = {}) {
         enabledSourceIds: Array.isArray(sources.enabledSourceIds) ? Array.from(new Set(sources.enabledSourceIds.map(value => String(value).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)) : [],
         suppressedSourceIds: Array.isArray(sources.suppressedSourceIds) ? Array.from(new Set(sources.suppressedSourceIds.map(value => String(value).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)) : [],
         quarantinedSourceIds: Array.isArray(sources.quarantinedSourceIds) ? Array.from(new Set(sources.quarantinedSourceIds.map(value => String(value).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)) : [],
+        noiseSuppression: {
+          duplicateBurst: {
+            enabled: duplicateBurst.enabled !== undefined ? Boolean(duplicateBurst.enabled) : defaults.preferences.sources.noiseSuppression.duplicateBurst.enabled,
+            minSimilarClusters: Math.max(2, Math.min(6, Number.isFinite(Number(duplicateBurst.minSimilarClusters)) ? Number(duplicateBurst.minSimilarClusters) : defaults.preferences.sources.noiseSuppression.duplicateBurst.minSimilarClusters)),
+          },
+          repetitiveLowValue: {
+            enabled: repetitiveLowValue.enabled !== undefined ? Boolean(repetitiveLowValue.enabled) : defaults.preferences.sources.noiseSuppression.repetitiveLowValue.enabled,
+            maxStoryCount: Math.max(1, Math.min(3, Number.isFinite(Number(repetitiveLowValue.maxStoryCount)) ? Number(repetitiveLowValue.maxStoryCount) : defaults.preferences.sources.noiseSuppression.repetitiveLowValue.maxStoryCount)),
+            maxSourceCount: Math.max(1, Math.min(3, Number.isFinite(Number(repetitiveLowValue.maxSourceCount)) ? Number(repetitiveLowValue.maxSourceCount) : defaults.preferences.sources.noiseSuppression.repetitiveLowValue.maxSourceCount)),
+          },
+          sourceRules: sourceRules
+            .map(rule => ({
+              sourceId: String(rule?.sourceId || '').trim(),
+              action: String(rule?.action || 'suppress').trim().toLowerCase(),
+              reason: String(rule?.reason || '').trim(),
+              enabled: rule?.enabled !== undefined ? Boolean(rule.enabled) : true,
+            }))
+            .filter(rule => rule.sourceId && ['suppress', 'review-only'].includes(rule.action))
+            .sort((a, b) => String(a.sourceId).localeCompare(String(b.sourceId))),
+        },
       },
       llm: {
         newsModeDefault: allowedLlmModes.includes(llm.newsModeDefault) ? llm.newsModeDefault : defaults.preferences.llm.newsModeDefault,
@@ -587,6 +623,120 @@ function findSourceByAttribution(sourceName = '', snapshot = currentData || null
   return byToken.get(token) || null;
 }
 
+function findSourceForCluster(cluster = {}, snapshot = currentData || null) {
+  const topSource = cluster?.sourceProvenance?.topSources?.[0] || null;
+  return findSourceByAttribution(topSource?.runtimeSource || topSource?.source || '', snapshot);
+}
+
+function buildNoiseSuppressionContract(snapshot = currentData || null) {
+  const activeSnapshot = snapshot || currentData || null;
+  const operatorSettings = loadOperatorSettings();
+  const controls = operatorSettings.preferences.sources.noiseSuppression || operatorSettingsDefaults().preferences.sources.noiseSuppression;
+  const clusters = Array.isArray(activeSnapshot?.newsClusters) ? activeSnapshot.newsClusters : [];
+  const reviewMetrics = activeSnapshot?.newsClusterQuality?.reviewMetrics || summarizeClusterReviewMetrics(clusters);
+  const duplicatePairs = Array.isArray(reviewMetrics?.suspiciousNearDuplicates) ? reviewMetrics.suspiciousNearDuplicates : [];
+  const duplicateBursts = duplicatePairs
+    .map(pair => ({
+      id: `${pair?.region || 'Unknown'}::${pair?.clusterA?.id || 'a'}::${pair?.clusterB?.id || 'b'}`,
+      region: pair?.region || pair?.clusterA?.region || pair?.clusterB?.region || 'Unknown',
+      similarity: Number((pair?.similarity || 0).toFixed(3)),
+      clusterIds: [pair?.clusterA?.id, pair?.clusterB?.id].filter(Boolean),
+      headline: pair?.clusterA?.headline || pair?.clusterB?.headline || 'duplicate burst',
+      clusterCount: [pair?.clusterA?.id, pair?.clusterB?.id].filter(Boolean).length,
+    }))
+    .filter(item => item.clusterCount >= (controls?.duplicateBurst?.minSimilarClusters || 2))
+    .slice(0, 6);
+  const repetitiveLowValueEvents = clusters
+    .filter(cluster => (
+      (cluster.storyCount || 0) <= (controls?.repetitiveLowValue?.maxStoryCount || 1) &&
+      (cluster.sourceCount || 0) <= (controls?.repetitiveLowValue?.maxSourceCount || 1) &&
+      ((cluster.quality === 'low') || cluster.confidenceLabel === 'weak' || (cluster.qualityFlags || []).includes('single-source') || (cluster.qualityFlags || []).includes('heuristic-only'))
+    ))
+    .slice(0, 8)
+    .map(cluster => {
+      const sourceItem = findSourceForCluster(cluster, activeSnapshot);
+      return {
+        clusterId: cluster.id,
+        headline: cluster.headline || cluster.id,
+        region: cluster.region || 'Unknown',
+        storyCount: cluster.storyCount || 0,
+        sourceCount: cluster.sourceCount || 0,
+        sourceId: sourceItem?.id || null,
+        sourceName: sourceItem?.name || null,
+      };
+    });
+  const sourceRuleUsage = new Map();
+  for (const cluster of repetitiveLowValueEvents) {
+    if (!cluster.sourceId) continue;
+    const next = sourceRuleUsage.get(cluster.sourceId) || { sourceId: cluster.sourceId, sourceName: cluster.sourceName, repetitiveLowValueCount: 0, duplicateBurstCount: 0 };
+    next.repetitiveLowValueCount += 1;
+    sourceRuleUsage.set(cluster.sourceId, next);
+  }
+  for (const burst of duplicateBursts) {
+    for (const clusterId of burst.clusterIds) {
+      const cluster = clusters.find(item => item?.id === clusterId);
+      const sourceItem = findSourceForCluster(cluster, activeSnapshot);
+      if (!sourceItem?.id) continue;
+      const next = sourceRuleUsage.get(sourceItem.id) || { sourceId: sourceItem.id, sourceName: sourceItem.name, repetitiveLowValueCount: 0, duplicateBurstCount: 0 };
+      next.duplicateBurstCount += 1;
+      sourceRuleUsage.set(sourceItem.id, next);
+    }
+  }
+  const inventory = resolveSourceInventory(activeSnapshot).items;
+  const activeRules = Array.isArray(controls?.sourceRules) ? controls.sourceRules.map(rule => ({
+    ...rule,
+    sourceName: inventory.find(item => item.id === rule.sourceId)?.name || rule.sourceId,
+  })) : [];
+  const activeRuleIds = new Set(activeRules.map(rule => rule.sourceId));
+  const suggestedRules = Array.from(sourceRuleUsage.values())
+    .filter(item => (item.repetitiveLowValueCount + item.duplicateBurstCount) >= 2 && !activeRuleIds.has(item.sourceId))
+    .sort((a, b) => ((b.repetitiveLowValueCount + b.duplicateBurstCount) - (a.repetitiveLowValueCount + a.duplicateBurstCount)) || String(a.sourceId).localeCompare(String(b.sourceId)))
+    .slice(0, 6)
+    .map(item => ({
+      ...item,
+      suggestedAction: 'suppress',
+      suggestedReason: `Suggested because ${item.sourceName || item.sourceId} repeatedly appears in low-value or duplicate-heavy weak clusters.`,
+    }));
+  return {
+    version: 'noise-suppression-v1',
+    controls,
+    tuningBounds: {
+      duplicateBurstMinSimilarClusters: { min: 2, max: 6 },
+      repetitiveLowValueMaxStoryCount: { min: 1, max: 3 },
+      repetitiveLowValueMaxSourceCount: { min: 1, max: 3 },
+    },
+    summary: {
+      duplicateBurstCandidateCount: duplicateBursts.length,
+      repetitiveLowValueCandidateCount: repetitiveLowValueEvents.length,
+      activeSourceRuleCount: activeRules.filter(rule => rule.enabled).length,
+      suggestedSourceRuleCount: suggestedRules.length,
+    },
+    duplicateBursts,
+    repetitiveLowValueEvents,
+    sourceRules: {
+      activeRules,
+      suggestedRules,
+    },
+  };
+}
+
+function getNoiseSuppressionDecision(cluster = {}, noiseSuppression = buildNoiseSuppressionContract(), snapshot = currentData || null) {
+  const duplicateMatch = (noiseSuppression?.duplicateBursts || []).find(item => (item.clusterIds || []).includes(cluster?.id));
+  if (noiseSuppression?.controls?.duplicateBurst?.enabled && duplicateMatch) {
+    return { type: 'duplicate-burst', ruleId: duplicateMatch.id, detail: 'Suppressed by duplicate-burst control.' };
+  }
+  const lowValueMatch = (noiseSuppression?.repetitiveLowValueEvents || []).find(item => item.clusterId === cluster?.id);
+  if (noiseSuppression?.controls?.repetitiveLowValue?.enabled && lowValueMatch) {
+    return { type: 'repetitive-low-value', ruleId: lowValueMatch.clusterId, detail: 'Suppressed by repetitive low-value control.' };
+  }
+  const sourceItem = findSourceForCluster(cluster, snapshot);
+  const sourceRule = (noiseSuppression?.sourceRules?.activeRules || []).find(rule => rule.enabled && rule.action === 'suppress' && rule.sourceId === sourceItem?.id);
+  if (sourceRule) {
+    return { type: 'source-rule', ruleId: sourceRule.sourceId, detail: sourceRule.reason || 'Suppressed by source-specific rule.' };
+  }
+  return null;
+}
+
 function buildReviewWorkflowActions(item = {}, snapshot = currentData || null) {
   const actions = [];
   const topSource = item?.sourceProvenance?.topSources?.[0] || null;
@@ -629,6 +779,7 @@ function summarizeWeakClusterReasons(cluster = {}, duplicatePairs = []) {
 
 function buildClusterRepairWorkflow(snapshot = currentData || null) {
   const activeSnapshot = snapshot || currentData || null;
+  const noiseSuppression = buildNoiseSuppressionContract(activeSnapshot);
   const clusters = Array.isArray(activeSnapshot?.newsClusters) ? activeSnapshot.newsClusters : [];
   const reviewMetrics = activeSnapshot?.newsClusterQuality?.reviewMetrics || summarizeClusterReviewMetrics(clusters);
   const duplicatePairs = Array.isArray(reviewMetrics?.suspiciousNearDuplicates) ? reviewMetrics.suspiciousNearDuplicates : [];
@@ -644,12 +795,15 @@ function buildClusterRepairWorkflow(snapshot = currentData || null) {
   }
   const weakClusters = clusters
     .filter(cluster => (
-      cluster?.quality === 'low' ||
-      cluster?.confidenceLabel === 'weak' ||
-      (cluster?.qualityFlags || []).includes('heuristic-only') ||
-      (cluster?.qualityFlags || []).includes('single-source')
+      !clusterRepairActions?.suppressedClusterIds?.includes(cluster?.id) && (
+        cluster?.quality === 'low' ||
+        cluster?.confidenceLabel === 'weak' ||
+        (cluster?.qualityFlags || []).includes('heuristic-only') ||
+        (cluster?.qualityFlags || []).includes('single-source')
+      )
     ))
     .map(cluster => {
+      const suppression = getNoiseSuppressionDecision(cluster, noiseSuppression, activeSnapshot);
       const matches = duplicatesByCluster.get(cluster.id) || [];
       const reasons = summarizeWeakClusterReasons(cluster, matches);
       const actions = [];
@@ -721,9 +875,11 @@ function buildClusterRepairWorkflow(snapshot = currentData || null) {
         weaknessScore,
         weaknessReasons: reasons,
         mergeCandidateCount: matches.length,
+        suppression,
         actions: actions.slice(0, 4),
       };
     })
+    .filter(cluster => !cluster.suppression)
     .sort((a, b) => (b.weaknessScore || 0) - (a.weaknessScore || 0) || (b.storyCount || 0) - (a.storyCount || 0) || String(a.region || '').localeCompare(String(b.region || '')))
     .slice(0, 6);
   return {
@@ -737,6 +893,7 @@ function buildClusterRepairWorkflow(snapshot = currentData || null) {
       splitCandidateCount: reviewMetrics?.splitCandidateCount || 0,
       mergeCandidateCount: reviewMetrics?.mergeCandidateCount || 0,
     },
+    suppression: noiseSuppression,
     weakClusters,
     recentDecisions: Array.isArray(clusterRepairActions?.decisions) ? clusterRepairActions.decisions.slice(-8).reverse() : [],
   };
@@ -797,6 +954,7 @@ function buildReviewWorkflowContract(snapshot = currentData || null, review = nu
     } : null,
     lowConfidenceSources,
     promoteCandidates,
+    noiseSuppression: buildNoiseSuppressionContract(activeSnapshot),
     clusterRepair: buildClusterRepairWorkflow(activeSnapshot),
     auditTrail: reviewWorkflowAuditSnapshot(12),
   };
@@ -3266,6 +3424,7 @@ function buildOperatorSettingsContract(snapshot = null) {
         enabledSourceIds: operatorSettings.preferences.sources.enabledSourceIds,
         suppressedSourceIds: operatorSettings.preferences.sources.suppressedSourceIds,
         quarantinedSourceIds: operatorSettings.preferences.sources.quarantinedSourceIds,
+        noiseSuppression: operatorSettings.preferences.sources.noiseSuppression,
       },
       availableSources: sourceItems,
       health: {
@@ -3293,6 +3452,7 @@ function buildOperatorSettingsContract(snapshot = null) {
         enabledSourceIds: operatorSettings.preferences.sources.enabledSourceIds,
         suppressedSourceIds: operatorSettings.preferences.sources.suppressedSourceIds,
         quarantinedSourceIds: operatorSettings.preferences.sources.quarantinedSourceIds,
+        noiseSuppression: operatorSettings.preferences.sources.noiseSuppression,
       },
       lifecycleActions: {
         version: 'source-lifecycle-actions-v1',
@@ -3369,6 +3529,7 @@ function buildOperatorSettingsContract(snapshot = null) {
         requiresLocalAdmin: true,
         supportedActions: ['suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine'],
       },
+      noiseSuppression: buildNoiseSuppressionContract(activeSnapshot),
     },
     llm: {
       provider: config.llm.provider || null,

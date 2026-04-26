@@ -4,7 +4,7 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 
 ## Candidate backlog items
 
-All current backlog items were integrated into `local-fork/plan.json` on 2026-04-25.
+All current backlog items were integrated into `local-fork/plan.json` on 2026-04-26.
 
 Recent promotions:
 - Schema-level validation helpers were promoted into `local-fork/plan.json` as Epic 34, effort 34.1 on 2026-04-25.
@@ -19,9 +19,10 @@ Recent promotions:
 - Active LLM provider readiness probing was promoted into `local-fork/plan.json` as Epic 31, effort 31.6 on 2026-04-26.
 - Endpoint-level regression coverage for settings-driven agent-analysis publish behavior was promoted into `local-fork/plan.json` as Epic 34, effort 34.4 on 2026-04-26.
 - Provider-specific cheap readiness checks and richer failure classification for LLM probes was promoted into `local-fork/plan.json` as Epic 31, effort 31.7 on 2026-04-26.
+- End-to-end regression coverage for `POST /api/review-workflow/action` and `GET /api/review-workflow/audit` was promoted into `local-fork/plan.json` as Epic 34, effort 34.5 on 2026-04-26.
+- Endpoint-level regression coverage for cluster-repair workflow actions and suppressed-cluster state was promoted into `local-fork/plan.json` as Epic 34, effort 34.6 on 2026-04-26.
+- Attribution-diagnostics follow-on work to distinguish routine aggregator publisher mixes from true alias-collision anomalies was promoted into `local-fork/plan.json` as Epic 32, effort 32.6 on 2026-04-26.
 
 New items can be added here when they do not yet belong in the active roadmap.
 
-- Add end-to-end regression coverage for `POST /api/review-workflow/action` and `GET /api/review-workflow/audit`, including action-specific payload validation and audit-entry assertions. Added 2026-04-26 during cycle 111 after the initial workflow surface shipped with only queue-contract coverage.
-- Add endpoint-level regression coverage for cluster-repair workflow actions and suppressed-cluster state on `/api/brief/news/review` and `/api/data`, so bounded repair recommendations and persisted decisions do not drift from the live contracts. Added 2026-04-26 during cycle 112 after the first cluster-repair helper surface shipped with unit coverage but no endpoint contract test.
-- Distinguish expected multi-publisher runtime buckets from true alias-collision anomalies in attribution diagnostics, so broad aggregators like `GDELT` do not over-report routine publisher diversity as operator-actionable alias risk. Added 2026-04-26 during cycle 113 after the first attribution-uncertainty surface showed useful double-count visibility but still flags normal aggregator mixes as alias collisions.
+- Persist rolling noise-suppression match history and per-rule hit counters so duplicate-burst, low-value, and source-rule suggestions reflect multi-sweep behavior instead of only the current snapshot.

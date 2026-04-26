@@ -51,6 +51,9 @@ function tags(items){return `<div class="tags">${items.map(item => `<span class=
 function renderCard(title, subtitle, body){return `<section class="card"><div class="mini">${esc(subtitle)}</div><h2>${esc(title)}</h2>${body}</section>`;}
 function selectRow(label, id, value, options){return `<div class="row"><label class="key" for="${esc(id)}">${esc(label)}</label><div class="val"><select id="${esc(id)}">${options.map(option => `<option value="${esc(option.value)}" ${option.value===value?'selected':''}>${esc(option.label)}</option>`).join('')}</select></div></div>`;}
 function checkboxGroup(title, name, items, selectedValues){const selected=new Set(selectedValues||[]);return `<div class="row"><div class="key">${esc(title)}</div><div class="val"><div class="tags">${items.map(item => `<label class="tag"><input type="checkbox" name="${esc(name)}" value="${esc(item.value)}" ${selected.has(item.value)?'checked':''}> ${esc(item.label)}</label>`).join('')}</div></div></div>`;}
+function checkboxRow(label, id, checked){return `<div class="row"><label class="key" for="${esc(id)}">${esc(label)}</label><div class="val"><input id="${esc(id)}" type="checkbox" ${checked?'checked':''}></div></div>`;}
+function numberRow(label, id, value, min, max){return `<div class="row"><label class="key" for="${esc(id)}">${esc(label)}</label><div class="val"><input id="${esc(id)}" type="number" min="${esc(min)}" max="${esc(max)}" value="${esc(value)}" style="width:72px"></div></div>`;}
+function sourceRuleRows(activeRules, suggestedRules){const rows=[...(activeRules||[]), ...(suggestedRules||[]).map(item => ({ sourceId:item.sourceId, sourceName:item.sourceName, action:item.suggestedAction||'suppress', reason:item.suggestedReason||'', enabled:false, suggested:true }))]; if(!rows.length) return '<div class="mini">No active or suggested source-specific suppression rules right now.</div>'; return rows.map(rule => `<div class="row" data-noise-source-rule data-source-id="${esc(rule.sourceId)}"><div class="key"><strong>${esc(rule.sourceName||rule.sourceId)}</strong><div class="mini">${rule.suggested?'suggested from current weak-cluster noise':''}</div></div><div class="val" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end"><label class="mini">on <input data-field="enabled" type="checkbox" ${rule.enabled?'checked':''}></label><select data-field="action"><option value="suppress" ${rule.action==='suppress'?'selected':''}>SUPPRESS</option><option value="review-only" ${rule.action==='review-only'?'selected':''}>REVIEW ONLY</option></select><input data-field="reason" value="${esc(rule.reason||'')}" placeholder="reason" style="min-width:220px"></div></div>`).join('');}
 async function savePreferences(){
   const payload = {
     preferences: {
@@ -65,6 +68,23 @@ async function savePreferences(){
       sources: {
         enabledCategories: Array.from(document.querySelectorAll('input[name="enabledCategories"]:checked')).map(el => el.value),
         enabledSourceIds: Array.from(document.querySelectorAll('input[name="enabledSourceIds"]:checked')).map(el => el.value),
+        noiseSuppression: {
+          duplicateBurst: {
+            enabled: Boolean(document.getElementById('duplicateBurstEnabled')?.checked),
+            minSimilarClusters: Number(document.getElementById('duplicateBurstMinSimilarClusters')?.value || 2),
+          },
+          repetitiveLowValue: {
+            enabled: Boolean(document.getElementById('repetitiveLowValueEnabled')?.checked),
+            maxStoryCount: Number(document.getElementById('repetitiveLowValueMaxStoryCount')?.value || 1),
+            maxSourceCount: Number(document.getElementById('repetitiveLowValueMaxSourceCount')?.value || 1),
+          },
+          sourceRules: Array.from(document.querySelectorAll('[data-noise-source-rule]')).map(row => ({
+            sourceId: row.dataset.sourceId || '',
+            action: row.querySelector('[data-field="action"]')?.value || 'suppress',
+            reason: row.querySelector('[data-field="reason"]')?.value || '',
+            enabled: Boolean(row.querySelector('[data-field="enabled"]')?.checked),
+          })).filter(rule => rule.sourceId),
+        },
       },
       llm: {
         newsModeDefault: document.getElementById('newsModeDefault')?.value || 'auto',
@@ -138,6 +158,16 @@ async function boot(){
         checkboxGroup('Enabled sources', 'enabledSourceIds', (data.sources?.availableSources || []).map(item => ({ value: item.id, label: `${item.name} [${item.category}/${item.lifecycle}]` })), data.sources?.selection?.enabledSourceIds || []),
         categories.length ? tags(categories) : '',
         lifecycle.length ? tags(lifecycle) : '',
+      ].join('')),
+      renderCard('Noise suppression', 'Tune duplicate bursts, repetitive low-value events, and source rules', [
+        row('Duplicate burst candidates', esc(String(data.sourceConsole?.noiseSuppression?.summary?.duplicateBurstCandidateCount ?? 0))),
+        row('Low-value candidates', esc(String(data.sourceConsole?.noiseSuppression?.summary?.repetitiveLowValueCandidateCount ?? 0))),
+        checkboxRow('Enable duplicate burst suppression', 'duplicateBurstEnabled', Boolean(data.sourceConsole?.noiseSuppression?.controls?.duplicateBurst?.enabled)),
+        numberRow('Min similar clusters', 'duplicateBurstMinSimilarClusters', data.sourceConsole?.noiseSuppression?.controls?.duplicateBurst?.minSimilarClusters || 2, 2, 6),
+        checkboxRow('Enable repetitive low-value suppression', 'repetitiveLowValueEnabled', Boolean(data.sourceConsole?.noiseSuppression?.controls?.repetitiveLowValue?.enabled)),
+        numberRow('Max story count', 'repetitiveLowValueMaxStoryCount', data.sourceConsole?.noiseSuppression?.controls?.repetitiveLowValue?.maxStoryCount || 1, 1, 3),
+        numberRow('Max source count', 'repetitiveLowValueMaxSourceCount', data.sourceConsole?.noiseSuppression?.controls?.repetitiveLowValue?.maxSourceCount || 1, 1, 3),
+        sourceRuleRows(data.sourceConsole?.noiseSuppression?.sourceRules?.activeRules || [], data.sourceConsole?.noiseSuppression?.sourceRules?.suggestedRules || []),
       ].join('')),
       renderCard('LLM', 'Provider and runtime state', [
         row('Provider', esc(data.llm?.provider || 'disabled')),

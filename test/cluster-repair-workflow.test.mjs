@@ -18,16 +18,23 @@ const context = {
   console,
   module: { exports: {} },
   exports: {},
+  loadOperatorSettings: () => ({ preferences: { sources: { noiseSuppression: { duplicateBurst: { enabled: false, minSimilarClusters: 2 }, repetitiveLowValue: { enabled: false, maxStoryCount: 1, maxSourceCount: 1 }, sourceRules: [] } } } }),
+  operatorSettingsDefaults: () => ({ preferences: { sources: { noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 2 }, repetitiveLowValue: { enabled: true, maxStoryCount: 1, maxSourceCount: 1 }, sourceRules: [] } } } }),
+  resolveSourceInventory: () => ({ items: [] }),
+  findSourceForCluster: cluster => {
+    const runtimeSource = cluster?.sourceProvenance?.topSources?.[0]?.runtimeSource || '';
+    return runtimeSource === 'Source A' ? { id: 'src-a', name: 'Source A' } : null;
+  },
   clusterRepairActions: { suppressedClusterIds: ['old-cluster'], decisions: [{ id: 'd1', action: 'suppress-cluster', clusterId: 'old-cluster' }] },
 };
 vm.createContext(context);
 vm.runInContext(`
   ${extractChunk('function summarizeClusterReviewMetrics(clusters = []) {', 'function buildReasoningSourceContext(snapshot = {}) {')}
-  ${extractChunk('function summarizeWeakClusterReasons(cluster = {}, duplicatePairs = []) {', 'function buildReviewWorkflowContract(snapshot = currentData || null, review = null) {')}
-  module.exports = { summarizeClusterReviewMetrics, summarizeWeakClusterReasons, buildClusterRepairWorkflow };
+  ${extractChunk('function buildNoiseSuppressionContract(snapshot = currentData || null) {', 'function buildReviewWorkflowContract(snapshot = currentData || null, review = null) {')}
+  module.exports = { summarizeClusterReviewMetrics, summarizeWeakClusterReasons, buildClusterRepairWorkflow, buildNoiseSuppressionContract };
 `, context);
 
-const { buildClusterRepairWorkflow } = context.module.exports;
+const { buildClusterRepairWorkflow, buildNoiseSuppressionContract } = context.module.exports;
 
 test('buildClusterRepairWorkflow explains weak clusters and exposes bounded actions', () => {
   const workflow = buildClusterRepairWorkflow({
@@ -87,4 +94,18 @@ test('buildClusterRepairWorkflow explains weak clusters and exposes bounded acti
 
   assert.equal(workflow.suppressedClusterCount, 1);
   assert.equal(workflow.recentDecisions.length, 1);
+  assert.equal(workflow.suppression.version, 'noise-suppression-v1');
+});
+
+test('buildNoiseSuppressionContract derives duplicate, low-value, and source-rule candidates', () => {
+  context.resolveSourceInventory = () => ({ items: [{ id: 'src-a', name: 'Source A' }] });
+  context.loadOperatorSettings = () => ({ preferences: { sources: { noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 2 }, repetitiveLowValue: { enabled: true, maxStoryCount: 1, maxSourceCount: 1 }, sourceRules: [{ sourceId: 'src-a', action: 'suppress', reason: 'known burst source', enabled: true }] } } } });
+  const suppression = buildNoiseSuppressionContract({
+    newsClusters: [{ id: 'cluster-a', headline: 'A', region: 'Iran', storyCount: 1, sourceCount: 1, quality: 'low', confidenceLabel: 'weak', qualityFlags: ['single-source'], sourceProvenance: { topSources: [{ runtimeSource: 'Source A' }] } }],
+    newsClusterQuality: { reviewMetrics: { suspiciousNearDuplicates: [{ region: 'Iran', similarity: 0.92, clusterA: { id: 'cluster-a', headline: 'A', region: 'Iran' }, clusterB: { id: 'cluster-b', headline: 'B', region: 'Iran' } }] } },
+  });
+  assert.equal(suppression.version, 'noise-suppression-v1');
+  assert.equal(suppression.duplicateBursts.length, 1);
+  assert.equal(suppression.repetitiveLowValueEvents.length, 1);
+  assert.equal(suppression.sourceRules.activeRules[0].sourceId, 'src-a');
 });

@@ -812,11 +812,16 @@
           {
             "id": "effort-32.4",
             "title": "Add noise-suppression controls for duplicate bursts, repetitive low-value events, and source-specific suppression rules that can be reviewed and tuned from the UI",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-32.5",
             "title": "Add a shared navigation and page-shell component for dashboard-adjacent operator, diagnostics, admin, and LLM operations surfaces so labels, links, and boundary explanations do not drift",
+            "status": "pending"
+          },
+          {
+            "id": "effort-32.6",
+            "title": "Distinguish expected multi-publisher runtime buckets from true alias-collision anomalies in attribution diagnostics, so broad aggregators like `GDELT` do not over-report routine publisher diversity as operator-actionable alias risk",
             "status": "pending"
           }
         ]
@@ -876,6 +881,16 @@
           {
             "id": "effort-34.4",
             "title": "Add endpoint-level regression coverage for settings-driven agent-analysis publish behavior so horizon filtering, tipping-point thresholds, and deterministic-fallback suppression are validated against live `/api/analysis` output rather than only settings contracts",
+            "status": "pending"
+          },
+          {
+            "id": "effort-34.5",
+            "title": "Add end-to-end regression coverage for `POST /api/review-workflow/action` and `GET /api/review-workflow/audit`, including action-specific payload validation and audit-entry assertions",
+            "status": "pending"
+          },
+          {
+            "id": "effort-34.6",
+            "title": "Add endpoint-level regression coverage for cluster-repair workflow actions and suppressed-cluster state on `/api/brief/news/review` and `/api/data`, so bounded repair recommendations and persisted decisions do not drift from the live contracts",
             "status": "pending"
           }
         ]
@@ -947,8 +962,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 109,
+    "sequence": 114,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-26-cycle-109"
+    "lastCompletedCycleId": "2026-04-26-cycle-114"
   }
 }

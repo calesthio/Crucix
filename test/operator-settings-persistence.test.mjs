@@ -72,7 +72,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
       body: JSON.stringify({
         preferences: {
           layout: { visualsMode: 'lite', mapMode: 'flat', displayMode: 'wallboard', defaultRegion: 'asiaPacific', activeLayer: 'news', workspacePreset: 'source-ops', panels: { reviewQueue: { collapsed: false, pinned: true, priority: 5, size: 'wide' }, tradeIdeas: { collapsed: true, pinned: false, priority: 40, size: 'compact' } } },
-          sources: { enabledCategories: ['news', 'air'], enabledSourceIds: ['gdelt-global', 'opensky-network'] },
+          sources: { enabledCategories: ['news', 'air'], enabledSourceIds: ['gdelt-global', 'opensky-network'], noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 3 }, repetitiveLowValue: { enabled: false, maxStoryCount: 2, maxSourceCount: 1 }, sourceRules: [{ sourceId: 'gdelt-global', action: 'suppress', reason: 'duplicate-heavy', enabled: true }] } },
           llm: { newsModeDefault: 'force' },
           agentAnalysis: {
             detailLevel: 'expanded',
@@ -107,6 +107,8 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(settings.sources.selection.supportsPerSourceControl, true);
     assert.deepEqual(settings.sources.selection.enabledCategories, ['air', 'news']);
     assert.deepEqual(settings.sources.selection.enabledSourceIds, ['gdelt-global', 'opensky-network']);
+    assert.equal(settings.sources.selection.noiseSuppression.duplicateBurst.minSimilarClusters, 3);
+    assert.equal(settings.sources.selection.noiseSuppression.repetitiveLowValue.enabled, false);
     assert.equal(settings.llm.defaultMode, 'force');
     assert.equal(settings.agentAnalysis.controls.detailLevel, 'expanded');
     assert.equal(settings.agentAnalysis.controls.publishMode, 'exploratory');
@@ -115,6 +117,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(settings.agentAnalysis.controls.tippingPointMinProbability, 'LOW');
     assert.equal(settings.agentAnalysis.controls.maxPublishedTippingPoints, 2);
     assert.equal(settings.persistence.persistedPreferences.layout.visualsMode, 'lite');
+    assert.equal(settings.persistence.persistedPreferences.sources.noiseSuppression.sourceRules[0].sourceId, 'gdelt-global');
 
     const exported = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/settings/export`);
     assert.equal(exported.preferences.layout.visualsMode, 'lite');
@@ -123,6 +126,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(exported.preferences.layout.workspacePreset, 'source-ops');
     assert.equal(exported.preferences.layout.panels.reviewQueue.size, 'wide');
     assert.deepEqual(exported.preferences.sources.enabledCategories, ['air', 'news']);
+    assert.equal(exported.preferences.sources.noiseSuppression.duplicateBurst.minSimilarClusters, 3);
     assert.equal(exported.preferences.agentAnalysis.publishPolicy, 'exploratory');
     assert.equal(exported.preferences.agentAnalysis.deterministicFallbackMode, 'disabled');
 
