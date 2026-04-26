@@ -39,6 +39,9 @@ body[data-layout-mode="wallboard"] .lower .lp-ticker,body[data-layout-mode="wall
 body[data-layout-mode="wallboard"] .lower .lp-macro{grid-column:span 2}
 body[data-layout-mode="wallboard"] .lower-wide{grid-column:1 / -1}
 body[data-layout-mode="wallboard"] .feed{max-height:calc(100vh - 130px)}
+.preset-strip{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.preset-btn{border:1px solid rgba(68,204,255,0.2);background:rgba(68,204,255,0.06);color:var(--dim);font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:5px 9px;cursor:pointer}
+.preset-btn.active{border-color:var(--accent);background:rgba(100,240,200,0.12);color:var(--accent)}
 .panel-controls{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
 .panel-ctl{min-width:22px;height:22px;padding:0 6px;border:1px solid rgba(100,240,200,0.14);background:rgba(255,255,255,0.03);color:var(--dim);font-family:var(--mono);font-size:9px;cursor:pointer}
 .panel-ctl:hover{border-color:var(--accent2);color:var(--text)}
@@ -447,6 +450,7 @@ let currentRegion = persistedOperatorSettings.layout?.defaultRegion || 'world';
 let activeLayer = persistedOperatorSettings.layout?.activeLayer || null;
 let currentLayoutMode = 'desktop';
 let flatSvg, flatProjection, flatPath, flatG, flatZoom, flatW, flatH;
+let currentWorkspacePreset = persistedOperatorSettings.layout?.workspacePreset || 'operator';
 let panelPreferences = JSON.parse(JSON.stringify(persistedOperatorSettings.layout?.panels || {}));
 
 const sensorLayerMeta = {
@@ -495,6 +499,47 @@ function panelControls(id){ const pref=getPanelPref(id); return `<div class="pan
 function wrapPanel(id, className, bodyHtml){ const pref=getPanelPref(id); return `<div class="g-panel ${className} size-${pref.size}${pref.collapsed?' collapsed':''}${pref.pinned?' pinned':''}" data-panel-id="${id}" data-priority="${pref.priority}" data-pinned="${pref.pinned?1:0}">${bodyHtml.replace('<div class="sec-head">', `<div class="sec-head">${panelControls(id)}`)}<div class="panel-body">`; }
 function finishWrappedPanel(html){ return `${html}</div></div>`; }
 function sortPanels(items){ return items.sort((a,b)=> (b.pinned-a.pinned) || (a.priority-b.priority) || a.order-b.order).map(item=>item.html).join(''); }
+const workspacePresetDefinitions = {
+  operator: { displayMode:'desktop', mapMode:'auto', visualsMode:'full', defaultRegion:'world', activeLayer:null, panels:{ reviewQueue:{ pinned:true, priority:10, size:'wide', collapsed:false }, analysisReview:{ pinned:true, priority:20, size:'normal', collapsed:false }, tradeIdeas:{ pinned:false, priority:60, size:'compact', collapsed:false }, evidenceAudit:{ pinned:false, priority:40, size:'normal', collapsed:false } } },
+  diagnostics: { displayMode:'desktop', mapMode:'flat', visualsMode:'lite', defaultRegion:'world', activeLayer:'news', panels:{ reviewQueue:{ pinned:true, priority:5, size:'wide', collapsed:false }, analysisReview:{ pinned:true, priority:10, size:'wide', collapsed:false }, evidenceAudit:{ pinned:true, priority:15, size:'wide', collapsed:false }, tradeIdeas:{ pinned:false, priority:90, size:'compact', collapsed:true }, newsTicker:{ pinned:false, priority:50, size:'compact', collapsed:false } } },
+  'source-ops': { displayMode:'desktop', mapMode:'flat', visualsMode:'lite', defaultRegion:'world', activeLayer:'news', panels:{ reviewQueue:{ pinned:true, priority:5, size:'wide', collapsed:false }, evidenceAudit:{ pinned:true, priority:10, size:'wide', collapsed:false }, crossSignals:{ pinned:true, priority:20, size:'normal', collapsed:false }, tradeIdeas:{ pinned:false, priority:95, size:'compact', collapsed:true } } },
+  'executive-briefing': { displayMode:'wallboard', mapMode:'globe', visualsMode:'full', defaultRegion:'world', activeLayer:null, panels:{ agentAnalysis:{ pinned:true, priority:5, size:'wide', collapsed:false }, macroMarkets:{ pinned:true, priority:10, size:'wide', collapsed:false }, newsTicker:{ pinned:true, priority:15, size:'wide', collapsed:false }, reviewQueue:{ pinned:false, priority:80, size:'compact', collapsed:true }, evidenceAudit:{ pinned:false, priority:70, size:'compact', collapsed:true }, tradeIdeas:{ pinned:false, priority:60, size:'compact', collapsed:false } } },
+};
+function syncLayoutClasses(){
+  lowPerfMode ? document.body.classList.add('low-perf') : document.body.classList.remove('low-perf');
+  document.body.dataset.layoutMode = currentLayoutMode;
+}
+function resolveCurrentLayoutMode(){
+  const preferred = persistedOperatorSettings.layout?.displayMode || 'auto';
+  if (currentWorkspacePreset && workspacePresetDefinitions[currentWorkspacePreset]?.displayMode && preferred === 'auto') return workspacePresetDefinitions[currentWorkspacePreset].displayMode;
+  return resolveLayoutMode(preferred);
+}
+function applyWorkspacePreset(presetId){
+  const preset = workspacePresetDefinitions[presetId];
+  if (!preset) return;
+  currentWorkspacePreset = presetId;
+  panelPreferences = JSON.parse(JSON.stringify(preset.panels || {}));
+  lowPerfMode = preset.visualsMode === 'lite';
+  currentRegion = preset.defaultRegion || 'world';
+  activeLayer = preset.activeLayer || null;
+  if (preset.mapMode === 'flat') isFlat = true;
+  else if (preset.mapMode === 'globe') isFlat = false;
+  else isFlat = shouldStartFlat();
+  persistOperatorPreferences({ layout: { workspacePreset: presetId, visualsMode: preset.visualsMode, mapMode: preset.mapMode, displayMode: preset.displayMode, defaultRegion: currentRegion, activeLayer, panels: panelPreferences } });
+  currentLayoutMode = resolveLayoutMode(preset.displayMode);
+  syncLayoutClasses();
+  renderTopbar();
+  renderLeftRail();
+  renderLower();
+  renderRight();
+  refreshMapViewport(true);
+  if(isFlat){ if(flatG){ flatG.selectAll('*').remove(); drawFlatMap(); } }
+  else { plotMarkers(); }
+}
+function renderWorkspacePresetStrip(){
+  const items = [['operator','Operator'],['diagnostics','Diagnostics'],['source-ops','Source Ops'],['executive-briefing','Executive']];
+  return `<div class="preset-strip">${items.map(([id,label])=>`<button class="preset-btn ${currentWorkspacePreset===id?'active':''}" onclick="applyWorkspacePreset('${id}')">${label}</button>`).join('')}</div>`;
+}
 function toggleSensorLayer(layer){ activeLayer = activeLayer === layer ? null : layer; persistOperatorPreferences({ layout: { activeLayer } }); renderLeftRail(); if(isFlat){ if(flatG){ flatG.selectAll('*').remove(); drawFlatMap(); } } else { plotMarkers(); } }
 function layerItemClass(layer){ return `layer-item${activeLayer===layer?' active':''}${activeLayer&&activeLayer!==layer?' dimmed':''}`; }
 function withLayerOpacity(color, layer){
@@ -625,13 +670,13 @@ const regionPOV = {
 };
 
 function getPreferredMapMode(){
-  return persistedOperatorSettings.layout?.mapMode || 'auto';
+  return window.__CRUCIX_RUNTIME__?.operatorSettings?.layout?.mapMode || persistedOperatorSettings.layout?.mapMode || 'auto';
 }
 function getPreferredDisplayMode(){
-  return persistedOperatorSettings.layout?.displayMode || 'auto';
+  return window.__CRUCIX_RUNTIME__?.operatorSettings?.layout?.displayMode || persistedOperatorSettings.layout?.displayMode || 'auto';
 }
-function resolveLayoutMode(){
-  const preferred = getPreferredDisplayMode();
+function resolveLayoutMode(preferredOverride = null){
+  const preferred = preferredOverride || getPreferredDisplayMode();
   if(preferred && preferred !== 'auto') return preferred;
   if(window.innerWidth <= 1100) return 'narrow';
   if(window.innerWidth >= 1700) return 'wallboard';
@@ -639,7 +684,7 @@ function resolveLayoutMode(){
 }
 function applyLayoutMode(){
   currentLayoutMode = resolveLayoutMode();
-  document.body.dataset.layoutMode = currentLayoutMode;
+  syncLayoutClasses();
 }
 
 if(lowPerfMode) document.body.classList.add('low-perf');
@@ -782,13 +827,14 @@ function renderTopbar(){
       <span class="regime-chip"><span class="blink"></span>WARTIME STAGFLATION RISK</span>
       ${stale ? `<span class="stale-banner">STALE DATA <span class="age">${ageMin}m old</span></span>` : ''}
     </div>
-    ${mobile ? `<div class="top-center">${getRegionControlsMarkup()}</div>` : ''}
+    <div class="top-center">${renderWorkspacePresetStrip()}${getRegionControlsMarkup()}</div>
     <div class="top-right">
       <button class="meta-pill perf-pill" onclick="togglePerfMode()" title="Reduce visual effects and start mobile in flat mode">${t('dashboard.visuals','VISUALS')} <span class="v" id="perfStatus">${lowPerfMode?t('dashboard.visualsLite','LITE'):t('dashboard.visualsFull','FULL')}</span></button>
       <span class="meta-pill">${t('dashboard.sweep','SWEEP')} <span class="v">${(D.meta.totalDurationMs/1000).toFixed(1)}s</span></span>
       <span class="meta-pill">${d} <span class="v">${timeStr}</span></span>
       <span class="meta-pill">${t('dashboard.sources','SOURCES')} <span class="v">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</span></span>
       <span class="meta-pill">LAYOUT <span class="v">${layoutBadge}</span></span>
+      <span class="meta-pill">PRESET <span class="v">${String(currentWorkspacePreset || 'operator').toUpperCase()}</span></span>
       ${D.delta?.summary ? `<span class="meta-pill">${t('dashboard.delta','DELTA')} <span class="v">${D.delta.summary.direction==='risk-off'?'&#x25B2; '+t('dashboard.riskOff','RISK-OFF'):D.delta.summary.direction==='risk-on'?'&#x25BC; '+t('dashboard.riskOn','RISK-ON'):'&#x25C6; '+t('dashboard.mixed','MIXED')}</span></span>` : ''}
       <button class="guide-btn" onclick="openSettings()">${t('dashboard.settingsBtn','Settings')}</button>
       <button class="guide-btn" onclick="openGlossary()">${t('dashboard.guideBtn','What Signals Mean')}</button>

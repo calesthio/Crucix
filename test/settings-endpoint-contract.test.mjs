@@ -79,8 +79,9 @@ test('booted operator and admin settings surfaces stay role-separated with local
   }, async ({ settingsUrl, adminSettingsUrl, pageUrl, adminPageUrl }) => {
     const settings = await waitFor(settingsUrl, payload => payload?.version === 'operator-settings-v1', 30000);
     assert.deepEqual(settings.sections, ['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']);
-    assert.equal(settings.layout.current, 'default-terminal');
+    assert.equal(settings.layout.current, 'operator');
     assert.equal(Array.isArray(settings.layout.controls.availableDisplayModes), true);
+    assert.equal(Array.isArray(settings.layout.controls.availableWorkspacePresets), true);
     assert.equal(settings.sources.total >= 1, true);
     assert.equal(Array.isArray(settings.sources.categories), true);
     assert.equal(settings.llm.provider, 'ollama');

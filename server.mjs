@@ -97,6 +97,7 @@ function operatorSettingsDefaults() {
         displayMode: 'auto',
         defaultRegion: 'world',
         activeLayer: null,
+        workspacePreset: 'operator',
         panels: {},
       },
       sources: {
@@ -127,6 +128,7 @@ function normalizeOperatorSettings(input = {}) {
   const allowedLlmModes = ['auto', 'off', 'force'];
   const allowedAnalysisDetails = ['standard', 'compact', 'expanded'];
   const allowedPanelSizes = ['compact', 'normal', 'wide'];
+  const allowedWorkspacePresets = ['operator', 'diagnostics', 'source-ops', 'executive-briefing'];
   return {
     version: defaults.version,
     updatedAt: input?.updatedAt || null,
@@ -137,6 +139,7 @@ function normalizeOperatorSettings(input = {}) {
         displayMode: allowedDisplayModes.includes(layout.displayMode) ? layout.displayMode : defaults.preferences.layout.displayMode,
         defaultRegion: allowedRegions.includes(layout.defaultRegion) ? layout.defaultRegion : defaults.preferences.layout.defaultRegion,
         activeLayer: allowedLayers.includes(layout.activeLayer) ? layout.activeLayer : null,
+        workspacePreset: allowedWorkspacePresets.includes(layout.workspacePreset) ? layout.workspacePreset : defaults.preferences.layout.workspacePreset,
         panels: Object.fromEntries(Object.entries(layout.panels && typeof layout.panels === 'object' ? layout.panels : {}).map(([key, value]) => [key, {
           collapsed: Boolean(value?.collapsed),
           pinned: Boolean(value?.pinned),
@@ -2560,13 +2563,12 @@ function buildOperatorSettingsContract(snapshot = null) {
     generatedAt: new Date().toISOString(),
     sections: ['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence'],
     layout: {
-      current: 'default-terminal',
+      current: operatorSettings.preferences.layout.workspacePreset || 'operator',
       available: [
-        { id: 'default-terminal', label: 'Default Terminal', status: 'active' },
-        { id: 'operator', label: 'Operator', status: 'planned' },
-        { id: 'diagnostics', label: 'Diagnostics', status: 'planned' },
-        { id: 'source-ops', label: 'Source Ops', status: 'planned' },
-        { id: 'executive-briefing', label: 'Executive Briefing', status: 'planned' },
+        { id: 'operator', label: 'Operator', status: 'active' },
+        { id: 'diagnostics', label: 'Diagnostics', status: 'active' },
+        { id: 'source-ops', label: 'Source Ops', status: 'active' },
+        { id: 'executive-briefing', label: 'Executive Briefing', status: 'active' },
       ],
       controls: {
         visualsMode: operatorSettings.preferences.layout.visualsMode,
@@ -2576,12 +2578,14 @@ function buildOperatorSettingsContract(snapshot = null) {
         availableDisplayModes: ['auto', 'narrow', 'desktop', 'wallboard'],
         defaultRegion: operatorSettings.preferences.layout.defaultRegion,
         activeLayer: operatorSettings.preferences.layout.activeLayer,
+        workspacePreset: operatorSettings.preferences.layout.workspacePreset || 'operator',
+        availableWorkspacePresets: ['operator', 'diagnostics', 'source-ops', 'executive-briefing'],
         panelPreferences: operatorSettings.preferences.layout.panels || {},
         persistence: 'server-file',
       },
       mutability: {
-        current: 'ui-session',
-        presets: 'planned',
+        current: 'server-file',
+        presets: 'server-file',
       },
     },
     sources: {
