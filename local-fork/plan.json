@@ -844,6 +844,33 @@
             "status": "pending"
           }
         ]
+      },
+      {
+        "id": "epic-35",
+        "title": "Critical event alerting, corroboration, and proactive operator notification",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-35.1",
+            "title": "Define a critical-event taxonomy and policy contract for fast alert classes such as government-site violence, aviation incidents, radiation anomalies, and major chokepoint disruptions, including per-class severity and corroboration thresholds",
+            "status": "pending"
+          },
+          {
+            "id": "effort-35.2",
+            "title": "Build an urgent candidate queue that ingests tripwire signals from low-trust and medium-trust feeds, holds them in monitoring state, and retries corroboration on a short cadence before promotion or discard",
+            "status": "pending"
+          },
+          {
+            "id": "effort-35.3",
+            "title": "Add alert-state promotion rules and confidence labels such as preliminary, corroborated, and official-confirmation, with explicit evidence summaries explaining why a candidate crossed the paging threshold",
+            "status": "pending"
+          },
+          {
+            "id": "effort-35.4",
+            "title": "Expose proactive alert routing for narrowly scoped critical events so Crucix can send immediate vetted operator notifications with freshness, confidence, corroboration basis, and unresolved caveats",
+            "status": "pending"
+          }
+        ]
       }
     ]
   },
