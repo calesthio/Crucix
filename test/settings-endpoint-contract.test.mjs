@@ -101,6 +101,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(typeof health.noiseSuppressionTrend.snapshotCount, 'number');
     assert.equal(health.operationalAlerts.version, 'operational-alert-routing-v1');
     assert.equal(typeof health.operationalAlerts.policies.staleSweep.active, 'boolean');
+    assert.equal(typeof health.operationalAlerts.policies.noiseSuppressionPressure.active, 'boolean');
+    assert.equal(typeof health.operationalAlerts.policies.noiseSuppressionPressure.active, 'boolean');
 
     const settings = await waitFor(settingsUrl, payload => payload?.version === 'operator-settings-v1', 30000);
     assert.deepEqual(settings.sections, ['layout', 'sources', 'sourceConsole', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']);
@@ -127,6 +129,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(settings.persistence.capabilities.export, false);
     assert.equal(settings.alerts.operational.version, 'operational-alert-routing-v1');
     assert.equal(Array.isArray(settings.alerts.operational.defaultRoute), true);
+    assert.equal(typeof settings.alerts.operational.policies.noiseSuppressionPressure.active, 'boolean');
+    assert.equal(typeof settings.alerts.operational.policies.noiseSuppressionPressure.active, 'boolean');
     assert.equal(settings.persistence.capabilities.writeApi, false);
     assert.equal(settings.sourceConsole.version, 'source-console-v1');
     assert.equal(settings.sourceConsole.surface, '/source-ops');
@@ -211,6 +215,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.match(diagnosticsPage, /ops-shell\.js/i);
     assert.match(diagnosticsPage, /activeSurface: 'diagnostics'/i);
     assert.match(diagnosticsPage, /Noise suppression/i);
+    assert.match(diagnosticsPage, /Operator cue/i);
 
     const llmOpsPage = await fetch(llmOpsPageUrl).then(r => r.text());
     assert.match(llmOpsPage, /Provider health and fallback operations/i);

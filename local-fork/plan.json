@@ -736,6 +736,11 @@
           {
             "id": "effort-29.8",
             "title": "Add a sustained-pressure alert or queue threshold for noise-suppression telemetry so repeated retained-entry growth or consecutive prune-active sweeps can escalate from diagnostics-only visibility into an operator action cue",
+            "status": "completed"
+          },
+          {
+            "id": "effort-29.9",
+            "title": "Add operator acknowledge or snooze controls plus recent audit visibility for sustained noise-suppression pressure alerts so teams can distinguish accepted load from unattended telemetry churn",
             "status": "pending"
           }
         ]
@@ -1017,8 +1022,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 125,
+    "sequence": 126,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-26-cycle-125"
+    "lastCompletedCycleId": "2026-04-26-cycle-126"
   }
 }

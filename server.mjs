@@ -361,6 +361,7 @@ function operatorSettingsDefaults() {
           sourceFailures: { enabled: true, minFailedSources: 3, minDegradedSources: 2, cooldownMinutes: 60, escalationAfter: 3 },
           reviewPressure: { enabled: true, minChronicRegions: 2, minPressuredRegions: 2, minLowConfidenceCount: 4, cooldownMinutes: 60, escalationAfter: 2 },
           inferenceDegraded: { enabled: true, heuristicFallbackCount: 3, cooldownMinutes: 45, escalationAfter: 2 },
+          noiseSuppressionPressure: { enabled: true, minRetainedEntries: 25, minRetainedDelta: 3, minConsecutiveGrowthSweeps: 2, minConsecutivePruneSweeps: 2, cooldownMinutes: 90, escalationAfter: 2 },
         },
       },
     },
@@ -481,6 +482,15 @@ function normalizeOperatorSettings(input = {}) {
             heuristicFallbackCount: Math.max(1, Math.min(20, Number.isFinite(Number(operationalAlerts.inferenceDegraded?.heuristicFallbackCount)) ? Number(operationalAlerts.inferenceDegraded.heuristicFallbackCount) : defaults.preferences.alerts.operational.inferenceDegraded.heuristicFallbackCount)),
             cooldownMinutes: Math.max(5, Math.min(360, Number.isFinite(Number(operationalAlerts.inferenceDegraded?.cooldownMinutes)) ? Number(operationalAlerts.inferenceDegraded.cooldownMinutes) : defaults.preferences.alerts.operational.inferenceDegraded.cooldownMinutes)),
             escalationAfter: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.inferenceDegraded?.escalationAfter)) ? Number(operationalAlerts.inferenceDegraded.escalationAfter) : defaults.preferences.alerts.operational.inferenceDegraded.escalationAfter)),
+          },
+          noiseSuppressionPressure: {
+            enabled: operationalAlerts.noiseSuppressionPressure?.enabled !== undefined ? Boolean(operationalAlerts.noiseSuppressionPressure.enabled) : defaults.preferences.alerts.operational.noiseSuppressionPressure.enabled,
+            minRetainedEntries: Math.max(5, Math.min(500, Number.isFinite(Number(operationalAlerts.noiseSuppressionPressure?.minRetainedEntries)) ? Number(operationalAlerts.noiseSuppressionPressure.minRetainedEntries) : defaults.preferences.alerts.operational.noiseSuppressionPressure.minRetainedEntries)),
+            minRetainedDelta: Math.max(1, Math.min(100, Number.isFinite(Number(operationalAlerts.noiseSuppressionPressure?.minRetainedDelta)) ? Number(operationalAlerts.noiseSuppressionPressure.minRetainedDelta) : defaults.preferences.alerts.operational.noiseSuppressionPressure.minRetainedDelta)),
+            minConsecutiveGrowthSweeps: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.noiseSuppressionPressure?.minConsecutiveGrowthSweeps)) ? Number(operationalAlerts.noiseSuppressionPressure.minConsecutiveGrowthSweeps) : defaults.preferences.alerts.operational.noiseSuppressionPressure.minConsecutiveGrowthSweeps)),
+            minConsecutivePruneSweeps: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.noiseSuppressionPressure?.minConsecutivePruneSweeps)) ? Number(operationalAlerts.noiseSuppressionPressure.minConsecutivePruneSweeps) : defaults.preferences.alerts.operational.noiseSuppressionPressure.minConsecutivePruneSweeps)),
+            cooldownMinutes: Math.max(5, Math.min(360, Number.isFinite(Number(operationalAlerts.noiseSuppressionPressure?.cooldownMinutes)) ? Number(operationalAlerts.noiseSuppressionPressure.cooldownMinutes) : defaults.preferences.alerts.operational.noiseSuppressionPressure.cooldownMinutes)),
+            escalationAfter: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.noiseSuppressionPressure?.escalationAfter)) ? Number(operationalAlerts.noiseSuppressionPressure.escalationAfter) : defaults.preferences.alerts.operational.noiseSuppressionPressure.escalationAfter)),
           },
         },
       },
@@ -1421,6 +1431,7 @@ function buildReviewWorkflowContract(snapshot = currentData || null, review = nu
     noiseSuppression: {
       ...buildNoiseSuppressionContract(activeSnapshot),
       trend: memory.getNoiseSuppressionTelemetryHistory(),
+      pressureAlert: summarizeOperationalAlertState(activeSnapshot).policies?.noiseSuppressionPressure || null,
     },
     clusterRepair: buildClusterRepairWorkflow(activeSnapshot),
     auditTrail: reviewWorkflowAuditSnapshot(12),
@@ -3821,6 +3832,61 @@ function buildRuntimeConfigContract() {
 
 const OPERATIONAL_ALERTS_STATE_KEY = 'operational-alerts:state';
 
+function summarizeNoiseSuppressionPressure(snapshot = null, prefs = {}) {
+  const activeSnapshot = snapshot || currentData || {};
+  const history = memory.getNoiseSuppressionTelemetryHistory(6);
+  const snapshots = Array.isArray(history?.snapshots) ? history.snapshots : [];
+  const latest = snapshots[0] || null;
+  const deltaViews = Array.isArray(history?.deltaViews) ? history.deltaViews : [];
+  let consecutiveGrowthSweeps = 0;
+  for (const delta of deltaViews) {
+    if ((delta?.summaryDelta?.retainedEntries || 0) >= (prefs.minRetainedDelta || 1)) consecutiveGrowthSweeps += 1;
+    else break;
+  }
+  let consecutivePruneSweeps = 0;
+  for (const item of snapshots) {
+    if (item?.summary?.pruningActive) consecutivePruneSweeps += 1;
+    else break;
+  }
+  const retainedEntries = latest?.summary?.retainedEntries || activeSnapshot?.noiseSuppressionTelemetrySnapshot?.summary?.retainedEntries || 0;
+  const latestRetainedDelta = deltaViews[0]?.summaryDelta?.retainedEntries || 0;
+  const pressureReasons = [];
+  if (retainedEntries >= (prefs.minRetainedEntries || 1) && consecutiveGrowthSweeps >= (prefs.minConsecutiveGrowthSweeps || 1)) {
+    pressureReasons.push(`retained history is growing (${retainedEntries} entries, Δ${latestRetainedDelta} latest)`);
+  }
+  if (consecutivePruneSweeps >= (prefs.minConsecutivePruneSweeps || 1)) {
+    pressureReasons.push(`pruning stayed active for ${consecutivePruneSweeps} consecutive sweep${consecutivePruneSweeps === 1 ? '' : 's'}`);
+  }
+  const active = pressureReasons.length > 0;
+  const severeGrowth = retainedEntries >= Math.max((prefs.minRetainedEntries || 1) * 2, (prefs.minRetainedEntries || 1) + (prefs.minRetainedDelta || 1));
+  const severePrune = consecutivePruneSweeps >= Math.max((prefs.minConsecutivePruneSweeps || 1) + 1, 3);
+  return {
+    active,
+    severity: active ? ((severeGrowth || severePrune) ? 'critical' : 'warning') : 'ok',
+    summary: active
+      ? `Noise-suppression pressure needs operator attention because ${pressureReasons.join(' and ')}.`
+      : 'Noise-suppression history pressure is below the operator action threshold.',
+    metrics: {
+      retainedEntries,
+      latestRetainedDelta,
+      snapshotCount: snapshots.length,
+      consecutiveGrowthSweeps,
+      consecutivePruneSweeps,
+      latestPruningActive: Boolean(latest?.summary?.pruningActive),
+      agedOutSuggestionCount: latest?.summary?.agedOutSuggestionCount || 0,
+      thresholds: {
+        minRetainedEntries: prefs.minRetainedEntries || 1,
+        minRetainedDelta: prefs.minRetainedDelta || 1,
+        minConsecutiveGrowthSweeps: prefs.minConsecutiveGrowthSweeps || 1,
+        minConsecutivePruneSweeps: prefs.minConsecutivePruneSweeps || 1,
+      },
+      reasons: pressureReasons,
+    },
+    latestSnapshot: latest,
+    latestDelta: deltaViews[0] || null,
+  };
+}
+
 function summarizeOperationalAlertState(snapshot = null) {
   const operatorSettings = loadOperatorSettings();
   const prefs = operatorSettings.preferences.alerts?.operational || operatorSettingsDefaults().preferences.alerts.operational;
@@ -3833,6 +3899,7 @@ function summarizeOperationalAlertState(snapshot = null) {
   const llmFailureHistory = memory.getLlmFailureHistory(1);
   const currentLlmFailure = llmFailureHistory.snapshots?.[0]?.summary || {};
   const healthSummary = activeSnapshot?.healthSummary || {};
+  const noiseSuppressionPressure = summarizeNoiseSuppressionPressure(activeSnapshot, prefs.noiseSuppressionPressure || {});
   const activeRoutes = [
     config.telegram?.botToken && config.telegram?.chatId ? 'telegram' : null,
     config.discord?.botToken || config.discord?.webhookUrl ? 'discord' : null,
@@ -3865,6 +3932,13 @@ function summarizeOperationalAlertState(snapshot = null) {
       severity: llmReadiness.status === 'failed' ? 'critical' : (currentLlmFailure.heuristicFallbackCount || 0) > 0 || activeSnapshot?.ideasSource === 'llm-failed' ? 'warning' : 'ok',
       metrics: { llmReadinessStatus: llmReadiness.status || 'unknown', heuristicFallbackCount: currentLlmFailure.heuristicFallbackCount || 0, weakClusterCount: currentLlmFailure.weakClusterCount || 0, ideasSource: activeSnapshot?.ideasSource || null, analysisRefinementState: activeSnapshot?.agentAnalysisMeta?.refinementState || null },
       config: prefs.inferenceDegraded,
+    },
+    noiseSuppressionPressure: {
+      active: Boolean(prefs.noiseSuppressionPressure?.enabled) && noiseSuppressionPressure.active,
+      summary: noiseSuppressionPressure.summary,
+      severity: noiseSuppressionPressure.severity,
+      metrics: noiseSuppressionPressure.metrics,
+      config: prefs.noiseSuppressionPressure,
     },
   };
   const state = memory.getSignalState(OPERATIONAL_ALERTS_STATE_KEY) || { policies: {} };

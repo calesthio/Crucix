@@ -33,11 +33,11 @@ const context = {
   sweepInProgress: false,
   sweepStartedAt: null,
   process: { env: {} },
-  operatorSettingsDefaults: () => ({ version: 'operator-settings-store-v1', updatedAt: null, preferences: { alerts: { operational: { enabled: true, defaultRoute: ['telegram'], escalationRoute: ['telegram', 'discord'], staleSweep: { enabled: true, cooldownMinutes: 30, escalationAfter: 2 }, sourceFailures: { enabled: true, minFailedSources: 3, minDegradedSources: 2, cooldownMinutes: 60, escalationAfter: 3 }, reviewPressure: { enabled: true, minChronicRegions: 2, minPressuredRegions: 2, minLowConfidenceCount: 4, cooldownMinutes: 60, escalationAfter: 2 }, inferenceDegraded: { enabled: true, heuristicFallbackCount: 3, cooldownMinutes: 45, escalationAfter: 2 } } } } }),
+  operatorSettingsDefaults: () => ({ version: 'operator-settings-store-v1', updatedAt: null, preferences: { alerts: { operational: { enabled: true, defaultRoute: ['telegram'], escalationRoute: ['telegram', 'discord'], staleSweep: { enabled: true, cooldownMinutes: 30, escalationAfter: 2 }, sourceFailures: { enabled: true, minFailedSources: 3, minDegradedSources: 2, cooldownMinutes: 60, escalationAfter: 3 }, reviewPressure: { enabled: true, minChronicRegions: 2, minPressuredRegions: 2, minLowConfidenceCount: 4, cooldownMinutes: 60, escalationAfter: 2 }, inferenceDegraded: { enabled: true, heuristicFallbackCount: 3, cooldownMinutes: 45, escalationAfter: 2 }, noiseSuppressionPressure: { enabled: true, minRetainedEntries: 25, minRetainedDelta: 3, minConsecutiveGrowthSweeps: 2, minConsecutivePruneSweeps: 2, cooldownMinutes: 90, escalationAfter: 2 } } } } }),
   memory: {
     getSignalState: () => ({ policies: {} }),
     getLlmFailureHistory: () => ({ snapshots: [{ summary: { heuristicFallbackCount: 2, weakClusterCount: 3 } }] }),
-    getNoiseSuppressionTelemetryHistory: () => ({ snapshots: [], summary: { snapshotCount: 0 } }),
+    getNoiseSuppressionTelemetryHistory: () => ({ snapshots: [], deltaViews: [], summary: { snapshotCount: 0 } }),
   },
   summarizeClusterReviewStats: () => ({ chronicFailureCount: 1, recentFailureCount: 1 }),
   summarizeClusterPressureStats: () => ({ pressuredRegionCount: 1 }),
@@ -56,7 +56,7 @@ const context = {
         deterministicFallbackMode: 'llm-unavailable-only',
         horizonBehavior: 'extended',
       },
-      alerts: { operational: { enabled: true, defaultRoute: ['telegram'], escalationRoute: ['telegram', 'discord'], staleSweep: { enabled: true, cooldownMinutes: 30, escalationAfter: 2 }, sourceFailures: { enabled: true, minFailedSources: 3, minDegradedSources: 2, cooldownMinutes: 60, escalationAfter: 3 }, reviewPressure: { enabled: true, minChronicRegions: 2, minPressuredRegions: 2, minLowConfidenceCount: 4, cooldownMinutes: 60, escalationAfter: 2 }, inferenceDegraded: { enabled: true, heuristicFallbackCount: 3, cooldownMinutes: 45, escalationAfter: 2 } } },
+      alerts: { operational: { enabled: true, defaultRoute: ['telegram'], escalationRoute: ['telegram', 'discord'], staleSweep: { enabled: true, cooldownMinutes: 30, escalationAfter: 2 }, sourceFailures: { enabled: true, minFailedSources: 3, minDegradedSources: 2, cooldownMinutes: 60, escalationAfter: 3 }, reviewPressure: { enabled: true, minChronicRegions: 2, minPressuredRegions: 2, minLowConfidenceCount: 4, cooldownMinutes: 60, escalationAfter: 2 }, inferenceDegraded: { enabled: true, heuristicFallbackCount: 3, cooldownMinutes: 45, escalationAfter: 2 }, noiseSuppressionPressure: { enabled: true, minRetainedEntries: 25, minRetainedDelta: 3, minConsecutiveGrowthSweeps: 2, minConsecutivePruneSweeps: 2, cooldownMinutes: 90, escalationAfter: 2 } } },
     },
   }),
   buildNewsClusterSummary: snapshot => ({ sourceReasoning: snapshot?.newsSourceReasoning || null }),
@@ -94,17 +94,18 @@ const context = {
   }),
   buildOperatorLlmStateContract: () => ({ status: 'applied', label: 'LLM APPLIED', summary: 'LLM participated', surfaces: { analysis: { label: 'LLM APPLIED' }, ideas: { label: 'STATIC BY DESIGN' } } }),
   buildNoiseSuppressionContract: () => ({ version: 'noise-suppression-v1', summary: { activeSourceRuleCount: 1 }, sourceRules: { activeRules: [{ sourceId: 'gdelt-global' }], suggestedRules: [] } }),
-  getSweepWatchdogSnapshot: () => ({ timeoutMinutes: 45, timeoutMs: 2700000, pollMs: 30000 }),
+  getSweepWatchdogSnapshot: () => ({ timeoutMinutes: 45, timeoutMs: 2700000, pollMs: 30000, overdue: false, overdueMs: 0, phase: 'idle', recoveryClassification: null }),
+  getLlmProviderReadinessSnapshot: () => ({ status: 'unknown', lastSuccess: null, lastFailure: null, lastProbeType: null }),
   module: { exports: {} },
   exports: {},
 };
 vm.createContext(context);
 vm.runInContext(`
   ${extractChunk('function buildRuntimeConfigContract() {', '// API: current data')}
-  module.exports = { buildRuntimeConfigContract, buildOperatorSettingsContract, buildAdminSettingsContract, buildLlmOperationsContract };
+  module.exports = { buildRuntimeConfigContract, summarizeNoiseSuppressionPressure, summarizeOperationalAlertState, buildOperatorSettingsContract, buildAdminSettingsContract, buildLlmOperationsContract };
 `, context);
 
-const { buildRuntimeConfigContract, buildOperatorSettingsContract, buildAdminSettingsContract, buildLlmOperationsContract } = context.module.exports;
+const { buildRuntimeConfigContract, summarizeNoiseSuppressionPressure, summarizeOperationalAlertState, buildOperatorSettingsContract, buildAdminSettingsContract, buildLlmOperationsContract } = context.module.exports;
 
 test('runtime config contract exposes defaults, effective values, validation, and drift summary', () => {
   context.process.env = {
@@ -179,6 +180,8 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.alerts.discordEnabled, true);
   assert.equal(contract.alerts.operational.version, 'operational-alert-routing-v1');
   assert.equal(contract.alerts.persistedPreferences.operational.inferenceDegraded.heuristicFallbackCount, 3);
+  assert.equal(contract.alerts.persistedPreferences.operational.noiseSuppressionPressure.minConsecutiveGrowthSweeps, 2);
+  assert.equal(contract.alerts.operational.policies.noiseSuppressionPressure.active, false);
   assert.equal(contract.config.contract.version, 'runtime-config-v1');
   assert.equal(typeof contract.config.driftSummary.driftedEntries, 'number');
   assert.equal(Array.isArray(contract.config.contract.entries), true);
@@ -216,6 +219,34 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.match(contract.notes[0], /centralizes current operator-visible settings/i);
 });
 
+test('noise suppression pressure summaries escalate retained-growth and prune streaks into operator cues', () => {
+  context.memory.getNoiseSuppressionTelemetryHistory = () => ({
+    snapshots: [
+      { timestamp: '2026-04-26T12:00:00.000Z', summary: { retainedEntries: 31, pruningActive: true, agedOutSuggestionCount: 5 } },
+      { timestamp: '2026-04-26T11:30:00.000Z', summary: { retainedEntries: 27, pruningActive: true, agedOutSuggestionCount: 2 } },
+      { timestamp: '2026-04-26T11:00:00.000Z', summary: { retainedEntries: 22, pruningActive: false, agedOutSuggestionCount: 1 } },
+    ],
+    deltaViews: [
+      { summaryDelta: { retainedEntries: 4, agedOutSuggestionCount: 3 } },
+      { summaryDelta: { retainedEntries: 5, agedOutSuggestionCount: 1 } },
+    ],
+    summary: { snapshotCount: 3 },
+  });
+
+  const pressure = summarizeNoiseSuppressionPressure({}, { minRetainedEntries: 25, minRetainedDelta: 3, minConsecutiveGrowthSweeps: 2, minConsecutivePruneSweeps: 2 });
+  assert.equal(pressure.active, true);
+  assert.equal(pressure.severity, 'warning');
+  assert.equal(pressure.metrics.consecutiveGrowthSweeps, 2);
+  assert.equal(pressure.metrics.consecutivePruneSweeps, 2);
+
+  const alertState = summarizeOperationalAlertState({ noiseSuppressionTelemetrySnapshot: { summary: { retainedEntries: 31 } } });
+  assert.equal(alertState.policies.noiseSuppressionPressure.active, true);
+  assert.equal(alertState.policies.noiseSuppressionPressure.metrics.latestRetainedDelta, 4);
+  assert.match(alertState.policies.noiseSuppressionPressure.summary, /operator attention/i);
+
+  context.memory.getNoiseSuppressionTelemetryHistory = () => ({ snapshots: [], deltaViews: [], summary: { snapshotCount: 0 } });
+});
+
 test('admin settings contract exposes local-write controls separately from operator view', () => {
   const contract = buildAdminSettingsContract();
   assert.equal(contract.version, 'admin-settings-v1');
@@ -224,6 +255,7 @@ test('admin settings contract exposes local-write controls separately from opera
   assert.equal(contract.persistence.capabilities.writeApi, true);
   assert.equal(contract.persistence.path, '/tmp/test-operator-settings.json');
   assert.equal(contract.persistence.persistedPreferences.sources.noiseSuppression.duplicateBurst.minSimilarClusters, 3);
+  assert.equal(contract.persistence.persistedPreferences.alerts.operational.noiseSuppressionPressure.minRetainedEntries, 25);
   assert.equal(contract.access.role, 'admin');
   assert.equal(contract.access.mode, 'local-write');
   assert.equal(contract.access.diagnosticsSurface, '/diagnostics');
