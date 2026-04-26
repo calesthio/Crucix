@@ -871,6 +871,43 @@
             "status": "pending"
           }
         ]
+      },
+      {
+        "id": "epic-36",
+        "title": "Settings safety, preset lifecycle, map-event surfacing, and dashboard performance hardening",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-36.1",
+            "title": "Add revision or ETag-style concurrency tokens to the operator settings store and write API so stale listeners, conflicting saves, and restore drift are detected instead of silently last-write-wins",
+            "status": "pending"
+          },
+          {
+            "id": "effort-36.2",
+            "title": "Add an explicit local admin nonce or CSRF-style confirmation token for `/api/settings/operator` and `/api/settings/import` so browser-originated local writes are not relying on network locality alone",
+            "status": "pending"
+          },
+          {
+            "id": "effort-36.3",
+            "title": "Add panel-level render budget telemetry and optional virtualization for wallboard mode so long OSINT and news streams plus large review queues do not silently degrade browser responsiveness as the dashboard grows",
+            "status": "pending"
+          },
+          {
+            "id": "effort-36.4",
+            "title": "Add saved panel-layout reset plus named operator presets so per-panel collapse, pin, priority, and size controls can recover from bad workspace states and switch intentionally between analyst, narrow-screen, and wallboard profiles",
+            "status": "pending"
+          },
+          {
+            "id": "effort-36.5",
+            "title": "Add operator-editable preset authoring plus clone, reset, and import-export controls so workspace presets stop being code-defined bundles and can be tuned safely from the UI",
+            "status": "pending"
+          },
+          {
+            "id": "effort-36.6",
+            "title": "Investigate and harden missing map surfacing for high-salience breaking open-source events, starting with the White House Correspondents' Dinner Secret Service shooting signature, including source carriage, ingestion, clustering, geocoding, and map-placement behavior",
+            "status": "pending"
+          }
+        ]
       }
     ]
   },
