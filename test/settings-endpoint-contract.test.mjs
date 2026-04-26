@@ -77,6 +77,11 @@ test('booted operator and admin settings surfaces stay role-separated with local
       DEBUG_ENDPOINT_EXPOSURE: 'local-only',
     },
   }, async ({ settingsUrl, adminSettingsUrl, pageUrl, adminPageUrl }) => {
+    const health = await waitFor(`http://127.0.0.1:${BASE_PORT}/api/health`, payload => payload?.runtimeIdentity?.pid && payload?.sweepWatchdog?.phase, 30000);
+    assert.equal(typeof health.runtimeIdentity.pid, 'number');
+    assert.equal(typeof health.sweepWatchdog.phase, 'string');
+    assert.equal('recoveryClassification' in health.sweepWatchdog, true);
+
     const settings = await waitFor(settingsUrl, payload => payload?.version === 'operator-settings-v1', 30000);
     assert.deepEqual(settings.sections, ['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']);
     assert.equal(settings.layout.current, 'operator');

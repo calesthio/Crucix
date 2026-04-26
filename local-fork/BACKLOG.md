@@ -16,3 +16,4 @@ Recent promotions:
 New items can be added here when they do not yet belong in the active roadmap.
 
 - Add a shared navigation and page-shell component for dashboard-adjacent operator, diagnostics, and admin surfaces so labels, links, and boundary explanations do not drift as more control-plane pages are added. Added to backlog on 2026-04-25 after cycle 094.
+- Extend runtime phase telemetry and recovery classification to deferred ideas enrichment so watchdog and `/api/health` can distinguish post-publish idea-generation hangs from analysis refinement hangs. Added to backlog on 2026-04-25 after cycle 095.

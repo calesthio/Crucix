@@ -701,7 +701,7 @@
           {
             "id": "effort-29.2",
             "title": "Detect, classify, and recover stuck sweep or synthesis jobs so `/api/health` does not remain indefinitely in `sweepInProgress` when LLM paths hang or fail to complete cleanly",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-29.3",

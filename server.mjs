@@ -39,6 +39,18 @@ let currentData = null;    // Current synthesized dashboard data
 let lastSweepTime = null;  // Timestamp of last sweep
 let sweepStartedAt = null; // Timestamp when current/last sweep started
 let sweepInProgress = false;
+let runtimeJobState = {
+  phase: 'idle',
+  phaseStartedAt: null,
+  lastCompletedPhase: null,
+  lastCompletedAt: null,
+  lastFailurePhase: null,
+  lastFailureAt: null,
+  lastFailureReason: null,
+  lastRecoveryPhase: null,
+  lastRecoveryAt: null,
+  lastRecoveryReason: null,
+};
 const startTime = Date.now();
 const sseClients = new Set();
 const selectionMemory = new Map();
@@ -2256,10 +2268,40 @@ app.get('/admin/settings', requireDebugAccess, async (req, res) => {
   res.type('html').send(injectDashboardRuntimeHtml(html));
 });
 
+function markRuntimePhase(phase, nowIso = new Date().toISOString()) {
+  runtimeJobState = {
+    ...runtimeJobState,
+    phase,
+    phaseStartedAt: nowIso,
+  };
+}
+
+function completeRuntimePhase(phase = runtimeJobState.phase, nowIso = new Date().toISOString()) {
+  runtimeJobState = {
+    ...runtimeJobState,
+    phase: 'idle',
+    phaseStartedAt: null,
+    lastCompletedPhase: phase,
+    lastCompletedAt: nowIso,
+  };
+}
+
+function failRuntimePhase(reason, phase = runtimeJobState.phase, nowIso = new Date().toISOString()) {
+  runtimeJobState = {
+    ...runtimeJobState,
+    phase: 'idle',
+    phaseStartedAt: null,
+    lastFailurePhase: phase,
+    lastFailureAt: nowIso,
+    lastFailureReason: reason || null,
+  };
+}
+
 function getSweepWatchdogSnapshot(nowMs = Date.now()) {
   const startedAtMs = sweepStartedAt ? new Date(sweepStartedAt).getTime() : null;
+  const phaseStartedAtMs = runtimeJobState.phaseStartedAt ? new Date(runtimeJobState.phaseStartedAt).getTime() : startedAtMs;
   const active = Boolean(sweepInProgress && startedAtMs);
-  const overdueMs = active ? Math.max(0, nowMs - startedAtMs - SWEEP_WATCHDOG_TIMEOUT_MS) : 0;
+  const overdueMs = active ? Math.max(0, nowMs - phaseStartedAtMs - SWEEP_WATCHDOG_TIMEOUT_MS) : 0;
   const overdue = Boolean(active && overdueMs > 0);
   return {
     timeoutMs: SWEEP_WATCHDOG_TIMEOUT_MS,
@@ -2268,6 +2310,17 @@ function getSweepWatchdogSnapshot(nowMs = Date.now()) {
     overdue,
     overdueMs,
     timeoutMinutes: Math.round(SWEEP_WATCHDOG_TIMEOUT_MS / 60000),
+    phase: runtimeJobState.phase,
+    phaseStartedAt: runtimeJobState.phaseStartedAt,
+    lastCompletedPhase: runtimeJobState.lastCompletedPhase,
+    lastCompletedAt: runtimeJobState.lastCompletedAt,
+    lastFailurePhase: runtimeJobState.lastFailurePhase,
+    lastFailureAt: runtimeJobState.lastFailureAt,
+    lastFailureReason: runtimeJobState.lastFailureReason,
+    lastRecoveryPhase: runtimeJobState.lastRecoveryPhase,
+    lastRecoveryAt: runtimeJobState.lastRecoveryAt,
+    lastRecoveryReason: runtimeJobState.lastRecoveryReason,
+    recoveryClassification: overdue ? (runtimeJobState.phase === 'llm-analysis-refinement' ? 'deferred-analysis-hang' : runtimeJobState.phase === 'synthesis' ? 'synthesis-hang' : runtimeJobState.phase === 'briefing' ? 'source-sweep-hang' : 'sweep-gate-hang') : null,
     lastOverdueAt: overdue ? new Date(nowMs).toISOString() : sweepWatchdogTelemetry.lastOverdueAt,
     telemetry: { ...sweepWatchdogTelemetry },
   };
@@ -2276,12 +2329,21 @@ function getSweepWatchdogSnapshot(nowMs = Date.now()) {
 function recoverHungSweep(reason = 'watchdog-overdue', nowMs = Date.now()) {
   if (!sweepInProgress) return false;
   const recoveredSweepStartedAt = sweepStartedAt;
+  const recoveredPhase = runtimeJobState.phase || 'unknown';
   const nowIso = new Date(nowMs).toISOString();
   sweepWatchdogTelemetry.recoveryCount += 1;
   sweepWatchdogTelemetry.lastRecoveryAt = nowIso;
   sweepWatchdogTelemetry.lastRecoveryReason = reason;
   sweepWatchdogTelemetry.lastRecoveredSweepStartedAt = recoveredSweepStartedAt || null;
   sweepWatchdogTelemetry.lastOverdueAt = nowIso;
+  runtimeJobState = {
+    ...runtimeJobState,
+    phase: 'idle',
+    phaseStartedAt: null,
+    lastRecoveryPhase: recoveredPhase,
+    lastRecoveryAt: nowIso,
+    lastRecoveryReason: reason,
+  };
   sweepInProgress = false;
   sweepStartedAt = null;
   syncSnapshotRuntimeFreshness(currentData);
@@ -2290,8 +2352,9 @@ function recoverHungSweep(reason = 'watchdog-overdue', nowMs = Date.now()) {
     recoveredAt: nowIso,
     reason,
     recoveredSweepStartedAt,
+    recoveredPhase,
   });
-  console.warn(`[Crucix] Sweep watchdog recovered hung sweep gate (${reason}) started at ${recoveredSweepStartedAt || 'unknown'}`);
+  console.warn(`[Crucix] Sweep watchdog recovered hung sweep gate (${reason}) phase=${recoveredPhase} started at ${recoveredSweepStartedAt || 'unknown'}`);
   return true;
 }
 
@@ -2300,7 +2363,7 @@ function runSweepWatchdog(nowMs = Date.now()) {
   if (!watchdog.overdue) {
     return { recovered: false, watchdog };
   }
-  const recovered = recoverHungSweep('watchdog-overdue', nowMs);
+  const recovered = recoverHungSweep(watchdog.recoveryClassification || 'watchdog-overdue', nowMs);
   return {
     recovered,
     watchdog: getSweepWatchdogSnapshot(nowMs),
@@ -3201,6 +3264,7 @@ async function enrichAgentAnalysisAndPublish(synthesized) {
   const attemptId = `analysis-refine-${String(++agentAnalysisRefinementSeq).padStart(4, '0')}`;
   const startedAt = new Date().toISOString();
   const startMs = Date.now();
+  markRuntimePhase('llm-analysis-refinement', startedAt);
   synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({
     refinementState: 'pending',
     refinementAttemptId: attemptId,
@@ -3238,6 +3302,7 @@ async function enrichAgentAnalysisAndPublish(synthesized) {
       });
     }
     console.log(`[Crucix] Agent analysis ready: ${synthesized.agentAnalysis.status} (${synthesized.agentAnalysisMeta?.source || 'deterministic'}) [${synthesized.agentAnalysisMeta?.refinementCompletion || 'unknown'}]`);
+    completeRuntimePhase('llm-analysis-refinement');
   } catch (err) {
     const durationMs = Date.now() - startMs;
     const timedOut = /timeout|timed out|abort/i.test(err.message || '');
@@ -3256,6 +3321,7 @@ async function enrichAgentAnalysisAndPublish(synthesized) {
       refinementTimedOut: timedOut,
       refinementCompletion: timedOut ? 'fallback-timeout' : 'fallback-error',
     });
+    failRuntimePhase(timedOut ? 'llm-analysis-timeout' : (err.message || 'llm-analysis-error'), 'llm-analysis-refinement');
   }
 
   currentData = synthesized;
@@ -3276,6 +3342,7 @@ async function runSweepCycle() {
 
   sweepInProgress = true;
   sweepStartedAt = new Date().toISOString();
+  markRuntimePhase('briefing', sweepStartedAt);
   broadcast({ type: 'sweep_start', timestamp: sweepStartedAt });
   console.log(`\n${'='.repeat(60)}`);
   console.log(`[Crucix] Starting sweep at ${new Date().toLocaleTimeString()}`);
@@ -3284,6 +3351,7 @@ async function runSweepCycle() {
   try {
     // 1. Run the full briefing sweep
     const rawData = await fullBriefing();
+    markRuntimePhase('synthesis');
 
     // 2. Save to runs/latest.json
     writeFileSync(join(RUNS_DIR, 'latest.json'), JSON.stringify(rawData, null, 2));
@@ -3360,12 +3428,16 @@ async function runSweepCycle() {
       });
     }
 
+    completeRuntimePhase('synthesis');
   } catch (err) {
     console.error('[Crucix] Sweep failed:', err.message);
+    failRuntimePhase(err.message || 'sweep-failed');
     broadcast({ type: 'sweep_error', error: err.message });
   } finally {
+    const activePhase = runtimeJobState.phase;
     sweepInProgress = false;
     sweepStartedAt = null;
+    if (activePhase && activePhase !== 'idle' && activePhase !== 'llm-analysis-refinement') completeRuntimePhase(activePhase);
     syncSnapshotRuntimeFreshness(currentData);
   }
 }

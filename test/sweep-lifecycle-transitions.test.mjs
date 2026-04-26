@@ -31,6 +31,18 @@ function buildHarness(overrides = {}) {
     lastSweepTime: null,
     sweepStartedAt: null,
     sweepInProgress: false,
+    runtimeJobState: {
+      phase: 'idle',
+      phaseStartedAt: null,
+      lastCompletedPhase: null,
+      lastCompletedAt: null,
+      lastFailurePhase: null,
+      lastFailureAt: null,
+      lastFailureReason: null,
+      lastRecoveryPhase: null,
+      lastRecoveryAt: null,
+      lastRecoveryReason: null,
+    },
     llmProvider: { isConfigured: false, model: 'test-model' },
     telegramAlerter: { isConfigured: false, evaluateAndAlert() { throw new Error('should not alert'); } },
     discordAlerter: { isConfigured: false, evaluateAndAlert() { throw new Error('should not alert'); } },
@@ -67,7 +79,7 @@ function buildHarness(overrides = {}) {
   vm.createContext(context);
   vm.runInContext(`
     ${extractChunk('const SWEEP_WATCHDOG_TIMEOUT_MS =', 'function loadJsonFile(path, fallback) {')}
-    ${extractChunk('function getSweepWatchdogSnapshot(nowMs = Date.now()) {', 'function syncSnapshotRuntimeFreshness(snapshot = null) {')}
+    ${extractChunk('function markRuntimePhase(phase, nowIso = new Date().toISOString()) {', 'function syncSnapshotRuntimeFreshness(snapshot = null) {')}
     ${extractChunk('async function runSweepCycle() {', '// === Startup ===')}
     globalThis.__cycleHarness = { runSweepCycle, getSweepWatchdogSnapshot, runSweepWatchdog };
   `, context);
@@ -88,6 +100,7 @@ test('runSweepCycle clears lifecycle state and syncs snapshot after a successful
   assert.equal(syncCalls.length, 1);
   assert.equal(context.currentData?.agentAnalysis?.status, 'ready');
   assert.equal(context.currentData?.ideasSource, 'disabled');
+  assert.equal(context.runtimeJobState.lastCompletedPhase, 'synthesis');
 });
 
 test('runSweepCycle clears lifecycle state and emits sweep_error after a failed sweep', async () => {
@@ -102,6 +115,7 @@ test('runSweepCycle clears lifecycle state and emits sweep_error after a failed 
   assert.equal(broadcasts[1]?.type, 'sweep_error');
   assert.equal(broadcasts[1]?.error, 'boom');
   assert.equal(syncCalls.length, 1);
+  assert.equal(context.runtimeJobState.lastFailureReason, 'boom');
 });
 
 test('runSweepCycle recovers an overdue stuck gate before starting a new sweep', async () => {
@@ -114,6 +128,7 @@ test('runSweepCycle recovers an overdue stuck gate before starting a new sweep',
   assert.equal(context.sweepInProgress, false);
   assert.equal(context.sweepStartedAt, null);
   assert.equal(broadcasts[0]?.type, 'sweep_watchdog_recovered');
+  assert.equal(broadcasts[0]?.recoveredPhase, 'idle');
   assert.equal(broadcasts[1]?.type, 'sweep_start');
   assert.equal(broadcasts[2]?.type, 'update');
   assert.ok(syncCalls.length >= 2);
