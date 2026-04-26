@@ -96,6 +96,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(settings.persistence.capabilities.export, false);
     assert.equal(settings.persistence.capabilities.writeApi, false);
     assert.equal(settings.access.role, 'operator');
+    assert.equal(settings.access.diagnosticsSurface, '/diagnostics');
     assert.equal(settings.access.localAdminRequired, true);
 
     const admin = await waitFor(adminSettingsUrl, payload => payload?.version === 'admin-settings-v1', 30000);
@@ -109,8 +110,13 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.doesNotMatch(page, /id="saveBtn"/i);
     assert.doesNotMatch(page, /id="exportBtn"/i);
 
+    const diagnosticsPage = await fetch(`http://127.0.0.1:${BASE_PORT}/diagnostics`).then(r => r.text());
+    assert.match(diagnosticsPage, /Runtime and review diagnostics/i);
+    assert.match(diagnosticsPage, /Operator settings/i);
+
     const adminPage = await fetch(adminPageUrl).then(r => r.text());
     assert.match(adminPage, /Local control plane/i);
+    assert.match(adminPage, /Diagnostics/i);
     assert.match(adminPage, /id="saveBtn"/i);
     assert.match(adminPage, /id="exportBtn"/i);
   });

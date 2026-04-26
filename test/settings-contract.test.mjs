@@ -134,6 +134,7 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.persistence.capabilities.export, false);
   assert.equal(contract.persistence.capabilities.writeApi, false);
   assert.equal(contract.access.role, 'operator');
+  assert.equal(contract.access.diagnosticsSurface, '/diagnostics');
   assert.equal(contract.access.localAdminRequired, true);
   assert.match(contract.notes[0], /centralizes current operator-visible settings/i);
 });
@@ -147,6 +148,7 @@ test('admin settings contract exposes local-write controls separately from opera
   assert.equal(contract.persistence.path, '/tmp/test-operator-settings.json');
   assert.equal(contract.access.role, 'admin');
   assert.equal(contract.access.mode, 'local-write');
+  assert.equal(contract.access.diagnosticsSurface, '/diagnostics');
   assert.equal(contract.admin.boundaries.requiresLocalRequest, true);
   assert.equal(contract.admin.controls.writeEndpoint, '/api/settings/operator');
 });

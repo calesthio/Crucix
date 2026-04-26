@@ -695,6 +695,14 @@ function openSettings(){
   const target = window.__CRUCIX_RUNTIME__?.settingsUrl || '/settings';
   window.open(target, '_blank', 'noopener');
 }
+function openDiagnostics(){
+  const target = window.__CRUCIX_RUNTIME__?.diagnosticsUrl || '/diagnostics';
+  window.open(target, '_blank', 'noopener');
+}
+function openAdminSettings(){
+  const target = window.__CRUCIX_RUNTIME__?.adminSettingsUrl || '/admin/settings';
+  window.open(target, '_blank', 'noopener');
+}
 
 function isWeakMobileDevice(){
   const reducedMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -836,7 +844,9 @@ function renderTopbar(){
       <span class="meta-pill">LAYOUT <span class="v">${layoutBadge}</span></span>
       <span class="meta-pill">PRESET <span class="v">${String(currentWorkspacePreset || 'operator').toUpperCase()}</span></span>
       ${D.delta?.summary ? `<span class="meta-pill">${t('dashboard.delta','DELTA')} <span class="v">${D.delta.summary.direction==='risk-off'?'&#x25B2; '+t('dashboard.riskOff','RISK-OFF'):D.delta.summary.direction==='risk-on'?'&#x25BC; '+t('dashboard.riskOn','RISK-ON'):'&#x25C6; '+t('dashboard.mixed','MIXED')}</span></span>` : ''}
-      <button class="guide-btn" onclick="openSettings()">${t('dashboard.settingsBtn','Settings')}</button>
+      <button class="guide-btn" onclick="openSettings()">${t('dashboard.settingsBtn','Operator')}</button>
+      <button class="guide-btn" onclick="openDiagnostics()">${t('dashboard.diagnosticsBtn','Diagnostics')}</button>
+      <button class="guide-btn" onclick="openAdminSettings()">${t('dashboard.adminBtn','Admin')}</button>
       <button class="guide-btn" onclick="openGlossary()">${t('dashboard.guideBtn','What Signals Mean')}</button>
       <span class="alert-badge">${stale ? 'STALE' : t('dashboard.highAlert','HIGH ALERT')}</span>
     </div>`;

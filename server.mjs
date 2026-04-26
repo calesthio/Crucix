@@ -2217,7 +2217,7 @@ function injectDashboardRuntimeHtml(html = '') {
   const locale = getLocale();
   const operatorSettings = loadOperatorSettings();
   const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
-  const runtimeScript = `<script>window.__CRUCIX_RUNTIME__ = ${JSON.stringify({ refreshIntervalMinutes: config.refreshIntervalMinutes, settingsUrl: '/settings', operatorSettings: operatorSettings.preferences }).replace(/<\/script>/gi, '<\\/script>')};</script>`;
+  const runtimeScript = `<script>window.__CRUCIX_RUNTIME__ = ${JSON.stringify({ refreshIntervalMinutes: config.refreshIntervalMinutes, settingsUrl: '/settings', diagnosticsUrl: '/diagnostics', adminSettingsUrl: '/admin/settings', operatorSettings: operatorSettings.preferences }).replace(/<\/script>/gi, '<\\/script>')};</script>`;
   return html.replace('</head>', `${localeScript}\n${runtimeScript}\n</head>`);
 }
 
@@ -2236,6 +2236,14 @@ app.get('/settings', async (req, res) => {
   const snapshot = await ensureCurrentData();
   if (!snapshot) return res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
   const htmlPath = join(ROOT, 'dashboard/public/settings.html');
+  const html = readFileSync(htmlPath, 'utf-8');
+  res.type('html').send(injectDashboardRuntimeHtml(html));
+});
+
+app.get('/diagnostics', requireDebugAccess, async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
+  const htmlPath = join(ROOT, 'dashboard/public/diagnostics.html');
   const html = readFileSync(htmlPath, 'utf-8');
   res.type('html').send(injectDashboardRuntimeHtml(html));
 });
@@ -2675,13 +2683,14 @@ function buildOperatorSettingsContract(snapshot = null) {
     access: {
       role: 'operator',
       mode: 'read-only',
+      diagnosticsSurface: '/diagnostics',
       adminSurface: '/admin/settings',
       adminApi: '/api/settings/admin',
       localAdminRequired: true,
     },
     notes: [
       'This surface centralizes current operator-visible settings and runtime posture.',
-      'Operator settings is intentionally a read-only operator surface; local-only admin controls live under /admin/settings so sensitive writes and debug-adjacent actions are separated from normal viewing.',
+      'Operator settings is intentionally a read-only operator surface; diagnostics live under /diagnostics and local-only admin controls live under /admin/settings so runtime review and sensitive writes are separated from normal viewing.',
       'Runtime configuration is exposed as a versioned contract with defaults, effective values, validation, and drift summary.',
       'Operator preference persistence currently applies layout visuals, map mode, region, and active layer directly, while LLM and agent-analysis preferences are stored safely for later deeper runtime enforcement.',
     ],
@@ -2710,6 +2719,7 @@ function buildAdminSettingsContract(snapshot = null) {
       role: 'admin',
       mode: 'local-write',
       operatorSurface: '/settings',
+      diagnosticsSurface: '/diagnostics',
       localAdminRequired: true,
     },
     admin: {

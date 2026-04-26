@@ -664,7 +664,7 @@
       {
         "id": "epic-28",
         "title": "Dashboard layout overhaul and operator workspace UX",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-28.1",
@@ -684,7 +684,7 @@
           {
             "id": "effort-28.4",
             "title": "Separate live operator views, diagnostics, and administration into clearer information architecture so the dashboard stops mixing operations with debug clutter",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },

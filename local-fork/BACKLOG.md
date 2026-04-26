@@ -14,3 +14,5 @@ Recent promotions:
 - Remaining settings safety, preset lifecycle, dashboard performance, and map-event surfacing backlog items were promoted into `local-fork/plan.json` as Epic 36, efforts 36.1 through 36.6 on 2026-04-25.
 
 New items can be added here when they do not yet belong in the active roadmap.
+
+- Add a shared navigation and page-shell component for dashboard-adjacent operator, diagnostics, and admin surfaces so labels, links, and boundary explanations do not drift as more control-plane pages are added. Added to backlog on 2026-04-25 after cycle 094.

@@ -108,8 +108,12 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.deepEqual(exported.preferences.sources.enabledCategories, ['air', 'news']);
 
     const page = await fetch(`http://127.0.0.1:${BASE_PORT}/settings`).then(r => r.text());
+    assert.match(page, /Diagnostics/i);
     assert.doesNotMatch(page, /id="saveBtn"/i);
     assert.doesNotMatch(page, /id="exportBtn"/i);
+
+    const diagnosticsPage = await fetch(`http://127.0.0.1:${BASE_PORT}/diagnostics`).then(r => r.text());
+    assert.match(diagnosticsPage, /Runtime and review diagnostics/i);
 
     const adminPage = await fetch(`http://127.0.0.1:${BASE_PORT}/admin/settings`).then(r => r.text());
     assert.match(adminPage, /id="saveBtn"/i);
@@ -130,6 +134,8 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.match(dashboard, /"defaultRegion":"asiaPacific"/);
     assert.match(dashboard, /"workspacePreset":"source-ops"/);
     assert.match(dashboard, /renderWorkspacePresetStrip/);
+    assert.match(dashboard, /openDiagnostics/);
+    assert.match(dashboard, /openAdminSettings/);
   } finally {
     await stopChild(child);
   }
