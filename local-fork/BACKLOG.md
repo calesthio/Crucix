@@ -7,7 +7,7 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 All current backlog items were integrated into `local-fork/plan.json` on 2026-04-26.
 
 Recent promotions:
-- Deployment-packaging follow-on work such as checked example `launchd` or `systemd` service definitions plus restart-policy guidance is not yet scheduled and would make Epic 33 easier to operationalize across real hosts.
+- Deployment-packaging follow-on work such as checked example `launchd` or `systemd` service definitions plus restart-policy guidance was promoted into `local-fork/plan.json` as Epic 33, effort 33.6 on 2026-04-26.
 - Schema-level validation helpers were promoted into `local-fork/plan.json` as Epic 34, effort 34.1 on 2026-04-25.
 - Dev-safe restart helper or port-ownership sanity checks were promoted into `local-fork/plan.json` as Epic 29, effort 29.1 on 2026-04-25.
 - Endpoint-level contract coverage for reasoning metadata on `/api/analysis` and `/api/brief/news` was promoted into `local-fork/plan.json` as Epic 26, effort 26.4 on 2026-04-25.

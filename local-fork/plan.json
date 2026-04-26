@@ -895,6 +895,11 @@
             "id": "effort-33.5",
             "title": "Add source-control audit history and undo metadata for suppress and quarantine actions so local-admin mutations are attributable, reviewable, and safely reversible during incident triage",
             "status": "pending"
+          },
+          {
+            "id": "effort-33.6",
+            "title": "Provide checked example launchd or systemd service definitions plus restart-policy guidance so Epic 33 hardening is easier to operationalize across real hosts",
+            "status": "pending"
           }
         ]
       },
