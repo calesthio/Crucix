@@ -84,10 +84,13 @@ async function boot(){
         row('Stale', esc(String(Boolean(data.provider?.readiness?.stale)))),
         row('Last latency', esc(data.provider?.readiness?.lastLatencyMs == null ? 'n/a' : `${data.provider.readiness.lastLatencyMs} ms`)),
         row('Probe reason', esc(data.provider?.readiness?.lastCheckedReason || 'n/a')),
+        row('Probe type', esc(data.provider?.readiness?.lastProbeType || 'n/a')),
         row('Last success', esc(data.provider?.readiness?.lastSuccess?.at || 'never')),
         row('Success detail', esc(data.provider?.readiness?.lastSuccess?.detail || 'n/a')),
         row('Last failure', esc(data.provider?.readiness?.lastFailure?.at || 'never')),
         row('Failure reason', esc(data.provider?.readiness?.lastFailure?.reason || 'n/a')),
+        row('Failure class', esc(data.provider?.readiness?.lastFailure?.classification || 'n/a')),
+        row('Retryable', esc(data.provider?.readiness?.lastFailure?.retryable == null ? 'n/a' : String(Boolean(data.provider.readiness.lastFailure.retryable)))),
         row('Consecutive failures', esc(String(data.provider?.readiness?.consecutiveFailures || 0))),
       ].join('')),
       renderCard('Runtime state', 'Published LLM posture', [

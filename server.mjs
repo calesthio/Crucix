@@ -159,7 +159,11 @@ let llmProviderProbeState = {
     latencyMs: null,
     reason: null,
     detail: null,
+    classification: null,
+    status: null,
+    retryable: null,
   },
+  lastProbeType: null,
 };
 let llmProviderProbePromise = null;
 
@@ -3222,7 +3226,8 @@ function getLlmProviderReadinessSnapshot() {
         lastModel: llmProvider?.model || config.llm?.model || null,
         lastCheckedReason: null,
         lastSuccess: { at: null, latencyMs: null, model: null, detail: null },
-        lastFailure: { at: null, latencyMs: null, reason: null, detail: null },
+        lastFailure: { at: null, latencyMs: null, reason: null, detail: null, classification: null, status: null, retryable: null },
+        lastProbeType: null,
       };
   const checkedAtMs = base?.checkedAt ? new Date(base.checkedAt).getTime() : 0;
   const stale = Boolean(base?.configured && checkedAtMs && ((Date.now() - checkedAtMs) > Number(base?.probeTtlMs || 0)));
@@ -3243,7 +3248,11 @@ function getLlmProviderReadinessSnapshot() {
       latencyMs: base?.lastFailure?.latencyMs ?? null,
       reason: base?.lastFailure?.reason || null,
       detail: base?.lastFailure?.detail || null,
+      classification: base?.lastFailure?.classification || null,
+      status: base?.lastFailure?.status ?? null,
+      retryable: base?.lastFailure?.retryable ?? null,
     },
+    lastProbeType: base?.lastProbeType || null,
   };
 }
 
@@ -3306,11 +3315,14 @@ async function refreshLlmProviderReadiness({ force = false, reason = 'unspecifie
         checkedAt: startedIso,
         inFlight: false,
         stale: false,
-        summary: 'Active readiness probe succeeded. Provider is reachable and returned a model response.',
+        summary: result?.probeType === 'synthetic-completion'
+          ? 'Active readiness probe succeeded via bounded synthetic completion.'
+          : `Active readiness probe succeeded via ${String(result?.probeType || 'provider-specific check')}.`,
         consecutiveFailures: 0,
         lastLatencyMs: Number(result?.latencyMs) || (Date.now() - startedAt),
         lastModel: result?.model || llmProvider?.model || config.llm?.model || null,
         lastCheckedReason: reason,
+        lastProbeType: result?.probeType || 'synthetic-completion',
         lastSuccess: {
           at: startedIso,
           latencyMs: Number(result?.latencyMs) || (Date.now() - startedAt),
@@ -3321,6 +3333,18 @@ async function refreshLlmProviderReadiness({ force = false, reason = 'unspecifie
       return getLlmProviderReadinessSnapshot();
     } catch (error) {
       const message = String(error?.message || error || 'probe-failed').trim();
+      const probeMeta = error?.probe || {};
+      const classification = probeMeta?.classification || 'unknown';
+      const summaryByClassification = {
+        network: 'Active readiness probe failed because the provider endpoint was unreachable.',
+        timeout: 'Active readiness probe timed out before the provider proved readiness.',
+        auth: 'Active readiness probe failed because provider authentication was rejected.',
+        'rate-limited': 'Active readiness probe was rate-limited by the provider.',
+        'missing-model': 'Active readiness probe failed because the configured model was not available.',
+        provider: 'Active readiness probe failed because the provider returned a server-side error.',
+        request: 'Active readiness probe failed because the provider rejected the probe request.',
+        unknown: 'Active readiness probe failed. Provider reachability or model readiness is currently degraded.',
+      };
       llmProviderProbeState = {
         ...llmProviderProbeState,
         configured,
@@ -3329,16 +3353,20 @@ async function refreshLlmProviderReadiness({ force = false, reason = 'unspecifie
         checkedAt: startedIso,
         inFlight: false,
         stale: false,
-        summary: 'Active readiness probe failed. Provider reachability or model readiness is currently degraded.',
+        summary: summaryByClassification[classification] || summaryByClassification.unknown,
         consecutiveFailures: Number(llmProviderProbeState?.consecutiveFailures || 0) + 1,
         lastLatencyMs: Date.now() - startedAt,
         lastModel: llmProvider?.model || config.llm?.model || null,
         lastCheckedReason: reason,
+        lastProbeType: probeMeta?.probeType || llmProviderProbeState?.lastProbeType || 'synthetic-completion',
         lastFailure: {
           at: startedIso,
           latencyMs: Date.now() - startedAt,
           reason: message,
           detail: message.slice(0, 240),
+          classification,
+          status: probeMeta?.status ?? null,
+          retryable: probeMeta?.retryable ?? null,
         },
       };
       return getLlmProviderReadinessSnapshot();

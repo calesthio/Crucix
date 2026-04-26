@@ -18,7 +18,6 @@ Recent promotions:
 - Historical source-performance trend snapshots and delta views were promoted into `local-fork/plan.json` as Epic 30, effort 30.5 on 2026-04-26.
 - Active LLM provider readiness probing was promoted into `local-fork/plan.json` as Epic 31, effort 31.6 on 2026-04-26.
 - Endpoint-level regression coverage for settings-driven agent-analysis publish behavior was promoted into `local-fork/plan.json` as Epic 34, effort 34.4 on 2026-04-26.
+- Provider-specific cheap readiness checks and richer failure classification for LLM probes was promoted into `local-fork/plan.json` as Epic 31, effort 31.7 on 2026-04-26.
 
 New items can be added here when they do not yet belong in the active roadmap.
-
-- Provider-specific cheap readiness checks and richer failure classification for LLM probes, so active heartbeat validation can distinguish network failure, auth failure, rate limiting, and missing-model states without always using a synthetic completion.

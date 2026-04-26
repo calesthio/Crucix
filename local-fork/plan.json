@@ -781,6 +781,11 @@
             "id": "effort-31.6",
             "title": "Add an active LLM provider readiness probe plus last-success and last-failure heartbeat so `/llm-ops` health reflects live reachability and model readiness rather than only configuration-derived posture",
             "status": "completed"
+          },
+          {
+            "id": "effort-31.7",
+            "title": "Add provider-specific cheap readiness checks and richer failure classification for LLM probes so heartbeat validation can distinguish network failure, auth failure, rate limiting, and missing-model states without always using a synthetic completion",
+            "status": "completed"
           }
         ]
       },

@@ -263,6 +263,8 @@ test('llm operations contract exposes provider health, mode forcing, fallback ch
   assert.equal(contract.provider.activeModel, 'qwen');
   assert.equal(contract.provider.readiness.status, 'unknown');
   assert.equal(contract.provider.readiness.lastSuccess.at, null);
+  assert.equal(contract.provider.readiness.lastFailure.classification, null);
+  assert.equal(contract.provider.readiness.lastProbeType, null);
   assert.equal(contract.modes.defaultNewsMode, 'auto');
   assert.equal(Array.isArray(contract.fallbackChains), true);
   assert.equal(contract.fallbackChains[0].surface, 'news-clustering');

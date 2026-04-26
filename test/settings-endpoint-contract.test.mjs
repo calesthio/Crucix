@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 const BASE_PORT = 3238;
 
@@ -48,6 +51,7 @@ async function withBootedServer({ port, env }, fn) {
       PORT: String(port),
       TELEGRAM_BOT_TOKEN: '',
       TELEGRAM_CHAT_ID: '',
+      OPERATOR_SETTINGS_PATH: join(mkdtempSync(join(tmpdir(), 'crucix-settings-')), 'operator-settings.json'),
       ...env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -158,6 +162,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(typeof llmOps.provider.readiness.status, 'string');
     assert.equal('lastSuccess' in llmOps.provider.readiness, true);
     assert.equal('lastFailure' in llmOps.provider.readiness, true);
+    assert.equal('classification' in llmOps.provider.readiness.lastFailure, true);
+    assert.equal('lastProbeType' in llmOps.provider.readiness, true);
 
     const page = await fetch(pageUrl).then(r => r.text());
     assert.match(page, /read-only operator view/i);
@@ -188,6 +194,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.match(llmOpsPage, /Reasoning surface validation/i);
     assert.match(llmOpsPage, /Operator-visible cost, latency, and completion telemetry/i);
     assert.match(llmOpsPage, /Provider readiness heartbeat/i);
+    assert.match(llmOpsPage, /Failure class/i);
+    assert.match(llmOpsPage, /Probe type/i);
 
     const adminPage = await fetch(adminPageUrl).then(r => r.text());
     assert.match(adminPage, /Local control plane/i);
