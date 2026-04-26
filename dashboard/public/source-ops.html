@@ -37,6 +37,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   <div id="status" class="note">Loading source console…</div>
   <section class="summary" id="summary" hidden></section>
   <section class="controls" id="controls" hidden></section>
+  <section class="summary" id="actions" hidden></section>
   <section class="table" id="table" hidden></section>
 </div>
 <script>
@@ -47,6 +48,7 @@ function render(){
   const status = document.getElementById('status');
   const summary = document.getElementById('summary');
   const controls = document.getElementById('controls');
+  const actions = document.getElementById('actions');
   const table = document.getElementById('table');
   const categoryFilter = document.getElementById('categoryFilter')?.value || 'all';
   const roleFilter = document.getElementById('roleFilter')?.value || 'all';
@@ -68,6 +70,21 @@ function render(){
     <div class="stat"><div class="label">Visible enabled</div><div class="value">${esc(enabledCount)}</div></div>
     <div class="stat"><div class="label">Role groups</div><div class="value">${esc((consoleData.roleGrouping?.groups || []).length)}</div></div>
     <div class="stat"><div class="label">Selection persistence</div><div class="value">${esc(consoleData.selection?.persistence || 'unknown')}</div></div>
+  </div>`;
+  const lifecycle = consoleData.lifecycleActions || {};
+  actions.hidden = false;
+  actions.innerHTML = `<div class="grid">
+    <div class="stat"><div class="label">Blocked lifecycle actions</div><div class="value">${esc(lifecycle.policyBlockers?.batchBlockedCount ?? 0)}</div></div>
+    <div class="stat"><div class="label">Advanceable candidates</div><div class="value">${esc(lifecycle.policyBlockers?.advanceableCount ?? 0)}</div></div>
+    <div class="stat"><div class="label">Human approval boundary</div><div class="value">${esc((lifecycle.humanApprovalBoundary?.humanApprovalBoundaryStates || []).join(', ') || 'none')}</div></div>
+    <div class="stat"><div class="label">Prune recommendation</div><div class="value">${esc(lifecycle.pruneRecommendation?.recommendedAction || 'none')}</div></div>
+  </div>
+  <div class="tags" style="margin-top:10px">${(lifecycle.humanApprovalBoundary?.autoAdvanceStates || []).map(state => `<span class="tag">auto: ${esc(state)}</span>`).join('')}${(lifecycle.humanApprovalBoundary?.humanApprovalBoundaryStates || []).map(state => `<span class="tag">review: ${esc(state)}</span>`).join('')}</div>
+  <div style="margin-top:12px;font-size:13px;line-height:1.5">
+    <strong>Example lifecycle evaluation:</strong>
+    ${esc(lifecycle.exampleEvaluation?.candidateId || 'n/a')} → next ${esc(lifecycle.exampleEvaluation?.nextAllowedState || 'n/a')} (${esc(lifecycle.exampleEvaluation?.recommendedAction || 'n/a')})
+    ${lifecycle.exampleEvaluation?.blocked ? `<div class="muted">Blocked: ${esc((lifecycle.exampleEvaluation?.blockedReasons || []).join('; '))}</div>` : ''}
+    ${lifecycle.pruneRecommendation ? `<div style="margin-top:8px"><strong>Prune recommendation:</strong> ${esc(lifecycle.pruneRecommendation.targetId || 'n/a')} → ${esc(lifecycle.pruneRecommendation.recommendedAction || 'n/a')} (${esc(lifecycle.pruneRecommendation.confidence || 'unknown')})<div class="muted">${esc((lifecycle.pruneRecommendation.blockingIssues || []).join('; ') || 'No blocking issues')}</div></div>` : ''}
   </div>`;
   table.hidden = false;
   table.innerHTML = `<table>

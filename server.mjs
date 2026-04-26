@@ -2724,6 +2724,9 @@ function buildOperatorSettingsContract(snapshot = null) {
         sourceIds: Array.isArray(item.sourceIds) ? item.sourceIds : [],
       }))
     : [];
+  const lifecycleBatch = sourceOps?.lifecycleBatchEvaluation;
+  const lifecycleEvaluation = sourceOps?.lifecycleEvaluation;
+  const pruningExample = sourceOps?.examplePruning;
   const enabledAlerts = [
     config.telegram?.botToken && config.telegram?.chatId ? 'telegram' : null,
     config.discord?.botToken || config.discord?.webhookUrl ? 'discord' : null,
@@ -2797,6 +2800,55 @@ function buildOperatorSettingsContract(snapshot = null) {
         supportsPerSourceControl: true,
         enabledCategories: operatorSettings.preferences.sources.enabledCategories,
         enabledSourceIds: operatorSettings.preferences.sources.enabledSourceIds,
+      },
+      lifecycleActions: {
+        version: 'source-lifecycle-actions-v1',
+        humanApprovalBoundary: {
+          activePromotionRequiresHumanApproval: Boolean(sourceOps?.lifecycleTransitions?.activePromotionRequiresHumanApproval),
+          preProductionAutoAdvanceMax: sourceOps?.lifecycleTransitions?.preProductionAutoAdvanceMax || null,
+          humanApprovalBoundaryStates: Array.isArray(sourceOps?.lifecycleTransitions?.humanApprovalBoundaryStates) ? sourceOps.lifecycleTransitions.humanApprovalBoundaryStates : [],
+          autoAdvanceStates: Array.isArray(sourceOps?.lifecycleTransitions?.autoAdvanceStates) ? sourceOps.lifecycleTransitions.autoAdvanceStates : [],
+        },
+        policyBlockers: {
+          batchBlockedCount: lifecycleBatch?.blockedCount || 0,
+          advanceableCount: lifecycleBatch?.advanceableCount || 0,
+          queueTaskCount: lifecycleBatch?.queueTaskCount || 0,
+        },
+        queue: {
+          candidateCount: lifecycleBatch?.candidateCount || 0,
+          blockedCount: lifecycleBatch?.blockedCount || 0,
+          advanceableCount: lifecycleBatch?.advanceableCount || 0,
+          evaluations: Array.isArray(lifecycleBatch?.evaluations) ? lifecycleBatch.evaluations.map(item => ({
+            candidateId: item.candidateId || null,
+            name: item.name || null,
+            lifecycle: item.lifecycle || null,
+            recommendedAction: item.evaluation?.recommendedAction || null,
+            nextAllowedState: item.evaluation?.nextAllowedState || null,
+            blocked: Boolean(item.evaluation?.blocked),
+            blockedReasons: Array.isArray(item.evaluation?.blockedReasons) ? item.evaluation.blockedReasons : [],
+            allowedNextStates: Array.isArray(item.evaluation?.allowedNextStates) ? item.evaluation.allowedNextStates : [],
+            agentMayAdvanceCurrentState: Boolean(item.evaluation?.agentMayAdvanceCurrentState),
+          })) : [],
+        },
+        exampleEvaluation: {
+          candidateId: lifecycleEvaluation?.candidateId || null,
+          currentState: lifecycleEvaluation?.currentState || null,
+          promotionReadiness: lifecycleEvaluation?.promotionReadiness || null,
+          nextAllowedState: lifecycleEvaluation?.nextAllowedState || null,
+          recommendedAction: lifecycleEvaluation?.recommendedAction || null,
+          blocked: Boolean(lifecycleEvaluation?.blocked),
+          blockedReasons: Array.isArray(lifecycleEvaluation?.blockedReasons) ? lifecycleEvaluation.blockedReasons : [],
+          allowedNextStates: Array.isArray(lifecycleEvaluation?.allowedNextStates) ? lifecycleEvaluation.allowedNextStates : [],
+        },
+        pruneRecommendation: {
+          targetId: pruningExample?.targetId || null,
+          recommendation: pruningExample?.recommendation || null,
+          recommendedAction: pruningExample?.recommendedAction || null,
+          confidence: pruningExample?.confidence || null,
+          humanReviewRequired: Boolean(pruningExample?.productionGuardrails?.humanReviewRequired),
+          autoRemovalAllowed: Boolean(pruningExample?.productionGuardrails?.autoRemovalAllowed),
+          blockingIssues: Array.isArray(pruningExample?.blockingIssues) ? pruningExample.blockingIssues : [],
+        },
       },
       inventory: sourceItems,
     },
@@ -2879,6 +2931,7 @@ function buildOperatorSettingsContract(snapshot = null) {
       'Operator settings is intentionally a read-only operator surface; diagnostics live under /diagnostics and local-only admin controls live under /admin/settings so runtime review and sensitive writes are separated from normal viewing.',
       'Runtime configuration is exposed as a versioned contract with defaults, effective values, validation, and drift summary.',
       'Operator preference persistence currently applies layout visuals, map mode, region, and active layer directly, while LLM and agent-analysis preferences are stored safely for later deeper runtime enforcement.',
+      'Source lifecycle actions expose policy blockers, recommended next states, and human-approval boundaries before any production-affecting mutation is allowed.',
     ],
   };
 }

@@ -132,6 +132,9 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.sourceConsole.version, 'source-console-v1');
   assert.equal(contract.sourceConsole.surface, '/source-ops');
   assert.equal(contract.sourceConsole.roleGrouping.enabled, true);
+  assert.equal(contract.sourceConsole.lifecycleActions.version, 'source-lifecycle-actions-v1');
+  assert.equal(Array.isArray(contract.sourceConsole.lifecycleActions.humanApprovalBoundary.humanApprovalBoundaryStates), true);
+  assert.equal(Array.isArray(contract.sourceConsole.lifecycleActions.queue.evaluations), true);
   assert.equal(Array.isArray(contract.sourceConsole.inventory), true);
   assert.deepEqual(contract.sources.selection.enabledCategories, ['news']);
   assert.deepEqual(contract.sources.selection.enabledSourceIds, ['gdelt-global']);

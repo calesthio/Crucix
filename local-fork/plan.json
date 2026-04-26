@@ -728,7 +728,7 @@
           {
             "id": "effort-30.2",
             "title": "Add source lifecycle actions for candidate, shadow, active, quarantine, and prune recommendations with visible policy blockers and human-approval boundaries",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-30.3",
