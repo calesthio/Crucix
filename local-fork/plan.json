@@ -741,7 +741,7 @@
           {
             "id": "effort-29.9",
             "title": "Add operator acknowledge or snooze controls plus recent audit visibility for sustained noise-suppression pressure alerts so teams can distinguish accepted load from unattended telemetry churn",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },

@@ -39,6 +39,7 @@ const context = {
     getLlmFailureHistory: () => ({ snapshots: [{ summary: { heuristicFallbackCount: 2, weakClusterCount: 3 } }] }),
     getNoiseSuppressionTelemetryHistory: () => ({ snapshots: [], deltaViews: [], summary: { snapshotCount: 0 } }),
   },
+  getOperationalAlertsState: () => ({ policies: {} }),
   summarizeClusterReviewStats: () => ({ chronicFailureCount: 1, recentFailureCount: 1 }),
   summarizeClusterPressureStats: () => ({ pressuredRegionCount: 1 }),
   loadOperatorSettings: () => ({

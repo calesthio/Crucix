@@ -738,6 +738,94 @@ function reviewWorkflowAuditSnapshot(limit = 25) {
   return reviewWorkflowAudit.slice(-Math.max(1, limit)).reverse();
 }
 
+function normalizeOperationalPolicyState(state = {}) {
+  return {
+    active: Boolean(state?.active),
+    occurrenceCount: Math.max(0, Number(state?.occurrenceCount) || 0),
+    lastSentAt: state?.lastSentAt || null,
+    lastResolvedAt: state?.lastResolvedAt || null,
+    lastEscalatedAt: state?.lastEscalatedAt || null,
+    lastSeverity: state?.lastSeverity || 'ok',
+    acknowledgedAt: state?.acknowledgedAt || null,
+    acknowledgedNote: state?.acknowledgedNote || null,
+    snoozedUntil: state?.snoozedUntil || null,
+    snoozeNote: state?.snoozeNote || null,
+    lastOperatorActionAt: state?.lastOperatorActionAt || null,
+  };
+}
+
+function getOperationalAlertsState() {
+  const state = memory.getSignalState(OPERATIONAL_ALERTS_STATE_KEY) || { policies: {} };
+  return state && typeof state === 'object' ? state : { policies: {} };
+}
+
+function saveOperationalAlertsState(state = {}) {
+  const nextState = state && typeof state === 'object' ? state : { policies: {} };
+  nextState.policies = nextState.policies && typeof nextState.policies === 'object' ? nextState.policies : {};
+  nextState.updatedAt = new Date().toISOString();
+  memory.setSignalState(OPERATIONAL_ALERTS_STATE_KEY, nextState);
+  return nextState;
+}
+
+function getOperationalPolicyActionState(policyKey = '') {
+  const trimmedKey = String(policyKey || '').trim();
+  const state = getOperationalAlertsState();
+  return normalizeOperationalPolicyState(state?.policies?.[trimmedKey] || {});
+}
+
+function applyOperationalAlertDisposition(policyKey = '', action = 'ack', options = {}) {
+  const trimmedKey = String(policyKey || '').trim();
+  if (!trimmedKey) return null;
+  const nextState = JSON.parse(JSON.stringify(getOperationalAlertsState()));
+  nextState.policies = nextState.policies || {};
+  const policyState = normalizeOperationalPolicyState(nextState.policies[trimmedKey] || {});
+  const nowIso = new Date().toISOString();
+  if (action === 'ack') {
+    policyState.acknowledgedAt = nowIso;
+    policyState.acknowledgedNote = String(options.note || '').trim() || policyState.acknowledgedNote || null;
+    policyState.snoozedUntil = null;
+    policyState.snoozeNote = null;
+    policyState.lastOperatorActionAt = nowIso;
+  } else if (action === 'snooze') {
+    const hours = Math.max(1, Math.min(Number.parseInt(options.hours, 10) || 24, 24 * 14));
+    policyState.snoozedUntil = new Date(Date.now() + (hours * 60 * 60 * 1000)).toISOString();
+    policyState.snoozeNote = String(options.note || '').trim() || `Snoozed for ${hours}h`;
+    policyState.lastOperatorActionAt = nowIso;
+  } else {
+    return null;
+  }
+  nextState.policies[trimmedKey] = policyState;
+  saveOperationalAlertsState(nextState);
+  return normalizeOperationalPolicyState(policyState);
+}
+
+function buildOperationalPolicyDisposition(policyKey = '', policy = {}) {
+  const state = getOperationalPolicyActionState(policyKey);
+  const snoozedUntilMs = state.snoozedUntil ? Date.parse(state.snoozedUntil) || 0 : 0;
+  const snoozed = snoozedUntilMs > Date.now();
+  const acknowledged = Boolean(state.acknowledgedAt);
+  const status = snoozed ? 'snoozed' : acknowledged ? 'acknowledged' : 'unattended';
+  const recentAudit = reviewWorkflowAudit
+    .filter(entry => entry?.targetType === 'operational-alert' && entry?.policyKey === policyKey)
+    .slice(-6)
+    .reverse();
+  return {
+    status,
+    acknowledged,
+    acknowledgedAt: state.acknowledgedAt,
+    acknowledgedNote: state.acknowledgedNote,
+    snoozed,
+    snoozedUntil: snoozed ? state.snoozedUntil : null,
+    snoozeNote: state.snoozeNote,
+    lastOperatorActionAt: state.lastOperatorActionAt || null,
+    recentAudit,
+    actions: policy?.active ? [
+      { id: 'ack-noise-suppression-pressure', label: 'Acknowledge pressure alert', method: 'POST', href: '/api/review-workflow/action', policyKey, targetType: 'operational-alert', requiresLocalAdmin: true },
+      { id: 'snooze-noise-suppression-pressure', label: 'Snooze 24h', method: 'POST', href: '/api/review-workflow/action', policyKey, targetType: 'operational-alert', hours: 24, requiresLocalAdmin: true },
+    ] : [],
+  };
+}
+
 function clusterRepairActionDefaults() {
   return {
     version: 'cluster-repair-actions-v1',
@@ -1419,7 +1507,7 @@ function buildReviewWorkflowContract(snapshot = currentData || null, review = nu
     endpoint: '/api/review-workflow/action',
     auditEndpoint: '/api/review-workflow/audit',
     requiresLocalAdmin: true,
-    supportedActions: ['ack', 'snooze', 'suppress-source', 'quarantine-source', 'promote-shadow', 'merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'],
+    supportedActions: ['ack', 'snooze', 'ack-noise-suppression-pressure', 'snooze-noise-suppression-pressure', 'suppress-source', 'quarantine-source', 'promote-shadow', 'merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'],
     queueSummary: queue ? {
       state: queue.state || null,
       totalItems: queue.totalItems || 0,
@@ -1431,7 +1519,13 @@ function buildReviewWorkflowContract(snapshot = currentData || null, review = nu
     noiseSuppression: {
       ...buildNoiseSuppressionContract(activeSnapshot),
       trend: memory.getNoiseSuppressionTelemetryHistory(),
-      pressureAlert: summarizeOperationalAlertState(activeSnapshot).policies?.noiseSuppressionPressure || null,
+      pressureAlert: (() => {
+        const policy = summarizeOperationalAlertState(activeSnapshot).policies?.noiseSuppressionPressure || null;
+        return policy ? {
+          ...policy,
+          operatorDisposition: buildOperationalPolicyDisposition('noiseSuppressionPressure', policy),
+        } : null;
+      })(),
     },
     clusterRepair: buildClusterRepairWorkflow(activeSnapshot),
     auditTrail: reviewWorkflowAuditSnapshot(12),
@@ -3941,7 +4035,7 @@ function summarizeOperationalAlertState(snapshot = null) {
       config: prefs.noiseSuppressionPressure,
     },
   };
-  const state = memory.getSignalState(OPERATIONAL_ALERTS_STATE_KEY) || { policies: {} };
+  const state = getOperationalAlertsState();
   return {
     version: 'operational-alert-routing-v1',
     enabled: Boolean(config.alerting?.enabled) && Boolean(prefs.enabled),
@@ -3973,16 +4067,21 @@ async function processOperationalAlerts(snapshot = null) {
   nextState.policies = nextState.policies || {};
   nextState.updatedAt = new Date().toISOString();
   if (!contract.enabled) {
-    memory.setSignalState(OPERATIONAL_ALERTS_STATE_KEY, nextState);
+    saveOperationalAlertsState(nextState);
     return contract;
   }
   for (const [policyKey, policy] of Object.entries(contract.policies || {})) {
-    const state = nextState.policies[policyKey] && typeof nextState.policies[policyKey] === 'object' ? nextState.policies[policyKey] : { active: false, occurrenceCount: 0, lastSentAt: null, lastResolvedAt: null, lastEscalatedAt: null, lastSeverity: 'ok' };
+    const state = normalizeOperationalPolicyState(nextState.policies[policyKey] || {});
     state.lastSeverity = policy.severity || 'ok';
     if (!policy.active) {
       if (state.active) state.lastResolvedAt = new Date().toISOString();
       state.active = false;
       state.occurrenceCount = 0;
+      state.acknowledgedAt = null;
+      state.acknowledgedNote = null;
+      state.snoozedUntil = null;
+      state.snoozeNote = null;
+      state.lastOperatorActionAt = null;
       nextState.policies[policyKey] = state;
       continue;
     }
@@ -3992,8 +4091,10 @@ async function processOperationalAlerts(snapshot = null) {
     const sentMs = state.lastSentAt ? new Date(state.lastSentAt).getTime() : 0;
     const escalated = state.occurrenceCount >= (policy.config?.escalationAfter || 2);
     const escalationSentMs = state.lastEscalatedAt ? new Date(state.lastEscalatedAt).getTime() : 0;
-    const shouldSendBase = !sentMs || (Date.now() - sentMs) >= (cooldownMinutes * 60 * 1000);
-    const shouldSendEscalation = escalated && (!escalationSentMs || (Date.now() - escalationSentMs) >= ((config.alerting?.escalationCooldownMinutes || 120) * 60 * 1000));
+    const snoozedUntilMs = state.snoozedUntil ? Date.parse(state.snoozedUntil) || 0 : 0;
+    const operatorSuppressed = Boolean(state.acknowledgedAt) || snoozedUntilMs > Date.now();
+    const shouldSendBase = !operatorSuppressed && (!sentMs || (Date.now() - sentMs) >= (cooldownMinutes * 60 * 1000));
+    const shouldSendEscalation = !operatorSuppressed && escalated && (!escalationSentMs || (Date.now() - escalationSentMs) >= ((config.alerting?.escalationCooldownMinutes || 120) * 60 * 1000));
     if (shouldSendBase || shouldSendEscalation) {
       const routes = shouldSendEscalation ? contract.escalationRoute : contract.defaultRoute;
       for (const route of routes) await dispatchOperationalAlert(policyKey, policy, route, state.occurrenceCount, shouldSendEscalation);
@@ -4002,7 +4103,7 @@ async function processOperationalAlerts(snapshot = null) {
     }
     nextState.policies[policyKey] = state;
   }
-  memory.setSignalState(OPERATIONAL_ALERTS_STATE_KEY, nextState);
+  saveOperationalAlertsState(nextState);
   return summarizeOperationalAlertState(snapshot);
 }
 
@@ -4904,7 +5005,7 @@ app.get('/api/review-workflow/audit', requireDebugAccess, (req, res) => {
 app.post('/api/review-workflow/action', requireDebugAccess, (req, res) => {
   const action = String(req.body?.action || '').trim();
   const note = String(req.body?.note || '').trim();
-  const allowedActions = ['ack', 'snooze', 'suppress-source', 'quarantine-source', 'promote-shadow', 'merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'];
+  const allowedActions = ['ack', 'snooze', 'ack-noise-suppression-pressure', 'snooze-noise-suppression-pressure', 'suppress-source', 'quarantine-source', 'promote-shadow', 'merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'];
   if (!allowedActions.includes(action)) {
     return res.status(400).json({ ok: false, error: 'unsupported-review-workflow-action', allowedActions });
   }
@@ -4919,6 +5020,25 @@ app.post('/api/review-workflow/action', requireDebugAccess, (req, res) => {
         : ackReviewItem(region, reason, note || `Snoozed for ${hours}h`, { action: 'snooze', durationMs: hours * 60 * 60 * 1000 });
       const audit = recordReviewWorkflowAudit({ action, region, reason, note: note || null, status: 'applied' });
       return res.json({ ok: true, action, entry: formatReviewAckEntry(entry), summary: reviewAckStats(), audit });
+    }
+
+    if (action === 'ack-noise-suppression-pressure' || action === 'snooze-noise-suppression-pressure') {
+      const policyKey = 'noiseSuppressionPressure';
+      const hours = Math.max(1, Math.min(Number.parseInt(req.body?.hours, 10) || 24, 24 * 14));
+      const disposition = applyOperationalAlertDisposition(policyKey, action === 'ack-noise-suppression-pressure' ? 'ack' : 'snooze', {
+        note,
+        hours,
+      });
+      if (!disposition) return res.status(400).json({ ok: false, error: 'unable to apply operational-alert disposition' });
+      const audit = recordReviewWorkflowAudit({
+        action,
+        targetType: 'operational-alert',
+        policyKey,
+        note: note || null,
+        status: 'applied',
+        snoozeHours: action === 'snooze-noise-suppression-pressure' ? hours : null,
+      });
+      return res.json({ ok: true, action, policyKey, disposition, audit });
     }
 
     if (action === 'suppress-source' || action === 'quarantine-source') {

@@ -64,6 +64,9 @@ async function withBootedServer({ port, env }, fn) {
       settingsUrl: `http://127.0.0.1:${port}/api/settings`,
       adminSettingsUrl: `http://127.0.0.1:${port}/api/settings/admin`,
       llmOperationsUrl: `http://127.0.0.1:${port}/api/llm/operations`,
+      reviewWorkflowUrl: `http://127.0.0.1:${port}/api/brief/news/review`,
+      reviewWorkflowActionUrl: `http://127.0.0.1:${port}/api/review-workflow/action`,
+      reviewWorkflowAuditUrl: `http://127.0.0.1:${port}/api/review-workflow/audit`,
       pageUrl: `http://127.0.0.1:${port}/settings`,
       adminPageUrl: `http://127.0.0.1:${port}/admin/settings`,
       llmOpsPageUrl: `http://127.0.0.1:${port}/llm-ops`,
@@ -82,7 +85,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
       OLLAMA_BASE_URL: 'http://127.0.0.1:11434',
       DEBUG_ENDPOINT_EXPOSURE: 'local-only',
     },
-  }, async ({ settingsUrl, adminSettingsUrl, llmOperationsUrl, pageUrl, adminPageUrl, llmOpsPageUrl }) => {
+  }, async ({ settingsUrl, adminSettingsUrl, llmOperationsUrl, reviewWorkflowUrl, reviewWorkflowActionUrl, reviewWorkflowAuditUrl, pageUrl, adminPageUrl, llmOpsPageUrl }) => {
     const health = await waitFor(`http://127.0.0.1:${BASE_PORT}/api/health`, payload => payload?.runtimeIdentity?.pid && payload?.sweepWatchdog?.phase, 30000);
     assert.equal(typeof health.runtimeIdentity.pid, 'number');
     assert.equal(health.runtimeControl.version, 'runtime-control-v1');
@@ -131,6 +134,32 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(Array.isArray(settings.alerts.operational.defaultRoute), true);
     assert.equal(typeof settings.alerts.operational.policies.noiseSuppressionPressure.active, 'boolean');
     assert.equal(typeof settings.alerts.operational.policies.noiseSuppressionPressure.active, 'boolean');
+    const reviewWorkflow = await waitFor(reviewWorkflowUrl, payload => payload?.workflow?.noiseSuppression?.pressureAlert?.operatorDisposition, 30000);
+    assert.equal(typeof reviewWorkflow.workflow.noiseSuppression.pressureAlert.operatorDisposition.status, 'string');
+    assert.equal(Array.isArray(reviewWorkflow.workflow.noiseSuppression.pressureAlert.operatorDisposition.actions), true);
+
+    const ackAction = await fetch(reviewWorkflowActionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'ack-noise-suppression-pressure', note: 'accepted during contract test' }),
+    }).then(r => r.json().then(body => ({ status: r.status, body })));
+    assert.equal(ackAction.status, 200);
+    assert.equal(ackAction.body.ok, true);
+    assert.equal(ackAction.body.policyKey, 'noiseSuppressionPressure');
+    assert.equal(typeof ackAction.body.disposition.acknowledgedAt, 'string');
+
+    const snoozeAction = await fetch(reviewWorkflowActionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'snooze-noise-suppression-pressure', hours: 6, note: 'quiet overnight' }),
+    }).then(r => r.json().then(body => ({ status: r.status, body })));
+    assert.equal(snoozeAction.status, 200);
+    assert.equal(snoozeAction.body.ok, true);
+    assert.equal(typeof snoozeAction.body.disposition.snoozedUntil, 'string');
+
+    const audit = await waitFor(reviewWorkflowAuditUrl, payload => Array.isArray(payload?.entries), 30000);
+    assert.equal(audit.entries.some(item => item.policyKey === 'noiseSuppressionPressure' && item.targetType === 'operational-alert'), true);
+
     assert.equal(settings.persistence.capabilities.writeApi, false);
     assert.equal(settings.sourceConsole.version, 'source-console-v1');
     assert.equal(settings.sourceConsole.surface, '/source-ops');
