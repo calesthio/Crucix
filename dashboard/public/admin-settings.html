@@ -34,6 +34,8 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.5 var(--mono
       <a class="pill" href="/">Dashboard</a>
       <button class="pill" id="saveBtn" type="button" style="cursor:pointer">Save</button>
       <button class="pill" id="exportBtn" type="button" style="cursor:pointer">Export</button>
+      <button class="pill" id="restartBtn" type="button" style="cursor:pointer">Restart</button>
+      <button class="pill" id="stopBtn" type="button" style="cursor:pointer">Stop</button>
       <a class="pill" href="/api/settings/admin" target="_blank" rel="noreferrer">Raw Admin JSON</a>
     </div>
   </div>
@@ -85,6 +87,11 @@ async function exportPreferences(){
   a.download = 'crucix-operator-settings.json';
   a.click();
   URL.revokeObjectURL(url);
+}
+async function runtimeControl(action){
+  const res = await fetch('/api/runtime/control', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action }) });
+  if(!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
 }
 async function boot(){
   const status = document.getElementById('status');
@@ -147,6 +154,14 @@ async function boot(){
         row('Write API enabled', esc(String(Boolean(data.persistence?.capabilities?.writeApi)))),
         row('Requires local request', esc(String(Boolean(data.admin?.boundaries?.requiresLocalRequest)))),
       ].join('')),
+      renderCard('Runtime control', 'Process identity and bounded local actions', [
+        row('PID', esc(data.runtimeControl?.process?.pid || 'unknown')),
+        row('Port', esc(data.runtimeControl?.process?.port || 'unknown')),
+        row('Current phase', esc(data.runtimeControl?.sweep?.currentPhase || 'idle')),
+        row('Last success', esc(data.runtimeControl?.lastSuccess?.publishedAt || 'none')),
+        row('Last recovery phase', esc(data.runtimeControl?.sweep?.lastRecoveryPhase || 'none')),
+        row('Allowed actions', esc((data.runtimeControl?.controls?.allowedActions || []).join(', '))),
+      ].join('')),
       renderCard('Operator notes', 'Boundaries and honesty', `<pre>${esc((data.notes || []).join('\n- ')).replace(/^/, '- ')}</pre>`),
     ].join('');
     document.getElementById('saveBtn')?.addEventListener('click', async () => {
@@ -163,6 +178,22 @@ async function boot(){
         status.textContent = `Exported settings at ${new Date().toLocaleTimeString()}`;
       } catch (err) {
         status.textContent = `Failed to export settings: ${err.message}`;
+      }
+    });
+    document.getElementById('restartBtn')?.addEventListener('click', async () => {
+      try {
+        await runtimeControl('restart-safe');
+        status.textContent = 'Queued safe runtime restart.';
+      } catch (err) {
+        status.textContent = `Failed to queue restart: ${err.message}`;
+      }
+    });
+    document.getElementById('stopBtn')?.addEventListener('click', async () => {
+      try {
+        await runtimeControl('stop');
+        status.textContent = 'Queued local runtime stop.';
+      } catch (err) {
+        status.textContent = `Failed to queue stop: ${err.message}`;
       }
     });
   } catch (err) {

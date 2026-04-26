@@ -6,7 +6,7 @@ import express from 'express';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import config from './crucix.config.mjs';
 import { getLocale, currentLanguage, getSupportedLocales } from './lib/i18n.mjs';
 import { fullBriefing } from './apis/briefing.mjs';
@@ -28,9 +28,10 @@ const REVIEW_ACKS_PATH = join(RUNS_DIR, 'cluster-review-acks.json');
 const AGENT_ANALYSIS_VALIDATION_SCRIPT = join(ROOT, 'scripts/agent-analysis-validation-summary.mjs');
 const OPENSKY_STATE_PATH = join(ROOT, 'runs', 'cache', 'opensky-state.json');
 const OPERATOR_SETTINGS_PATH = process.env.OPERATOR_SETTINGS_PATH || join(ROOT, 'runs', 'operator-settings.json');
+const RUNTIME_CONTROL_LOG_PATH = join(ROOT, 'logs', 'runtime-control.log');
 
 // Ensure directories exist
-for (const dir of [RUNS_DIR, MEMORY_DIR, join(MEMORY_DIR, 'cold')]) {
+for (const dir of [RUNS_DIR, MEMORY_DIR, join(MEMORY_DIR, 'cold'), join(ROOT, 'logs')]) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
 
@@ -2760,13 +2761,65 @@ function buildOperatorSettingsContract(snapshot = null) {
   };
 }
 
+function buildRuntimeControlContract(snapshot = null) {
+  const watchdog = getSweepWatchdogSnapshot();
+  const cwd = typeof ROOT === 'string' ? ROOT : (typeof process?.cwd === 'function' ? process.cwd() : null);
+  const port = config?.port ?? null;
+  const startedAt = typeof startTime === 'number' ? new Date(startTime).toISOString() : null;
+  const uptimeSeconds = typeof startTime === 'number' ? Math.floor((Date.now() - startTime) / 1000) : null;
+  return {
+    version: 'runtime-control-v1',
+    process: {
+      pid: process.pid,
+      port,
+      cwd,
+      startedAt,
+      uptimeSeconds,
+    },
+    sweep: {
+      inProgress: sweepInProgress,
+      startedAt: sweepStartedAt,
+      currentPhase: watchdog.phase,
+      currentPhaseStartedAt: watchdog.phaseStartedAt,
+      lastCompletedPhase: watchdog.lastCompletedPhase,
+      lastCompletedAt: watchdog.lastCompletedAt,
+      lastFailurePhase: watchdog.lastFailurePhase,
+      lastFailureAt: watchdog.lastFailureAt,
+      lastFailureReason: watchdog.lastFailureReason,
+      lastRecoveryPhase: watchdog.lastRecoveryPhase,
+      lastRecoveryAt: watchdog.lastRecoveryAt,
+      lastRecoveryReason: watchdog.lastRecoveryReason,
+      watchdog,
+    },
+    lastSuccess: {
+      publishedAt: lastSweepTime,
+      snapshotTimestamp: snapshot?.meta?.timestamp || null,
+      sourcesOk: snapshot?.meta?.sourcesOk ?? null,
+      sourcesFailed: snapshot?.meta?.sourcesFailed ?? null,
+      ideasSource: snapshot?.ideasSource || null,
+      agentAnalysisStatus: snapshot?.agentAnalysis?.status || null,
+      agentAnalysisRefinementState: snapshot?.agentAnalysisMeta?.refinementState || null,
+    },
+    controls: {
+      endpoint: '/api/runtime/control',
+      allowedActions: ['restart-safe', 'stop'],
+      requiresLocalRequest: true,
+      bounded: true,
+      notes: [
+        'restart-safe spawns the local restart helper and lets it prove listener ownership before replacing the active process.',
+        'stop terminates the current local Crucix server process after acknowledging the request.',
+      ],
+    },
+  };
+}
+
 function buildAdminSettingsContract(snapshot = null) {
   const operator = buildOperatorSettingsContract(snapshot);
   const operatorSettings = loadOperatorSettings();
   return {
     ...operator,
     version: 'admin-settings-v1',
-    sections: [...operator.sections, 'admin'],
+    sections: [...operator.sections, 'admin', 'runtimeControl'],
     persistence: {
       ...operator.persistence,
       path: OPERATOR_SETTINGS_PATH,
@@ -2785,11 +2838,13 @@ function buildAdminSettingsContract(snapshot = null) {
       diagnosticsSurface: '/diagnostics',
       localAdminRequired: true,
     },
+    runtimeControl: buildRuntimeControlContract(snapshot),
     admin: {
       controls: {
         exportEndpoint: '/api/settings/export',
         importEndpoint: '/api/settings/import',
         writeEndpoint: '/api/settings/operator',
+        runtimeControlEndpoint: '/api/runtime/control',
       },
       boundaries: {
         requiresLocalRequest: true,
@@ -2847,6 +2902,34 @@ app.post('/api/settings/import', requireDebugAccess, (req, res) => {
   const payload = req.body?.preferences ? req.body : { preferences: req.body || {} };
   const saved = saveOperatorSettings(payload);
   res.json({ ok: true, settings: saved });
+});
+
+app.post('/api/runtime/control', requireDebugAccess, (req, res) => {
+  const action = String(req.body?.action || '').trim();
+  const runtimeControl = buildRuntimeControlContract(currentData || null);
+  if (!runtimeControl.controls.allowedActions.includes(action)) {
+    return res.status(400).json({ ok: false, error: 'Unsupported runtime control action', allowedActions: runtimeControl.controls.allowedActions });
+  }
+  if (action === 'restart-safe') {
+    res.json({ ok: true, accepted: true, action, queuedAt: new Date().toISOString(), process: runtimeControl.process });
+    setTimeout(() => {
+      try {
+        const out = spawn(process.execPath, [join(ROOT, 'scripts', 'restart-helper.mjs')], {
+          cwd: ROOT,
+          env: { ...process.env, PORT: String(config.port) },
+          detached: true,
+          stdio: ['ignore', 'ignore', 'ignore'],
+        });
+        out.unref();
+        writeFileSync(RUNTIME_CONTROL_LOG_PATH, `${new Date().toISOString()} queued restart-safe from pid=${process.pid}\n`, { flag: 'a' });
+      } catch (error) {
+        writeFileSync(RUNTIME_CONTROL_LOG_PATH, `${new Date().toISOString()} failed to queue restart-safe from pid=${process.pid}: ${error.message}\n`, { flag: 'a' });
+      }
+    }, 100);
+    return;
+  }
+  res.json({ ok: true, accepted: true, action, queuedAt: new Date().toISOString(), process: runtimeControl.process });
+  setTimeout(() => process.kill(process.pid, 'SIGTERM'), 100);
 });
 
 app.get('/api/brief/compact', async (req, res) => {
@@ -3150,6 +3233,7 @@ app.get('/api/health', (req, res) => {
       cwd: ROOT,
       startedAt: new Date(startTime).toISOString(),
     },
+    runtimeControl: buildRuntimeControlContract(currentData || null),
     uptime: Math.floor((Date.now() - startTime) / 1000),
     lastSweep: lastSweepTime,
     nextSweep: lastSweepTime
@@ -3158,6 +3242,7 @@ app.get('/api/health', (req, res) => {
     sweepInProgress,
     sweepStartedAt,
     sweepWatchdog: getSweepWatchdogSnapshot(),
+    lastSuccess: buildRuntimeControlContract(currentData || null).lastSuccess,
     sourcesOk: currentData?.meta?.sourcesOk || 0,
     sourcesFailed: currentData?.meta?.sourcesFailed || 0,
     sourceHealthSummary: currentData?.healthSummary || null,

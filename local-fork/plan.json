@@ -706,7 +706,7 @@
           {
             "id": "effort-29.3",
             "title": "Expose runtime process controls and last-success state so operators can see current sweep stage, last good refresh, active PID identity, and bounded restart or stop actions",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-29.4",

@@ -79,8 +79,11 @@ test('booted operator and admin settings surfaces stay role-separated with local
   }, async ({ settingsUrl, adminSettingsUrl, pageUrl, adminPageUrl }) => {
     const health = await waitFor(`http://127.0.0.1:${BASE_PORT}/api/health`, payload => payload?.runtimeIdentity?.pid && payload?.sweepWatchdog?.phase, 30000);
     assert.equal(typeof health.runtimeIdentity.pid, 'number');
+    assert.equal(health.runtimeControl.version, 'runtime-control-v1');
+    assert.equal(health.runtimeControl.process.pid, health.runtimeIdentity.pid);
     assert.equal(typeof health.sweepWatchdog.phase, 'string');
     assert.equal('recoveryClassification' in health.sweepWatchdog, true);
+    assert.equal('publishedAt' in health.lastSuccess, true);
 
     const settings = await waitFor(settingsUrl, payload => payload?.version === 'operator-settings-v1', 30000);
     assert.deepEqual(settings.sections, ['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']);
@@ -109,6 +112,18 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(admin.persistence.capabilities.writeApi, true);
     assert.equal(admin.access.role, 'admin');
     assert.equal(admin.admin.boundaries.requiresLocalRequest, true);
+    assert.equal(admin.runtimeControl.version, 'runtime-control-v1');
+    assert.equal(Array.isArray(admin.runtimeControl.controls.allowedActions), true);
+    assert.equal(admin.runtimeControl.controls.allowedActions.includes('restart-safe'), true);
+    assert.equal(admin.runtimeControl.controls.allowedActions.includes('stop'), true);
+
+    const badControl = await fetch(`http://127.0.0.1:${BASE_PORT}/api/runtime/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'explode' }),
+    }).then(r => r.json().then(body => ({ status: r.status, body })));
+    assert.equal(badControl.status, 400);
+    assert.equal(badControl.body.ok, false);
 
     const page = await fetch(pageUrl).then(r => r.text());
     assert.match(page, /read-only operator view/i);
@@ -124,5 +139,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.match(adminPage, /Diagnostics/i);
     assert.match(adminPage, /id="saveBtn"/i);
     assert.match(adminPage, /id="exportBtn"/i);
+    assert.match(adminPage, /id="restartBtn"/i);
+    assert.match(adminPage, /id="stopBtn"/i);
   });
 });
