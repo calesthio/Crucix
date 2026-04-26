@@ -21,3 +21,5 @@ Recent promotions:
 - Provider-specific cheap readiness checks and richer failure classification for LLM probes was promoted into `local-fork/plan.json` as Epic 31, effort 31.7 on 2026-04-26.
 
 New items can be added here when they do not yet belong in the active roadmap.
+
+- Add end-to-end regression coverage for `POST /api/review-workflow/action` and `GET /api/review-workflow/audit`, including action-specific payload validation and audit-entry assertions. Added 2026-04-26 during cycle 111 after the initial workflow surface shipped with only queue-contract coverage.
