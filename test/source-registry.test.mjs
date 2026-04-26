@@ -24,6 +24,10 @@ function validateRegistryShape(registry) {
     assert.ok(sourceItemSchema.properties.lifecycle.enum.includes(source.lifecycle));
     assert.ok(sourceItemSchema.properties.operatorRole.enum.includes(source.operatorRole));
     assert.equal(typeof source.enabledByDefault, 'boolean');
+    assert.ok(source.runtimeBucket);
+    assert.ok(sourceItemSchema.properties.runtimeBucket.properties.kind.enum.includes(source.runtimeBucket.kind));
+    assert.ok(Array.isArray(source.runtimeBucket.attributionAliases));
+    assert.ok(source.runtimeBucket.attributionAliases.length >= 1);
     assert.ok(source.review);
     assert.ok(source.review.status);
     assert.ok(source.review.provenance);
@@ -54,4 +58,17 @@ test('canonical source registry maps current source policy entries to real sourc
     const filename = source.module.split('/').pop();
     assert.ok(apiSourceFiles.has(filename), `missing source module for ${source.name}: ${filename}`);
   }
+});
+
+
+test('canonical source registry exposes explicit runtime-bucket metadata for expected multi-publisher aggregators', () => {
+  const registry = buildCanonicalSourceRegistry();
+  const gdelt = registry.sources.find(source => source.name === 'GDELT');
+  const opensky = registry.sources.find(source => source.name === 'OpenSky');
+  assert.ok(gdelt);
+  assert.equal(gdelt.runtimeBucket.kind, 'expected-multi-publisher');
+  assert.deepEqual(gdelt.runtimeBucket.attributionAliases, ['GDELT', 'RSS', 'news']);
+  assert.match(gdelt.runtimeBucket.rationale, /aggregates many upstream publishers/i);
+  assert.ok(opensky);
+  assert.equal(opensky.runtimeBucket.kind, 'single-publisher');
 });

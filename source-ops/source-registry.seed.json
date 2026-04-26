@@ -18,6 +18,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "ACLED",
+          "conflict"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -36,6 +44,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "ADS-B",
+          "air"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -54,6 +70,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "BLS",
+          "macro"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -72,6 +96,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Bluesky",
+          "social"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -90,6 +122,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "CISA-KEV",
+          "cyber"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -108,6 +148,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Cloudflare-Radar",
+          "internet"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -126,6 +174,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Comtrade",
+          "trade"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -144,6 +200,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "EIA",
+          "energy"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -162,6 +226,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "EPA",
+          "environment"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -180,6 +252,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "FIRMS",
+          "thermal"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -198,6 +278,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "FRED",
+          "macro"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -216,6 +304,15 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "expected-multi-publisher",
+        "attributionAliases": [
+          "GDELT",
+          "RSS",
+          "news"
+        ],
+        "rationale": "Aggregates many upstream publishers into one runtime attribution bucket by design."
       }
     },
     {
@@ -234,6 +331,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "GSCPI",
+          "macro"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -252,6 +357,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "KiwiSDR",
+          "sdr"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -270,6 +383,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Maritime",
+          "maritime"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -288,6 +409,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "NOAA",
+          "weather"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -306,6 +435,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "OFAC",
+          "sanctions"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -324,6 +461,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "OpenSanctions",
+          "sanctions"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -342,6 +487,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "OpenSky",
+          "air"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -360,6 +513,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Patents",
+          "technology"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -378,6 +539,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Reddit",
+          "social"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -396,6 +565,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "ReliefWeb",
+          "humanitarian"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -414,6 +591,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Safecast",
+          "radiation"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -432,6 +617,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Space",
+          "space"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -450,6 +643,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Telegram",
+          "social"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -468,6 +669,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Treasury",
+          "macro"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -486,6 +695,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "USAspending",
+          "procurement"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -504,6 +721,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "WHO",
+          "health"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -522,6 +747,14 @@
         "provenance": "DEFAULT_SOURCE_POLICY",
         "lastReviewedAt": null,
         "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "YFinance",
+          "markets"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     },
     {
@@ -548,8 +781,20 @@
         "overlapRef": "source-ops/results/overlap/example-overlap-maritime-001.json",
         "lastObservedAt": null,
         "promotionReadiness": "shadow-ready",
-        "eligibleNextStates": ["approved", "rejected", "deprecated"],
+        "eligibleNextStates": [
+          "approved",
+          "rejected",
+          "deprecated"
+        ],
         "notes": "Shadow candidate is visible only through source-ops runtime surfaces and remains excluded from production source policy."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Candidate Maritime Example",
+          "maritime"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
       }
     }
   ]

@@ -21,6 +21,7 @@ test('source ops surface summarizes contract, inventory, and needs from workspac
   assert.equal(surface.inventory.byLifecycle.shadow, 1);
   assert.ok(surface.inventory.byCategory.social >= 1);
   assert.ok(surface.inventory.byOperatorRole.anchor >= 1);
+  assert.equal(surface.inventory.items.find(item => item.name === 'GDELT')?.runtimeBucket?.kind, 'expected-multi-publisher');
   assert.equal(surface.fusionRoles.total, 30);
   assert.ok(surface.fusionRoles.byRole.anchor >= 1);
   assert.ok(surface.fusionRoles.byRole.exploratory >= 1);
@@ -256,7 +257,9 @@ test('source ops surface attaches live source-health state when snapshot health 
   assert.equal(surface.performance.workflow.attributionDiagnostics.summary.ambiguousMappingCount >= 1, true);
   assert.equal(surface.performance.workflow.attributionDiagnostics.summary.doubleCountRiskCount >= 1, true);
   assert.ok(surface.performance.workflow.attributionDiagnostics.aliasCollisions.some(item => item.runtimeSource === 'Operator Feed'));
-  assert.ok(surface.performance.workflow.attributionDiagnostics.expectedMultiPublisherBuckets.some(item => item.runtimeSource === 'GDELT'));
+  const gdeltBucket = surface.performance.workflow.attributionDiagnostics.expectedMultiPublisherBuckets.find(item => item.runtimeSource === 'GDELT');
+  assert.ok(gdeltBucket);
+  assert.match(gdeltBucket.reason, /source registry|aggregates many upstream publishers/i);
   assert.ok(surface.performance.workflow.attributionDiagnostics.ambiguousMappings.some(item => item.sourceName === 'Operator Feed'));
   const iranRisk = surface.performance.workflow.attributionDiagnostics.doubleCountRisks.find(item => item.clusterId === 'iran::cluster-a');
   assert.ok(iranRisk);

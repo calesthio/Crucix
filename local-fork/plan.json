@@ -524,7 +524,7 @@
       {
         "id": "epic-23",
         "title": "Agent-managed source intelligence foundation",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-23.1",
@@ -544,7 +544,7 @@
           {
             "id": "effort-23.4",
             "title": "Add explicit source-registry metadata for expected multi-publisher runtime buckets so attribution diagnostics can classify aggregators like GDELT from data contract rather than a hard-coded heuristic list",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -977,8 +977,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 116,
+    "sequence": 117,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-26-cycle-116"
+    "lastCompletedCycleId": "2026-04-26-cycle-117"
   }
 }

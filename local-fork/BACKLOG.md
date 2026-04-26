@@ -27,3 +27,5 @@ Recent promotions:
 - Source-registry metadata for expected multi-publisher runtime buckets was promoted into `local-fork/plan.json` as Epic 23, effort 23.4 on 2026-04-26.
 
 New items can be added here when they do not yet belong in the active roadmap.
+
+- Surface source-registry runtime-bucket metadata and registry-vs-observed attribution drift in the source-ops console, so operators can review when a source declared single-publisher starts behaving like an aggregator or when new aggregator aliases appear that should be added to the contract.
