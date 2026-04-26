@@ -760,7 +760,7 @@
           {
             "id": "effort-31.3",
             "title": "Add agent-analysis tuning controls for tipping-point thresholds, publish policy, deterministic fallback mode, and horizon behavior so output can be tuned without code edits",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-31.4",
@@ -912,8 +912,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 104,
+    "sequence": 105,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-26-cycle-104"
+    "lastCompletedCycleId": "2026-04-26-cycle-105"
   }
 }

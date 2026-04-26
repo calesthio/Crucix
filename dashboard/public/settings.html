@@ -100,6 +100,11 @@ async function boot(){
         row('Confidence', esc(data.agentAnalysis?.current?.confidenceLabel || 'n/a')),
         row('Source', esc(data.agentAnalysis?.current?.source || 'n/a')),
         row('Refinement', esc(data.agentAnalysis?.current?.refinementState || 'n/a')),
+        row('Publish policy', esc(data.agentAnalysis?.controls?.publishMode || 'strict')),
+        row('Fallback mode', esc(data.agentAnalysis?.controls?.deterministicFallbackMode || 'always')),
+        row('Horizon behavior', esc(data.agentAnalysis?.controls?.horizonBehavior || 'balanced')),
+        row('Tipping threshold', esc(data.agentAnalysis?.controls?.tippingPointMinProbability || 'HIGH')),
+        row('Max tipping points', esc(data.agentAnalysis?.controls?.maxPublishedTippingPoints || 5)),
         row('Detail level', esc(data.agentAnalysis?.controls?.detailLevel || 'standard')),
       ].join('')),
       renderCard('Runtime', 'Cadence and sweep state', [

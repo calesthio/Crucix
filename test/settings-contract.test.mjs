@@ -39,7 +39,14 @@ const context = {
       layout: { visualsMode: 'full', mapMode: 'auto', displayMode: 'desktop', defaultRegion: 'world', activeLayer: null, workspacePreset: 'diagnostics', panels: { reviewQueue: { collapsed: false, pinned: true, priority: 10, size: 'wide' } } },
       sources: { enabledCategories: ['news'], enabledSourceIds: ['gdelt-global'], suppressedSourceIds: [], quarantinedSourceIds: [] },
       llm: { newsModeDefault: 'auto' },
-      agentAnalysis: { detailLevel: 'standard' },
+      agentAnalysis: {
+        detailLevel: 'standard',
+        tippingPointMinProbability: 'MEDIUM',
+        maxPublishedTippingPoints: 3,
+        publishPolicy: 'balanced',
+        deterministicFallbackMode: 'llm-unavailable-only',
+        horizonBehavior: 'extended',
+      },
     },
   }),
   buildNewsClusterSummary: snapshot => ({ sourceReasoning: snapshot?.newsSourceReasoning || null }),
@@ -130,6 +137,13 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.llm.requestedModeOptions.includes('force'), true);
   assert.equal(contract.agentAnalysis.current.source, 'llm');
   assert.equal(contract.agentAnalysis.current.tippingPointCount, 2);
+  assert.equal(contract.agentAnalysis.controls.publishMode, 'balanced');
+  assert.equal(contract.agentAnalysis.controls.deterministicFallbackMode, 'llm-unavailable-only');
+  assert.equal(contract.agentAnalysis.controls.horizonBehavior, 'extended');
+  assert.equal(contract.agentAnalysis.controls.tippingPointMinProbability, 'MEDIUM');
+  assert.equal(contract.agentAnalysis.controls.maxPublishedTippingPoints, 3);
+  assert.equal(Array.isArray(contract.agentAnalysis.controls.availablePublishPolicies), true);
+  assert.equal(Array.isArray(contract.agentAnalysis.controls.availableDeterministicFallbackModes), true);
   assert.equal(contract.runtime.refreshIntervalMinutes, 15);
   assert.equal(contract.runtime.watchdog.timeoutMinutes, 45);
   assert.equal(contract.debug.endpointExposure, 'local-only');

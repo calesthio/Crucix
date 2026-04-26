@@ -168,6 +168,11 @@ function operatorSettingsDefaults() {
       },
       agentAnalysis: {
         detailLevel: 'standard',
+        tippingPointMinProbability: 'HIGH',
+        maxPublishedTippingPoints: 5,
+        publishPolicy: 'strict',
+        deterministicFallbackMode: 'always',
+        horizonBehavior: 'balanced',
       },
     },
   };
@@ -186,6 +191,10 @@ function normalizeOperatorSettings(input = {}) {
   const allowedVisualsModes = ['full', 'lite'];
   const allowedLlmModes = ['auto', 'off', 'force'];
   const allowedAnalysisDetails = ['standard', 'compact', 'expanded'];
+  const allowedTippingProbabilities = ['HIGH', 'MEDIUM', 'LOW'];
+  const allowedPublishPolicies = ['strict', 'balanced', 'exploratory'];
+  const allowedFallbackModes = ['always', 'llm-unavailable-only', 'disabled'];
+  const allowedHorizonBehaviors = ['short-only', 'balanced', 'extended'];
   const allowedPanelSizes = ['compact', 'normal', 'wide'];
   const allowedWorkspacePresets = ['operator', 'diagnostics', 'source-ops', 'executive-briefing'];
   return {
@@ -217,6 +226,11 @@ function normalizeOperatorSettings(input = {}) {
       },
       agentAnalysis: {
         detailLevel: allowedAnalysisDetails.includes(agentAnalysis.detailLevel) ? agentAnalysis.detailLevel : defaults.preferences.agentAnalysis.detailLevel,
+        tippingPointMinProbability: allowedTippingProbabilities.includes(agentAnalysis.tippingPointMinProbability) ? agentAnalysis.tippingPointMinProbability : defaults.preferences.agentAnalysis.tippingPointMinProbability,
+        maxPublishedTippingPoints: Math.max(1, Math.min(8, Number.isFinite(Number(agentAnalysis.maxPublishedTippingPoints)) ? Number(agentAnalysis.maxPublishedTippingPoints) : defaults.preferences.agentAnalysis.maxPublishedTippingPoints)),
+        publishPolicy: allowedPublishPolicies.includes(agentAnalysis.publishPolicy) ? agentAnalysis.publishPolicy : defaults.preferences.agentAnalysis.publishPolicy,
+        deterministicFallbackMode: allowedFallbackModes.includes(agentAnalysis.deterministicFallbackMode) ? agentAnalysis.deterministicFallbackMode : defaults.preferences.agentAnalysis.deterministicFallbackMode,
+        horizonBehavior: allowedHorizonBehaviors.includes(agentAnalysis.horizonBehavior) ? agentAnalysis.horizonBehavior : defaults.preferences.agentAnalysis.horizonBehavior,
       },
     },
   };
@@ -1682,7 +1696,66 @@ function confidenceRank(value = 'low') {
   return value === 'high' ? 3 : value === 'medium' ? 2 : 1;
 }
 
-function dedupePublishedOutlook(analysis = {}) {
+function tippingProbabilityRank(value = 'LOW') {
+  return value === 'HIGH' ? 3 : value === 'MEDIUM' ? 2 : 1;
+}
+
+function getAgentAnalysisTuning() {
+  const operatorSettings = loadOperatorSettings();
+  return operatorSettings.preferences.agentAnalysis || operatorSettingsDefaults().preferences.agentAnalysis;
+}
+
+function buildFallbackSuppressedAgentAnalysis(snapshot = {}, tuning = getAgentAnalysisTuning()) {
+  const trend = snapshot.trendSummary || memory.getTrendSummary();
+  const windows = Array.isArray(trend?.windows) ? trend.windows : [];
+  const configured = Boolean(llmProvider?.isConfigured || config.llm?.provider);
+  return normalizeAgentAnalysis({
+    status: configured ? 'degraded' : 'llm-unavailable',
+    generatedAt: new Date().toISOString(),
+    freshness: {
+      generatedAt: new Date().toISOString(),
+      lastSweep: snapshot.meta?.timestamp || lastSweepTime || null,
+      sweepInProgress,
+      trendUpdatedAt: trend?.generatedAt || null,
+    },
+    confidenceLabel: 'low',
+    horizons: windows.slice(0, 3).map((window, idx) => ({
+      id: idx === 0 ? 'short' : idx === 1 ? 'medium' : 'extended',
+      label: idx === 0 ? `Next ${window.hours}h` : idx === 1 ? `Next ${window.hours}h` : `Next ${Math.round(window.hours / 24)}d`,
+      windowHours: window.hours,
+      status: window.status || 'empty',
+      summary: 'Published analysis withheld by deterministic fallback policy until an LLM result is available.',
+    })),
+    risks: [{
+      title: 'Fallback policy withholding analysis',
+      severity: 'medium',
+      confidence: 'high',
+      summary: tuning.deterministicFallbackMode === 'disabled'
+        ? 'Deterministic fallback is disabled, so no draft analysis is published until LLM output is available.'
+        : 'Deterministic fallback is limited to LLM-unavailable states, so no draft analysis is published while LLM refinement is expected.',
+      evidenceRefs: [{ type: 'source-health', id: 'agent-analysis-policy', label: 'Agent analysis tuning policy' }],
+    }],
+    caveats: [{
+      text: tuning.deterministicFallbackMode === 'disabled'
+        ? 'Deterministic fallback is disabled by operator policy.'
+        : 'Deterministic fallback is restricted to true LLM-unavailable conditions by operator policy.',
+      level: 'warning',
+    }],
+    trendWindowSummary: {
+      updatedAt: trend?.generatedAt || new Date().toISOString(),
+      availableWindows: windows.map(window => window.hours),
+      primaryWindowHours: windows[0]?.hours || 24,
+      primaryStatus: windows[0]?.status || 'empty',
+    },
+    iMessageSummary: [
+      'Status: analysis withheld by policy.',
+      'Reason: deterministic fallback is not publishing a draft right now.',
+      'Wait for LLM completion or relax the admin tuning policy.',
+    ],
+  });
+}
+
+function dedupePublishedOutlook(analysis = {}, tuning = getAgentAnalysisTuning()) {
   const normalized = normalizeAgentAnalysis(analysis);
   const horizonOrder = new Map((normalized.horizons || []).map((item, index) => [item.id, index]));
   const selected = new Map();
@@ -1705,22 +1778,38 @@ function dedupePublishedOutlook(analysis = {}) {
     }
   }
 
+  const minConfidenceRank = tuning.publishPolicy === 'strict' ? 2 : tuning.publishPolicy === 'balanced' ? 1 : 1;
+  const allowedHorizonIds = tuning.horizonBehavior === 'short-only'
+    ? new Set(['short'])
+    : tuning.horizonBehavior === 'extended'
+      ? null
+      : null;
+  const maxItems = tuning.horizonBehavior === 'short-only' ? 1 : tuning.horizonBehavior === 'extended' ? 4 : 3;
   return Array.from(selected.values())
+    .filter(item => confidenceRank(item.confidence) >= minConfidenceRank)
+    .filter(item => !allowedHorizonIds || allowedHorizonIds.has(item.horizonId))
     .sort((a, b) => {
       const aOrder = horizonOrder.has(a.horizonId) ? horizonOrder.get(a.horizonId) : Number.MAX_SAFE_INTEGER;
       const bOrder = horizonOrder.has(b.horizonId) ? horizonOrder.get(b.horizonId) : Number.MAX_SAFE_INTEGER;
       if (aOrder !== bOrder) return aOrder - bOrder;
       return confidenceRank(b.confidence) - confidenceRank(a.confidence);
     })
-    .slice(0, 4);
+    .slice(0, maxItems);
 }
 
-function buildPublishedAgentAnalysis(analysis = {}) {
+function buildPublishedAgentAnalysis(analysis = {}, tuning = getAgentAnalysisTuning()) {
   const normalized = reconcileTippingPointLifecycle(analysis);
+  const minProbabilityRank = tippingProbabilityRank(tuning.tippingPointMinProbability || 'HIGH');
+  const allowDegradedTippingPoints = tuning.publishPolicy !== 'strict';
+  const publishedTippingPoints = normalized.tippingPoints
+    .filter(item => item.status === 'active')
+    .filter(item => tippingProbabilityRank(item.probability) >= minProbabilityRank)
+    .filter(item => allowDegradedTippingPoints || normalized.status === 'ready' || normalized.status === 'thin-history')
+    .slice(0, tuning.maxPublishedTippingPoints || 5);
   return {
     ...normalized,
-    outlook: dedupePublishedOutlook(normalized),
-    tippingPoints: normalized.tippingPoints.filter(item => item.status === 'active' && item.probability === 'HIGH').slice(0, 5),
+    outlook: dedupePublishedOutlook(normalized, tuning),
+    tippingPoints: publishedTippingPoints,
   };
 }
 
@@ -1810,8 +1899,15 @@ ${JSON.stringify(fallback, null, 2)}`;
 
 function buildAgentAnalysis(snapshot = {}, candidate = null, options = {}) {
   const published = options.published !== false;
-  const normalized = normalizeAgentAnalysis(candidate || buildDeterministicAgentAnalysis(snapshot));
-  return published ? buildPublishedAgentAnalysis(normalized) : normalized;
+  const tuning = getAgentAnalysisTuning();
+  const hasCandidate = Boolean(candidate);
+  const fallbackSuppressed = !hasCandidate && (
+    tuning.deterministicFallbackMode === 'disabled' ||
+    (tuning.deterministicFallbackMode === 'llm-unavailable-only' && Boolean(config.llm?.provider || llmProvider?.isConfigured))
+  );
+  const base = fallbackSuppressed ? buildFallbackSuppressedAgentAnalysis(snapshot, tuning) : (candidate || buildDeterministicAgentAnalysis(snapshot));
+  const normalized = normalizeAgentAnalysis(base);
+  return published ? buildPublishedAgentAnalysis(normalized, tuning) : normalized;
 }
 
 function buildAgentAnalysisSummary(snapshot = {}) {
@@ -2912,11 +3008,17 @@ function buildOperatorSettingsContract(snapshot = null) {
         tippingPointCount: Array.isArray(activeSnapshot.agentAnalysis.tippingPoints) ? activeSnapshot.agentAnalysis.tippingPoints.length : 0,
       } : null,
       controls: {
-        publishMode: 'deterministic-with-llm-refinement-when-configured',
-        deterministicFallbackAlwaysAvailable: true,
+        publishMode: operatorSettings.preferences.agentAnalysis.publishPolicy,
+        deterministicFallbackMode: operatorSettings.preferences.agentAnalysis.deterministicFallbackMode,
+        deterministicFallbackAlwaysAvailable: operatorSettings.preferences.agentAnalysis.deterministicFallbackMode === 'always',
         detailLevel: operatorSettings.preferences.agentAnalysis.detailLevel,
-        horizonTuning: 'planned',
-        tippingPointThresholdTuning: 'planned',
+        horizonBehavior: operatorSettings.preferences.agentAnalysis.horizonBehavior,
+        tippingPointMinProbability: operatorSettings.preferences.agentAnalysis.tippingPointMinProbability,
+        maxPublishedTippingPoints: operatorSettings.preferences.agentAnalysis.maxPublishedTippingPoints,
+        availablePublishPolicies: ['strict', 'balanced', 'exploratory'],
+        availableDeterministicFallbackModes: ['always', 'llm-unavailable-only', 'disabled'],
+        availableHorizonBehaviors: ['short-only', 'balanced', 'extended'],
+        availableTippingPointProbabilities: ['HIGH', 'MEDIUM', 'LOW'],
       },
     },
     runtime: {
@@ -2970,7 +3072,7 @@ function buildOperatorSettingsContract(snapshot = null) {
       'This surface centralizes current operator-visible settings and runtime posture.',
       'Operator settings is intentionally a read-only operator surface; diagnostics live under /diagnostics and local-only admin controls live under /admin/settings so runtime review and sensitive writes are separated from normal viewing.',
       'Runtime configuration is exposed as a versioned contract with defaults, effective values, validation, and drift summary.',
-      'Operator preference persistence currently applies layout visuals, map mode, region, and active layer directly, while LLM and agent-analysis preferences are stored safely for later deeper runtime enforcement.',
+      'Operator preference persistence applies layout posture, source selection, default LLM mode, and agent-analysis tuning controls directly through the runtime contract.',
       'Source lifecycle actions expose policy blockers, recommended next states, and human-approval boundaries before any production-affecting mutation is allowed.',
     ],
   };

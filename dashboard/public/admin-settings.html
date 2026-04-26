@@ -71,6 +71,11 @@ async function savePreferences(){
       },
       agentAnalysis: {
         detailLevel: document.getElementById('analysisDetailLevel')?.value || 'standard',
+        publishPolicy: document.getElementById('analysisPublishPolicy')?.value || 'strict',
+        deterministicFallbackMode: document.getElementById('analysisFallbackMode')?.value || 'always',
+        horizonBehavior: document.getElementById('analysisHorizonBehavior')?.value || 'balanced',
+        tippingPointMinProbability: document.getElementById('analysisTippingMinProbability')?.value || 'HIGH',
+        maxPublishedTippingPoints: Number(document.getElementById('analysisMaxTippingPoints')?.value || 5),
       },
     },
   };
@@ -146,7 +151,11 @@ async function boot(){
         row('Confidence', esc(data.agentAnalysis?.current?.confidenceLabel || 'n/a')),
         row('Source', esc(data.agentAnalysis?.current?.source || 'n/a')),
         row('Refinement', esc(data.agentAnalysis?.current?.refinementState || 'n/a')),
-        row('Publish mode', esc(data.agentAnalysis?.controls?.publishMode || 'unknown')),
+        selectRow('Publish policy', 'analysisPublishPolicy', data.agentAnalysis?.controls?.publishMode || 'strict', [{value:'strict',label:'STRICT'},{value:'balanced',label:'BALANCED'},{value:'exploratory',label:'EXPLORATORY'}]),
+        selectRow('Fallback mode', 'analysisFallbackMode', data.agentAnalysis?.controls?.deterministicFallbackMode || 'always', [{value:'always',label:'ALWAYS'},{value:'llm-unavailable-only',label:'LLM UNAVAILABLE ONLY'},{value:'disabled',label:'DISABLED'}]),
+        selectRow('Horizon behavior', 'analysisHorizonBehavior', data.agentAnalysis?.controls?.horizonBehavior || 'balanced', [{value:'short-only',label:'SHORT ONLY'},{value:'balanced',label:'BALANCED'},{value:'extended',label:'EXTENDED'}]),
+        selectRow('Tipping min probability', 'analysisTippingMinProbability', data.agentAnalysis?.controls?.tippingPointMinProbability || 'HIGH', [{value:'HIGH',label:'HIGH'},{value:'MEDIUM',label:'MEDIUM'},{value:'LOW',label:'LOW'}]),
+        `<div class="row"><label class="key" for="analysisMaxTippingPoints">Max published tipping points</label><div class="val"><input id="analysisMaxTippingPoints" type="number" min="1" max="8" value="${esc(data.agentAnalysis?.controls?.maxPublishedTippingPoints || 5)}" style="width:72px"></div></div>`,
         selectRow('Detail level', 'analysisDetailLevel', data.agentAnalysis?.controls?.detailLevel || 'standard', [{value:'standard',label:'STANDARD'},{value:'compact',label:'COMPACT'},{value:'expanded',label:'EXPANDED'}]),
       ].join('')),
       renderCard('Admin controls', 'Persistence and boundaries', [

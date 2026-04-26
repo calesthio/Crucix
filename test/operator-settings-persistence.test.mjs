@@ -74,7 +74,14 @@ test('operator settings persist, export, and influence runtime bootstrap state',
           layout: { visualsMode: 'lite', mapMode: 'flat', displayMode: 'wallboard', defaultRegion: 'asiaPacific', activeLayer: 'news', workspacePreset: 'source-ops', panels: { reviewQueue: { collapsed: false, pinned: true, priority: 5, size: 'wide' }, tradeIdeas: { collapsed: true, pinned: false, priority: 40, size: 'compact' } } },
           sources: { enabledCategories: ['news', 'air'], enabledSourceIds: ['gdelt-global', 'opensky-network'] },
           llm: { newsModeDefault: 'force' },
-          agentAnalysis: { detailLevel: 'expanded' },
+          agentAnalysis: {
+            detailLevel: 'expanded',
+            publishPolicy: 'exploratory',
+            deterministicFallbackMode: 'disabled',
+            horizonBehavior: 'short-only',
+            tippingPointMinProbability: 'LOW',
+            maxPublishedTippingPoints: 2,
+          },
         },
       }),
     });
@@ -82,6 +89,11 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(updated.settings.preferences.layout.visualsMode, 'lite');
     assert.equal(updated.settings.preferences.llm.newsModeDefault, 'force');
     assert.equal(updated.settings.preferences.agentAnalysis.detailLevel, 'expanded');
+    assert.equal(updated.settings.preferences.agentAnalysis.publishPolicy, 'exploratory');
+    assert.equal(updated.settings.preferences.agentAnalysis.deterministicFallbackMode, 'disabled');
+    assert.equal(updated.settings.preferences.agentAnalysis.horizonBehavior, 'short-only');
+    assert.equal(updated.settings.preferences.agentAnalysis.tippingPointMinProbability, 'LOW');
+    assert.equal(updated.settings.preferences.agentAnalysis.maxPublishedTippingPoints, 2);
 
     const settings = await waitFor(settingsUrl, payload => payload?.layout?.controls?.visualsMode === 'lite', 30000);
     assert.equal(settings.layout.controls.mapMode, 'flat');
@@ -97,6 +109,11 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.deepEqual(settings.sources.selection.enabledSourceIds, ['gdelt-global', 'opensky-network']);
     assert.equal(settings.llm.defaultMode, 'force');
     assert.equal(settings.agentAnalysis.controls.detailLevel, 'expanded');
+    assert.equal(settings.agentAnalysis.controls.publishMode, 'exploratory');
+    assert.equal(settings.agentAnalysis.controls.deterministicFallbackMode, 'disabled');
+    assert.equal(settings.agentAnalysis.controls.horizonBehavior, 'short-only');
+    assert.equal(settings.agentAnalysis.controls.tippingPointMinProbability, 'LOW');
+    assert.equal(settings.agentAnalysis.controls.maxPublishedTippingPoints, 2);
     assert.equal(settings.persistence.persistedPreferences.layout.visualsMode, 'lite');
 
     const exported = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/settings/export`);
@@ -106,6 +123,8 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(exported.preferences.layout.workspacePreset, 'source-ops');
     assert.equal(exported.preferences.layout.panels.reviewQueue.size, 'wide');
     assert.deepEqual(exported.preferences.sources.enabledCategories, ['air', 'news']);
+    assert.equal(exported.preferences.agentAnalysis.publishPolicy, 'exploratory');
+    assert.equal(exported.preferences.agentAnalysis.deterministicFallbackMode, 'disabled');
 
     const page = await fetch(`http://127.0.0.1:${BASE_PORT}/settings`).then(r => r.text());
     assert.match(page, /Diagnostics/i);
