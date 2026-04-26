@@ -3081,6 +3081,12 @@ app.get('/api/health', (req, res) => {
   const sourceOps = buildOperatorSourceOps(currentData || null);
   res.json({
     status: 'ok',
+    runtimeIdentity: {
+      pid: process.pid,
+      port: config.port,
+      cwd: ROOT,
+      startedAt: new Date(startTime).toISOString(),
+    },
     uptime: Math.floor((Date.now() - startTime) / 1000),
     lastSweep: lastSweepTime,
     nextSweep: lastSweepTime
@@ -3399,6 +3405,7 @@ async function start() {
 
   server.on('listening', async () => {
     console.log(`[Crucix] Server running on http://localhost:${port}`);
+    console.log(`[Crucix] Runtime identity: pid=${process.pid} cwd=${ROOT}`);
 
     // Auto-open browser
     // NOTE: On Windows, `start` in PowerShell is an alias for Start-Service, not cmd's start.

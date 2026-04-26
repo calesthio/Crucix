@@ -696,7 +696,7 @@
           {
             "id": "effort-29.1",
             "title": "Add a dev-safe restart helper with PID or port ownership sanity checks so local validation cycles stop binding to stale `3117` listeners and can prove which instance is live",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-29.2",
