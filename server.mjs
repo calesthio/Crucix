@@ -2503,8 +2503,9 @@ function failRuntimePhase(reason, phase = runtimeJobState.phase, nowIso = new Da
 function getSweepWatchdogSnapshot(nowMs = Date.now()) {
   const startedAtMs = sweepStartedAt ? new Date(sweepStartedAt).getTime() : null;
   const phaseStartedAtMs = runtimeJobState.phaseStartedAt ? new Date(runtimeJobState.phaseStartedAt).getTime() : startedAtMs;
-  const active = Boolean(sweepInProgress && startedAtMs);
-  const overdueMs = active ? Math.max(0, nowMs - phaseStartedAtMs - SWEEP_WATCHDOG_TIMEOUT_MS) : 0;
+  const deferredPhaseActive = runtimeJobState.phase === 'llm-analysis-refinement' || runtimeJobState.phase === 'llm-ideas-refinement';
+  const active = Boolean((sweepInProgress && startedAtMs) || (deferredPhaseActive && phaseStartedAtMs));
+  const overdueMs = active && phaseStartedAtMs ? Math.max(0, nowMs - phaseStartedAtMs - SWEEP_WATCHDOG_TIMEOUT_MS) : 0;
   const overdue = Boolean(active && overdueMs > 0);
   return {
     timeoutMs: SWEEP_WATCHDOG_TIMEOUT_MS,
@@ -2523,14 +2524,15 @@ function getSweepWatchdogSnapshot(nowMs = Date.now()) {
     lastRecoveryPhase: runtimeJobState.lastRecoveryPhase,
     lastRecoveryAt: runtimeJobState.lastRecoveryAt,
     lastRecoveryReason: runtimeJobState.lastRecoveryReason,
-    recoveryClassification: overdue ? (runtimeJobState.phase === 'llm-analysis-refinement' ? 'deferred-analysis-hang' : runtimeJobState.phase === 'synthesis' ? 'synthesis-hang' : runtimeJobState.phase === 'briefing' ? 'source-sweep-hang' : 'sweep-gate-hang') : null,
+    recoveryClassification: overdue ? (runtimeJobState.phase === 'llm-analysis-refinement' ? 'deferred-analysis-hang' : runtimeJobState.phase === 'llm-ideas-refinement' ? 'deferred-ideas-hang' : runtimeJobState.phase === 'synthesis' ? 'synthesis-hang' : runtimeJobState.phase === 'briefing' ? 'source-sweep-hang' : 'sweep-gate-hang') : null,
     lastOverdueAt: overdue ? new Date(nowMs).toISOString() : sweepWatchdogTelemetry.lastOverdueAt,
     telemetry: { ...sweepWatchdogTelemetry },
   };
 }
 
 function recoverHungSweep(reason = 'watchdog-overdue', nowMs = Date.now()) {
-  if (!sweepInProgress) return false;
+  const deferredPhaseActive = runtimeJobState.phase === 'llm-analysis-refinement' || runtimeJobState.phase === 'llm-ideas-refinement';
+  if (!sweepInProgress && !deferredPhaseActive) return false;
   const recoveredSweepStartedAt = sweepStartedAt;
   const recoveredPhase = runtimeJobState.phase || 'unknown';
   const nowIso = new Date(nowMs).toISOString();
@@ -2539,6 +2541,15 @@ function recoverHungSweep(reason = 'watchdog-overdue', nowMs = Date.now()) {
   sweepWatchdogTelemetry.lastRecoveryReason = reason;
   sweepWatchdogTelemetry.lastRecoveredSweepStartedAt = recoveredSweepStartedAt || null;
   sweepWatchdogTelemetry.lastOverdueAt = nowIso;
+  if (recoveredPhase === 'llm-ideas-refinement') {
+    completeRuntimeJob('ideas', { completedAt: nowIso, durationMs: runtimeJobTelemetry.ideas?.lastStartedAt ? Math.max(0, nowMs - new Date(runtimeJobTelemetry.ideas.lastStartedAt).getTime()) : null, outcome: 'watchdog-recovered', error: reason, timedOut: true, cancelled: true });
+  }
+  if (recoveredPhase === 'llm-analysis-refinement') {
+    completeRuntimeJob('analysis', { completedAt: nowIso, durationMs: runtimeJobTelemetry.analysis?.lastStartedAt ? Math.max(0, nowMs - new Date(runtimeJobTelemetry.analysis.lastStartedAt).getTime()) : null, outcome: 'watchdog-recovered', error: reason, timedOut: true, cancelled: true });
+  }
+  if (recoveredPhase === 'synthesis' || recoveredPhase === 'briefing') {
+    completeRuntimeJob('synthesis', { completedAt: nowIso, durationMs: sweepStartedAt ? Math.max(0, nowMs - new Date(sweepStartedAt).getTime()) : null, outcome: 'watchdog-recovered', error: reason, timedOut: true, cancelled: true });
+  }
   runtimeJobState = {
     ...runtimeJobState,
     phase: 'idle',
@@ -2557,7 +2568,7 @@ function recoverHungSweep(reason = 'watchdog-overdue', nowMs = Date.now()) {
     recoveredSweepStartedAt,
     recoveredPhase,
   });
-  console.warn(`[Crucix] Sweep watchdog recovered hung sweep gate (${reason}) phase=${recoveredPhase} started at ${recoveredSweepStartedAt || 'unknown'}`);
+  console.warn(`[Crucix] Sweep watchdog recovered hung sweep gate (${reason}) phase=${recoveredPhase} started at ${recoveredSweepStartedAt || runtimeJobState.phaseStartedAt || 'unknown'}`);
   return true;
 }
 
@@ -4122,7 +4133,7 @@ async function runSweepCycle() {
     }
 
     completeRuntimeJob('synthesis', { completedAt: new Date().toISOString(), durationMs: Date.now() - new Date(sweepStartedAt).getTime(), outcome: 'completed' });
-    completeRuntimePhase('synthesis');
+    if (runtimeJobState.phase === 'synthesis') completeRuntimePhase('synthesis');
   } catch (err) {
     console.error('[Crucix] Sweep failed:', err.message);
     completeRuntimeJob('synthesis', { completedAt: new Date().toISOString(), durationMs: sweepStartedAt ? (Date.now() - new Date(sweepStartedAt).getTime()) : null, outcome: /timeout|timed out|abort/i.test(err.message || '') ? 'timed-out' : 'failed', error: err.message || null, timedOut: /timeout|timed out|abort/i.test(err.message || '') });
@@ -4132,7 +4143,7 @@ async function runSweepCycle() {
     const activePhase = runtimeJobState.phase;
     sweepInProgress = false;
     sweepStartedAt = null;
-    if (activePhase && activePhase !== 'idle' && activePhase !== 'llm-analysis-refinement') completeRuntimePhase(activePhase);
+    if (activePhase && activePhase !== 'idle' && activePhase !== 'llm-analysis-refinement' && activePhase !== 'llm-ideas-refinement') completeRuntimePhase(activePhase);
     syncSnapshotRuntimeFreshness(currentData);
   }
 }

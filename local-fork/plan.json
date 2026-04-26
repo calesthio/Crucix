@@ -775,7 +775,7 @@
           {
             "id": "effort-31.5",
             "title": "Extend phase telemetry and recovery classification to deferred ideas enrichment so watchdog and `/api/health` can distinguish post-publish idea-generation hangs from analysis refinement hangs",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-31.6",
