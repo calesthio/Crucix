@@ -540,6 +540,11 @@
             "id": "effort-23.3",
             "title": "Expose an operator-facing source inventory and source-ops needs surface showing lifecycle state, review status, promotion readiness, and current runtime coverage gaps",
             "status": "completed"
+          },
+          {
+            "id": "effort-23.4",
+            "title": "Add explicit source-registry metadata for expected multi-publisher runtime buckets so attribution diagnostics can classify aggregators like GDELT from data contract rather than a hard-coded heuristic list",
+            "status": "pending"
           }
         ]
       },
@@ -896,6 +901,11 @@
           {
             "id": "effort-34.6",
             "title": "Add endpoint-level regression coverage for cluster-repair workflow actions and suppressed-cluster state on `/api/brief/news/review` and `/api/data`, so bounded repair recommendations and persisted decisions do not drift from the live contracts",
+            "status": "pending"
+          },
+          {
+            "id": "effort-34.7",
+            "title": "Add browser-level regression coverage for the shared operator surface shell so active-nav state, boundary copy, and admin action availability are validated after client-side render instead of only by static HTML fetches",
             "status": "pending"
           }
         ]

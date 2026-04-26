@@ -23,8 +23,7 @@ Recent promotions:
 - Endpoint-level regression coverage for cluster-repair workflow actions and suppressed-cluster state was promoted into `local-fork/plan.json` as Epic 34, effort 34.6 on 2026-04-26.
 - Attribution-diagnostics follow-on work to distinguish routine aggregator publisher mixes from true alias-collision anomalies was promoted into `local-fork/plan.json` as Epic 32, effort 32.6 on 2026-04-26.
 - Rolling noise-suppression match history and per-rule hit counters were promoted into `local-fork/plan.json` as Epic 32, effort 32.7 on 2026-04-26.
+- Browser-level regression coverage for the shared operator surface shell was promoted into `local-fork/plan.json` as Epic 34, effort 34.7 on 2026-04-26.
+- Source-registry metadata for expected multi-publisher runtime buckets was promoted into `local-fork/plan.json` as Epic 23, effort 23.4 on 2026-04-26.
 
 New items can be added here when they do not yet belong in the active roadmap.
-
-- Add browser-level regression coverage for the shared operator surface shell so active-nav state, boundary copy, and admin action availability are validated after client-side render instead of only by static HTML fetches.
-- Add explicit source-registry metadata for expected multi-publisher runtime buckets so attribution diagnostics can classify aggregators like GDELT from data contract rather than a hard-coded heuristic list.
