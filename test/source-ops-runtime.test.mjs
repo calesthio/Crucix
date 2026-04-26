@@ -28,6 +28,8 @@ test('source ops surface summarizes contract, inventory, and needs from workspac
   assert.equal(surface.performance.totalMeasuredSources, 30);
   assert.equal(surface.performance.targets.tippingPointCount, 0);
   assert.equal(surface.performance.measurementNotes.intendedValidationTargets.includes('review pressure'), true);
+  assert.equal(surface.history.version, 'source-health-history-v1');
+  assert.equal(Array.isArray(surface.history.windows), true);
   assert.equal(surface.needs.total, 2);
   assert.equal(surface.needs.highPriority, 2);
   assert.ok(surface.needs.byCategory.maritime >= 1);
@@ -191,4 +193,6 @@ test('source ops surface attaches live source-health state when snapshot health 
   assert.equal(surface.performance.withClusterAttribution >= 3, true);
   assert.equal(surface.performance.targets.reviewPressure.lowConfidenceCount, 3);
   assert.equal(surface.performance.withSignalContribution >= 3, true);
+  assert.equal(surface.history.current.failingNow, 1);
+  assert.equal(surface.history.current.failureCounts['external-limit'], 1);
 });

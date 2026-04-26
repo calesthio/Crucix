@@ -160,6 +160,8 @@ function operatorSettingsDefaults() {
       sources: {
         enabledCategories: [],
         enabledSourceIds: [],
+        suppressedSourceIds: [],
+        quarantinedSourceIds: [],
       },
       llm: {
         newsModeDefault: 'auto',
@@ -207,6 +209,8 @@ function normalizeOperatorSettings(input = {}) {
       sources: {
         enabledCategories: Array.isArray(sources.enabledCategories) ? Array.from(new Set(sources.enabledCategories.map(value => String(value).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)) : [],
         enabledSourceIds: Array.isArray(sources.enabledSourceIds) ? Array.from(new Set(sources.enabledSourceIds.map(value => String(value).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)) : [],
+        suppressedSourceIds: Array.isArray(sources.suppressedSourceIds) ? Array.from(new Set(sources.suppressedSourceIds.map(value => String(value).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)) : [],
+        quarantinedSourceIds: Array.isArray(sources.quarantinedSourceIds) ? Array.from(new Set(sources.quarantinedSourceIds.map(value => String(value).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)) : [],
       },
       llm: {
         newsModeDefault: allowedLlmModes.includes(llm.newsModeDefault) ? llm.newsModeDefault : defaults.preferences.llm.newsModeDefault,
@@ -2775,6 +2779,8 @@ function buildOperatorSettingsContract(snapshot = null) {
         persistence: 'server-file',
         enabledCategories: operatorSettings.preferences.sources.enabledCategories,
         enabledSourceIds: operatorSettings.preferences.sources.enabledSourceIds,
+        suppressedSourceIds: operatorSettings.preferences.sources.suppressedSourceIds,
+        quarantinedSourceIds: operatorSettings.preferences.sources.quarantinedSourceIds,
       },
       availableSources: sourceItems,
       health: {
@@ -2800,6 +2806,8 @@ function buildOperatorSettingsContract(snapshot = null) {
         supportsPerSourceControl: true,
         enabledCategories: operatorSettings.preferences.sources.enabledCategories,
         enabledSourceIds: operatorSettings.preferences.sources.enabledSourceIds,
+        suppressedSourceIds: operatorSettings.preferences.sources.suppressedSourceIds,
+        quarantinedSourceIds: operatorSettings.preferences.sources.quarantinedSourceIds,
       },
       lifecycleActions: {
         version: 'source-lifecycle-actions-v1',
@@ -2851,6 +2859,13 @@ function buildOperatorSettingsContract(snapshot = null) {
         },
       },
       inventory: sourceItems,
+      healthHistory: sourceOps?.history || null,
+      sourceControls: {
+        version: 'source-ops-control-v1',
+        endpoint: '/api/source-ops/control',
+        requiresLocalAdmin: true,
+        supportedActions: ['suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine'],
+      },
     },
     llm: {
       provider: config.llm.provider || null,
@@ -3085,6 +3100,42 @@ app.get('/api/settings/export', requireDebugAccess, (req, res) => {
 app.put('/api/settings/operator', requireDebugAccess, (req, res) => {
   const saved = mergeOperatorSettingsPatch(req.body || {});
   res.json({ ok: true, settings: saved });
+});
+
+app.post('/api/source-ops/control', requireDebugAccess, (req, res) => {
+  const action = String(req.body?.action || '').trim();
+  const sourceId = String(req.body?.sourceId || '').trim();
+  const allowedActions = ['suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine'];
+  if (!allowedActions.includes(action)) {
+    return res.status(400).json({ ok: false, error: 'unsupported-source-op-action', allowedActions });
+  }
+  if (!sourceId) {
+    return res.status(400).json({ ok: false, error: 'sourceId is required' });
+  }
+  const current = loadOperatorSettings();
+  const suppressed = new Set(current.preferences.sources.suppressedSourceIds || []);
+  const quarantined = new Set(current.preferences.sources.quarantinedSourceIds || []);
+  if (action === 'suppress-source') suppressed.add(sourceId);
+  if (action === 'unsuppress-source') suppressed.delete(sourceId);
+  if (action === 'quarantine-source') quarantined.add(sourceId);
+  if (action === 'clear-quarantine') quarantined.delete(sourceId);
+  const saved = mergeOperatorSettingsPatch({
+    preferences: {
+      sources: {
+        suppressedSourceIds: Array.from(suppressed).sort((a, b) => a.localeCompare(b)),
+        quarantinedSourceIds: Array.from(quarantined).sort((a, b) => a.localeCompare(b)),
+      },
+    },
+  });
+  res.json({
+    ok: true,
+    action,
+    sourceId,
+    controls: {
+      suppressedSourceIds: saved.preferences.sources.suppressedSourceIds,
+      quarantinedSourceIds: saved.preferences.sources.quarantinedSourceIds,
+    },
+  });
 });
 
 app.post('/api/settings/import', requireDebugAccess, (req, res) => {

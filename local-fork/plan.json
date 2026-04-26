@@ -733,7 +733,7 @@
           {
             "id": "effort-30.3",
             "title": "Expose source health history, freshness thresholds, failure-class trends, and one-click quarantine or suppression controls for noisy or broken sources",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-30.4",

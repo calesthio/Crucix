@@ -14,8 +14,9 @@ body{padding:18px} a{color:var(--accent2)}
 .note{padding:12px 14px;border:1px solid rgba(255,184,76,.22);background:rgba(255,184,76,.08);color:#ffe3bd;line-height:1.45}
 .controls,.summary,.table{padding:14px 16px;border:1px solid var(--border);background:var(--panel)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.stat{padding:10px 12px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02)}.label{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}.value{font-size:20px;margin-top:4px}
-.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px}select,input{width:100%;padding:8px 10px;background:#07111a;color:var(--text);border:1px solid rgba(255,255,255,.12)}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px}select,input,button{padding:8px 10px;background:#07111a;color:var(--text);border:1px solid rgba(255,255,255,.12)} input,select{width:100%}
 .tags{display:flex;flex-wrap:wrap;gap:6px}.tag{padding:4px 7px;border:1px solid rgba(100,240,200,.18);font-size:10px;color:var(--accent);background:rgba(100,240,200,.05)}
+.actions-cell{display:flex;flex-wrap:wrap;gap:6px}.mini-btn{font-size:11px;cursor:pointer}.mini-btn[disabled]{opacity:.45;cursor:not-allowed}
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px 8px;border-top:1px solid rgba(255,255,255,.06);vertical-align:top}th{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}.muted{color:var(--dim)}
 </style>
 </head>
@@ -43,6 +44,13 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <script>
 function esc(value){return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function sourceEnabled(item, selection){const cat=selection?.enabledCategories||[]; const ids=selection?.enabledSourceIds||[]; const catOk=!cat.length || cat.includes(item.category); const idOk=!ids.length || ids.includes(item.id); return catOk && idOk;}
+function sourceSuppressed(item, selection){return (selection?.suppressedSourceIds || []).includes(item.id);}
+function sourceQuarantined(item, selection){return (selection?.quarantinedSourceIds || []).includes(item.id);}
+async function postControl(action, sourceId){
+  const res = await fetch('/api/source-ops/control', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action, sourceId }) });
+  if(!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
 function render(){
   const consoleData = window.__SOURCE_CONSOLE__;
   const status = document.getElementById('status');
@@ -65,11 +73,18 @@ function render(){
   const enabledCount = items.filter(item => sourceEnabled(item, selection)).length;
   status.textContent = `Loaded ${consoleData.version} with ${items.length} visible sources. Persisted writes remain local-admin only.`;
   summary.hidden = false;
+  const history = consoleData.healthHistory || {};
   summary.innerHTML = `<div class="grid">
     <div class="stat"><div class="label">Visible sources</div><div class="value">${esc(items.length)}</div></div>
     <div class="stat"><div class="label">Visible enabled</div><div class="value">${esc(enabledCount)}</div></div>
-    <div class="stat"><div class="label">Role groups</div><div class="value">${esc((consoleData.roleGrouping?.groups || []).length)}</div></div>
+    <div class="stat"><div class="label">Quarantined</div><div class="value">${esc((consoleData.selection?.quarantinedSourceIds || []).length)}</div></div>
+    <div class="stat"><div class="label">Suppressed</div><div class="value">${esc((consoleData.selection?.suppressedSourceIds || []).length)}</div></div>
     <div class="stat"><div class="label">Selection persistence</div><div class="value">${esc(consoleData.selection?.persistence || 'unknown')}</div></div>
+    <div class="stat"><div class="label">Failing now</div><div class="value">${esc(history.current?.failingNow ?? 0)}</div></div>
+  </div>
+  <div style="margin-top:12px;font-size:13px;line-height:1.5">
+    <strong>Health windows:</strong>
+    ${(history.windows || []).map(window => `${esc(window.hours)}h failed-runs=${esc(window.failedRuns)} degraded-runs=${esc(window.degradedRuns)} max-failed=${esc(window.maxFailed ?? 'n/a')}`).join(' · ') || 'No trend history yet'}
   </div>`;
   const lifecycle = consoleData.lifecycleActions || {};
   actions.hidden = false;
@@ -88,18 +103,34 @@ function render(){
   </div>`;
   table.hidden = false;
   table.innerHTML = `<table>
-    <thead><tr><th>Enabled</th><th>Name</th><th>Category</th><th>Role</th><th>Lifecycle</th><th>Live state</th><th>Trust</th><th>ID</th></tr></thead>
+    <thead><tr><th>Enabled</th><th>Name</th><th>Category</th><th>Role</th><th>Lifecycle</th><th>Live state</th><th>Freshness</th><th>Failure class</th><th>Admin controls</th><th>ID</th></tr></thead>
     <tbody>${items.map(item => `<tr>
       <td>${sourceEnabled(item, selection) ? 'yes' : 'no'}</td>
-      <td><strong>${esc(item.name)}</strong></td>
+      <td><strong>${esc(item.name)}</strong>${sourceQuarantined(item, selection) ? '<div class="muted">quarantined</div>' : ''}${sourceSuppressed(item, selection) ? '<div class="muted">suppressed</div>' : ''}</td>
       <td>${esc(item.category)}</td>
       <td>${esc(item.fusionRole || 'unassigned')}</td>
       <td>${esc(item.lifecycle || 'unknown')}</td>
       <td>${esc(item.liveState || 'unknown')}</td>
-      <td>${esc(item.trustProfile || 'unknown')}</td>
+      <td>${esc(item.freshnessTargetMinutes ?? 'n/a')}m / age ${esc(item.liveAgeMinutes ?? 'n/a')}m</td>
+      <td>${esc(item.liveFailureClass || 'none')}</td>
+      <td><div class="actions-cell">
+        <button class="mini-btn" data-action="${sourceQuarantined(item, selection) ? 'clear-quarantine' : 'quarantine-source'}" data-source="${esc(item.id)}">${sourceQuarantined(item, selection) ? 'Clear quarantine' : 'Quarantine'}</button>
+        <button class="mini-btn" data-action="${sourceSuppressed(item, selection) ? 'unsuppress-source' : 'suppress-source'}" data-source="${esc(item.id)}">${sourceSuppressed(item, selection) ? 'Unsuppress' : 'Suppress'}</button>
+      </div></td>
       <td class="muted">${esc(item.id)}</td>
     </tr>`).join('')}</tbody>
   </table>`;
+  table.querySelectorAll('button[data-action]').forEach(btn => btn.addEventListener('click', async () => {
+    try {
+      await postControl(btn.dataset.action, btn.dataset.source);
+      const refreshed = await fetch('/api/settings').then(r => r.json());
+      window.__SOURCE_CONSOLE__ = refreshed.sourceConsole;
+      document.getElementById('status').textContent = `Updated ${btn.dataset.source} via ${btn.dataset.action}.`;
+      render();
+    } catch (err) {
+      document.getElementById('status').textContent = `Source control failed: ${err.message}`;
+    }
+  }));
 }
 async function boot(){
   const controls = document.getElementById('controls');

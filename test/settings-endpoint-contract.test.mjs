@@ -112,6 +112,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(settings.sourceConsole.lifecycleActions.version, 'source-lifecycle-actions-v1');
     assert.equal(Array.isArray(settings.sourceConsole.lifecycleActions.queue.evaluations), true);
     assert.equal(typeof settings.sourceConsole.lifecycleActions.humanApprovalBoundary.activePromotionRequiresHumanApproval, 'boolean');
+    assert.equal(settings.sourceConsole.sourceControls.endpoint, '/api/source-ops/control');
     assert.equal(settings.access.role, 'operator');
     assert.equal(settings.access.diagnosticsSurface, '/diagnostics');
     assert.equal(settings.access.sourceConsoleSurface, '/source-ops');
@@ -147,6 +148,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.match(sourceOpsPage, /source management console/i);
     assert.match(sourceOpsPage, /Blocked lifecycle actions/i);
     assert.match(sourceOpsPage, /Prune recommendation/i);
+    assert.match(sourceOpsPage, /Failing now/i);
+    assert.match(sourceOpsPage, /Quarantine/i);
 
     const diagnosticsPage = await fetch(`http://127.0.0.1:${BASE_PORT}/diagnostics`).then(r => r.text());
     assert.match(diagnosticsPage, /Runtime and review diagnostics/i);

@@ -37,12 +37,13 @@ const context = {
     updatedAt: null,
     preferences: {
       layout: { visualsMode: 'full', mapMode: 'auto', displayMode: 'desktop', defaultRegion: 'world', activeLayer: null, workspacePreset: 'diagnostics', panels: { reviewQueue: { collapsed: false, pinned: true, priority: 10, size: 'wide' } } },
-      sources: { enabledCategories: ['news'], enabledSourceIds: ['gdelt-global'] },
+      sources: { enabledCategories: ['news'], enabledSourceIds: ['gdelt-global'], suppressedSourceIds: [], quarantinedSourceIds: [] },
       llm: { newsModeDefault: 'auto' },
       agentAnalysis: { detailLevel: 'standard' },
     },
   }),
   buildOperatorSourceOps: snapshot => ({
+    history: { version: 'source-health-history-v1', windows: [] },
     inventory: {
       total: 30,
       active: 29,
@@ -136,8 +137,12 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(Array.isArray(contract.sourceConsole.lifecycleActions.humanApprovalBoundary.humanApprovalBoundaryStates), true);
   assert.equal(Array.isArray(contract.sourceConsole.lifecycleActions.queue.evaluations), true);
   assert.equal(Array.isArray(contract.sourceConsole.inventory), true);
+  assert.equal(contract.sourceConsole.sourceControls.version, 'source-ops-control-v1');
+  assert.equal(contract.sourceConsole.sourceControls.endpoint, '/api/source-ops/control');
   assert.deepEqual(contract.sources.selection.enabledCategories, ['news']);
   assert.deepEqual(contract.sources.selection.enabledSourceIds, ['gdelt-global']);
+  assert.deepEqual(contract.sources.selection.suppressedSourceIds, []);
+  assert.deepEqual(contract.sources.selection.quarantinedSourceIds, []);
   assert.equal(contract.persistence.capabilities.export, false);
   assert.equal(contract.persistence.capabilities.writeApi, false);
   assert.equal(contract.access.role, 'operator');
