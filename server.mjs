@@ -82,6 +82,11 @@ const CLUSTER_REPAIR_ARTIFACT_RETENTION_MS = Math.max(1, Number(config.review?.r
 const CLUSTER_REPAIR_ARTIFACT_MAX_ENTRIES = Math.max(1, Number(config.review?.repairArtifactMaxEntries || 50));
 const CLUSTER_REPAIR_ACTION_MAX_HISTORY = Math.max(20, Number(config.review?.clusterRepairActionMaxEntries || 200));
 const REVIEW_WORKFLOW_AUDIT_MAX_ENTRIES = Math.max(20, Number(config.review?.workflowAuditMaxEntries || 200));
+const NOISE_SUPPRESSION_HISTORY_RETENTION_MS = Math.max(1, Number(config.review?.noiseSuppressionHistoryRetentionDays || 14)) * 24 * 60 * 60 * 1000;
+const NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS = Math.max(1, Number(config.review?.noiseSuppressionHistoryHalfLifeDays || 5)) * 24 * 60 * 60 * 1000;
+const NOISE_SUPPRESSION_HISTORY_MAX_DUPLICATE_BURSTS = Math.max(20, Number(config.review?.noiseSuppressionHistoryMaxDuplicateBursts || 200));
+const NOISE_SUPPRESSION_HISTORY_MAX_LOW_VALUE_EVENTS = Math.max(20, Number(config.review?.noiseSuppressionHistoryMaxLowValueEvents || 200));
+const NOISE_SUPPRESSION_HISTORY_MAX_SOURCE_RULE_HITS = Math.max(20, Number(config.review?.noiseSuppressionHistoryMaxSourceRuleHits || 200));
 const reviewAcks = loadReviewAcks();
 const reviewWorkflowAudit = loadReviewWorkflowAudit();
 const clusterRepairActions = loadClusterRepairActions();
@@ -607,30 +612,76 @@ function recordClusterRepairDecision(entry = {}) {
 
 function noiseSuppressionHistoryDefaults() {
   return {
-    version: 'noise-suppression-history-v1',
+    version: 'noise-suppression-history-v2',
     updatedAt: null,
     lastSweepAt: null,
+    retentionMs: NOISE_SUPPRESSION_HISTORY_RETENTION_MS,
+    halfLifeMs: NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS,
     duplicateBursts: {},
     repetitiveLowValueEvents: {},
     sourceRuleHits: {},
   };
 }
 
+function decayNoiseSuppressionCount(count = 0, lastSeenAt = null, referenceAt = new Date().toISOString()) {
+  const numericCount = Math.max(0, Number(count) || 0);
+  if (!numericCount) return 0;
+  const lastSeenMs = Date.parse(lastSeenAt || '') || 0;
+  const referenceMs = Date.parse(referenceAt || '') || Date.now();
+  if (!lastSeenMs || referenceMs <= lastSeenMs) return numericCount;
+  const elapsedMs = Math.max(0, referenceMs - lastSeenMs);
+  const decayFactor = Math.pow(0.5, elapsedMs / NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS);
+  return Number((numericCount * decayFactor).toFixed(3));
+}
+
+function pruneNoiseSuppressionHistoryBucket(bucket = {}, options = {}) {
+  const recordedAt = options.recordedAt || new Date().toISOString();
+  const retentionMs = Math.max(1, Number(options.retentionMs || NOISE_SUPPRESSION_HISTORY_RETENTION_MS) || 1);
+  const maxEntries = Math.max(1, Number(options.maxEntries || Number.MAX_SAFE_INTEGER) || 1);
+  const kept = Object.entries(bucket || {})
+    .filter(([, value]) => value && typeof value === 'object')
+    .filter(([, value]) => {
+      const lastSeenMs = Date.parse(value.lastSeenAt || value.updatedAt || value.firstSeenAt || '') || 0;
+      if (!lastSeenMs) return true;
+      return ((Date.parse(recordedAt) || Date.now()) - lastSeenMs) <= retentionMs;
+    })
+    .sort((a, b) => (Date.parse(b[1].lastSeenAt || b[1].updatedAt || b[1].firstSeenAt || '') || 0) - (Date.parse(a[1].lastSeenAt || a[1].updatedAt || a[1].firstSeenAt || '') || 0))
+    .slice(0, maxEntries);
+  for (const key of Object.keys(bucket || {})) delete bucket[key];
+  for (const [key, value] of kept) bucket[key] = value;
+  return bucket;
+}
+
+function pruneNoiseSuppressionHistory(historyState = noiseSuppressionHistory, recordedAt = new Date().toISOString()) {
+  historyState.retentionMs = NOISE_SUPPRESSION_HISTORY_RETENTION_MS;
+  historyState.halfLifeMs = NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS;
+  pruneNoiseSuppressionHistoryBucket(historyState.duplicateBursts, { recordedAt, retentionMs: NOISE_SUPPRESSION_HISTORY_RETENTION_MS, maxEntries: NOISE_SUPPRESSION_HISTORY_MAX_DUPLICATE_BURSTS });
+  pruneNoiseSuppressionHistoryBucket(historyState.repetitiveLowValueEvents, { recordedAt, retentionMs: NOISE_SUPPRESSION_HISTORY_RETENTION_MS, maxEntries: NOISE_SUPPRESSION_HISTORY_MAX_LOW_VALUE_EVENTS });
+  pruneNoiseSuppressionHistoryBucket(historyState.sourceRuleHits, { recordedAt, retentionMs: NOISE_SUPPRESSION_HISTORY_RETENTION_MS, maxEntries: NOISE_SUPPRESSION_HISTORY_MAX_SOURCE_RULE_HITS });
+  return historyState;
+}
+
 function loadNoiseSuppressionHistory() {
   const loaded = loadJsonFile(NOISE_SUPPRESSION_HISTORY_PATH, noiseSuppressionHistoryDefaults());
   const base = loaded && typeof loaded === 'object' ? loaded : noiseSuppressionHistoryDefaults();
-  return {
-    version: 'noise-suppression-history-v1',
+  const normalized = {
+    version: 'noise-suppression-history-v2',
     updatedAt: base.updatedAt || null,
     lastSweepAt: base.lastSweepAt || null,
+    retentionMs: Math.max(1, Number(base.retentionMs || NOISE_SUPPRESSION_HISTORY_RETENTION_MS) || NOISE_SUPPRESSION_HISTORY_RETENTION_MS),
+    halfLifeMs: Math.max(1, Number(base.halfLifeMs || NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS) || NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS),
     duplicateBursts: base.duplicateBursts && typeof base.duplicateBursts === 'object' ? base.duplicateBursts : {},
     repetitiveLowValueEvents: base.repetitiveLowValueEvents && typeof base.repetitiveLowValueEvents === 'object' ? base.repetitiveLowValueEvents : {},
     sourceRuleHits: base.sourceRuleHits && typeof base.sourceRuleHits === 'object' ? base.sourceRuleHits : {},
   };
+  pruneNoiseSuppressionHistory(normalized, normalized.lastSweepAt || normalized.updatedAt || new Date().toISOString());
+  return normalized;
 }
 
 function saveNoiseSuppressionHistory() {
-  noiseSuppressionHistory.version = 'noise-suppression-history-v1';
+  noiseSuppressionHistory.version = 'noise-suppression-history-v2';
+  noiseSuppressionHistory.retentionMs = NOISE_SUPPRESSION_HISTORY_RETENTION_MS;
+  noiseSuppressionHistory.halfLifeMs = NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS;
   saveJsonFile(NOISE_SUPPRESSION_HISTORY_PATH, noiseSuppressionHistory);
 }
 
@@ -659,7 +710,8 @@ function recordNoiseSuppressionHistory(snapshot = currentData || null) {
   const activeSnapshot = snapshot || currentData || null;
   if (!activeSnapshot) return noiseSuppressionHistory;
   const recordedAt = activeSnapshot?.meta?.timestamp || new Date().toISOString();
-  const suppression = buildNoiseSuppressionContract(activeSnapshot, { history: noiseSuppressionHistory, persist: false });
+  pruneNoiseSuppressionHistory(noiseSuppressionHistory, recordedAt);
+  const suppression = buildNoiseSuppressionContract(activeSnapshot, { history: noiseSuppressionHistory, persist: false, referenceAt: recordedAt });
   for (const burst of suppression.duplicateBursts || []) {
     const key = buildNoiseSuppressionHistoryKey(['duplicate-burst', burst.region, ...(burst.clusterIds || []), burst.headline]);
     touchNoiseSuppressionHistoryBucket(noiseSuppressionHistory.duplicateBursts, key, {
@@ -698,6 +750,7 @@ function recordNoiseSuppressionHistory(snapshot = currentData || null) {
   }
   noiseSuppressionHistory.updatedAt = recordedAt;
   noiseSuppressionHistory.lastSweepAt = recordedAt;
+  pruneNoiseSuppressionHistory(noiseSuppressionHistory, recordedAt);
   saveNoiseSuppressionHistory();
   return noiseSuppressionHistory;
 }
@@ -732,6 +785,7 @@ function buildNoiseSuppressionContract(snapshot = currentData || null, options =
   const operatorSettings = loadOperatorSettings();
   const controls = operatorSettings.preferences.sources.noiseSuppression || operatorSettingsDefaults().preferences.sources.noiseSuppression;
   const history = options?.history || noiseSuppressionHistory || noiseSuppressionHistoryDefaults();
+  const referenceAt = options?.referenceAt || activeSnapshot?.meta?.timestamp || history?.lastSweepAt || new Date().toISOString();
   const clusters = Array.isArray(activeSnapshot?.newsClusters) ? activeSnapshot.newsClusters : [];
   const reviewMetrics = activeSnapshot?.newsClusterQuality?.reviewMetrics || summarizeClusterReviewMetrics(clusters);
   const duplicatePairs = Array.isArray(reviewMetrics?.suspiciousNearDuplicates) ? reviewMetrics.suspiciousNearDuplicates : [];
@@ -761,6 +815,7 @@ function buildNoiseSuppressionContract(snapshot = currentData || null, options =
         headline: pair?.clusterA?.headline || pair?.clusterB?.headline || 'duplicate burst',
         clusterCount: clusterIds.length,
         historyHitCount: Math.max(0, Number(historical?.hitCount) || 0),
+        decayedHistoryHitCount: decayNoiseSuppressionCount(historical?.hitCount, historical?.lastSeenAt, referenceAt),
         firstSeenAt: historical?.firstSeenAt || null,
         lastSeenAt: historical?.lastSeenAt || null,
         sources,
@@ -795,6 +850,7 @@ function buildNoiseSuppressionContract(snapshot = currentData || null, options =
         sourceName: sourceItem?.name || null,
         historyType: 'repetitive-low-value',
         historyHitCount: Math.max(0, Number(historical?.hitCount) || 0),
+        decayedHistoryHitCount: decayNoiseSuppressionCount(historical?.hitCount, historical?.lastSeenAt, referenceAt),
         firstSeenAt: historical?.firstSeenAt || null,
         lastSeenAt: historical?.lastSeenAt || null,
       };
@@ -818,16 +874,21 @@ function buildNoiseSuppressionContract(snapshot = currentData || null, options =
       const historical = history?.sourceRuleHits?.[item.sourceId] || {};
       const repetitiveLowValueCount = (historical?.repetitiveLowValueCount || 0) + item.repetitiveLowValueCount;
       const duplicateBurstCount = (historical?.duplicateBurstCount || 0) + item.duplicateBurstCount;
+      const decayedRepetitiveLowValueCount = decayNoiseSuppressionCount(repetitiveLowValueCount, historical?.lastSeenAt, referenceAt);
+      const decayedDuplicateBurstCount = decayNoiseSuppressionCount(duplicateBurstCount, historical?.lastSeenAt, referenceAt);
       return {
         ...item,
         repetitiveLowValueCount,
         duplicateBurstCount,
         hitCount: repetitiveLowValueCount + duplicateBurstCount,
+        decayedRepetitiveLowValueCount,
+        decayedDuplicateBurstCount,
+        decayedHitCount: Number((decayedRepetitiveLowValueCount + decayedDuplicateBurstCount).toFixed(3)),
         firstSeenAt: historical?.firstSeenAt || null,
         lastSeenAt: historical?.lastSeenAt || null,
       };
     })
-    .filter(item => item.hitCount >= 2 && !activeRuleIds.has(item.sourceId))
+    .filter(item => item.decayedHitCount >= 2 && !activeRuleIds.has(item.sourceId))
     .sort((a, b) => (b.hitCount - a.hitCount) || String(a.sourceId).localeCompare(String(b.sourceId)))
     .slice(0, 6)
     .map(item => ({
@@ -838,9 +899,11 @@ function buildNoiseSuppressionContract(snapshot = currentData || null, options =
   return {
     version: 'noise-suppression-v1',
     history: {
-      version: history?.version || 'noise-suppression-history-v1',
+      version: history?.version || 'noise-suppression-history-v2',
       updatedAt: history?.updatedAt || null,
       lastSweepAt: history?.lastSweepAt || null,
+      retentionMs: history?.retentionMs || NOISE_SUPPRESSION_HISTORY_RETENTION_MS,
+      halfLifeMs: history?.halfLifeMs || NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS,
     },
     controls,
     tuningBounds: {

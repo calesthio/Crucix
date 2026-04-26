@@ -696,7 +696,7 @@
       {
         "id": "epic-29",
         "title": "Runtime control, restart safety, and sweep reliability",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-29.1",
@@ -721,7 +721,7 @@
           {
             "id": "effort-29.5",
             "title": "Add bounded retention or time-decay for noise-suppression history so one-off duplicate bursts and retired sources do not accumulate indefinite suggestion weight or unbounded state growth across repeated sweeps",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -987,8 +987,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 118,
+    "sequence": 119,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-26-cycle-118"
+    "lastCompletedCycleId": "2026-04-26-cycle-119"
   }
 }

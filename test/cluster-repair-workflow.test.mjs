@@ -23,8 +23,13 @@ const context = {
   operatorSettingsDefaults: () => ({ preferences: { sources: { noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 2 }, repetitiveLowValue: { enabled: true, maxStoryCount: 1, maxSourceCount: 1 }, sourceRules: [] } } } }),
   inventoryItems: [],
   buildOperatorSourceOps: snapshot => snapshot?.sourceOps || { inventory: { items: context.inventoryItems || [] } },
-  noiseSuppressionHistory: { version: 'noise-suppression-history-v1', updatedAt: null, lastSweepAt: null, duplicateBursts: {}, repetitiveLowValueEvents: {}, sourceRuleHits: {} },
+  noiseSuppressionHistory: { version: 'noise-suppression-history-v2', updatedAt: null, lastSweepAt: null, retentionMs: 14 * 24 * 60 * 60 * 1000, halfLifeMs: 5 * 24 * 60 * 60 * 1000, duplicateBursts: {}, repetitiveLowValueEvents: {}, sourceRuleHits: {} },
   NOISE_SUPPRESSION_HISTORY_PATH: '/tmp/noise-suppression-history.json',
+  NOISE_SUPPRESSION_HISTORY_RETENTION_MS: 14 * 24 * 60 * 60 * 1000,
+  NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS: 5 * 24 * 60 * 60 * 1000,
+  NOISE_SUPPRESSION_HISTORY_MAX_DUPLICATE_BURSTS: 200,
+  NOISE_SUPPRESSION_HISTORY_MAX_LOW_VALUE_EVENTS: 200,
+  NOISE_SUPPRESSION_HISTORY_MAX_SOURCE_RULE_HITS: 200,
   saveJsonFile: (path, data) => writes.push({ path, data }),
   normalizeToken: value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ''),
   clusterRepairActions: { suppressedClusterIds: ['old-cluster'], decisions: [{ id: 'd1', action: 'suppress-cluster', clusterId: 'old-cluster' }] },
@@ -103,9 +108,11 @@ test('buildNoiseSuppressionContract derives duplicate, low-value, and source-rul
   context.inventoryItems = [{ id: 'src-a', name: 'Source A' }];
   context.loadOperatorSettings = () => ({ preferences: { sources: { noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 2 }, repetitiveLowValue: { enabled: true, maxStoryCount: 1, maxSourceCount: 1 }, sourceRules: [{ sourceId: 'src-a', action: 'suppress', reason: 'known burst source', enabled: true }] } } } });
   context.noiseSuppressionHistory = {
-    version: 'noise-suppression-history-v1',
+    version: 'noise-suppression-history-v2',
     updatedAt: '2026-04-26T12:00:00.000Z',
     lastSweepAt: '2026-04-26T12:00:00.000Z',
+    retentionMs: context.NOISE_SUPPRESSION_HISTORY_RETENTION_MS,
+    halfLifeMs: context.NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS,
     duplicateBursts: { 'duplicateburst::iran::clustera::clusterb::a': { hitCount: 3, firstSeenAt: '2026-04-26T10:00:00.000Z', lastSeenAt: '2026-04-26T12:00:00.000Z' } },
     repetitiveLowValueEvents: { 'repetitivelowvalue::srca::iran::a': { hitCount: 2, firstSeenAt: '2026-04-26T11:00:00.000Z', lastSeenAt: '2026-04-26T12:00:00.000Z' } },
     sourceRuleHits: { 'src-a': { sourceId: 'src-a', sourceName: 'Source A', duplicateBurstCount: 3, repetitiveLowValueCount: 2, totalHitCount: 5, firstSeenAt: '2026-04-26T10:00:00.000Z', lastSeenAt: '2026-04-26T12:00:00.000Z' } },
@@ -127,7 +134,7 @@ test('recordNoiseSuppressionHistory persists rolling counters for repeated sweep
   writes.length = 0;
   context.inventoryItems = [{ id: 'src-a', name: 'Source A' }];
   context.loadOperatorSettings = () => ({ preferences: { sources: { noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 2 }, repetitiveLowValue: { enabled: true, maxStoryCount: 1, maxSourceCount: 1 }, sourceRules: [] } } } });
-  context.noiseSuppressionHistory = { version: 'noise-suppression-history-v1', updatedAt: null, lastSweepAt: null, duplicateBursts: {}, repetitiveLowValueEvents: {}, sourceRuleHits: {} };
+  context.noiseSuppressionHistory = { version: 'noise-suppression-history-v2', updatedAt: null, lastSweepAt: null, retentionMs: context.NOISE_SUPPRESSION_HISTORY_RETENTION_MS, halfLifeMs: context.NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS, duplicateBursts: {}, repetitiveLowValueEvents: {}, sourceRuleHits: {} };
   const snapshot = {
     meta: { timestamp: '2026-04-26T12:30:00.000Z' },
     newsClusters: [{ id: 'cluster-a', headline: 'A', region: 'Iran', storyCount: 1, sourceCount: 1, quality: 'low', confidenceLabel: 'weak', qualityFlags: ['single-source'], sourceProvenance: { topSources: [{ runtimeSource: 'Source A' }] } }],
@@ -143,4 +150,41 @@ test('recordNoiseSuppressionHistory persists rolling counters for repeated sweep
   assert.equal(persisted.sourceRuleHits['src-a'].repetitiveLowValueCount, 2);
   assert.equal(persisted.sourceRuleHits['src-a'].totalHitCount, 4);
   assert.equal(writes.length, 2);
+});
+
+test('noise suppression history decays stale suggestion weight and prunes expired entries', () => {
+  context.inventoryItems = [{ id: 'src-a', name: 'Source A' }];
+  context.loadOperatorSettings = () => ({ preferences: { sources: { noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 2 }, repetitiveLowValue: { enabled: true, maxStoryCount: 1, maxSourceCount: 1 }, sourceRules: [] } } } });
+  context.noiseSuppressionHistory = {
+    version: 'noise-suppression-history-v2',
+    updatedAt: '2026-04-26T12:00:00.000Z',
+    lastSweepAt: '2026-04-26T12:00:00.000Z',
+    retentionMs: context.NOISE_SUPPRESSION_HISTORY_RETENTION_MS,
+    halfLifeMs: context.NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS,
+    duplicateBursts: {
+      stale: { hitCount: 9, firstSeenAt: '2026-03-01T00:00:00.000Z', lastSeenAt: '2026-03-01T00:00:00.000Z' },
+    },
+    repetitiveLowValueEvents: {
+      'repetitivelowvalue::srca::iran::a': { hitCount: 8, firstSeenAt: '2026-04-01T00:00:00.000Z', lastSeenAt: '2026-04-01T00:00:00.000Z' },
+    },
+    sourceRuleHits: {
+      'src-a': { sourceId: 'src-a', sourceName: 'Source A', duplicateBurstCount: 0, repetitiveLowValueCount: 8, totalHitCount: 8, firstSeenAt: '2026-04-01T00:00:00.000Z', lastSeenAt: '2026-04-01T00:00:00.000Z' },
+    },
+  };
+  const suppression = buildNoiseSuppressionContract({
+    meta: { timestamp: '2026-04-26T12:00:00.000Z' },
+    newsClusters: [{ id: 'cluster-a', headline: 'A', region: 'Iran', storyCount: 1, sourceCount: 1, quality: 'low', confidenceLabel: 'weak', qualityFlags: ['single-source'], sourceProvenance: { topSources: [{ runtimeSource: 'Source A' }] } }],
+    newsClusterQuality: { reviewMetrics: { suspiciousNearDuplicates: [] } },
+  });
+  assert.equal(suppression.repetitiveLowValueEvents[0].historyHitCount, 8);
+  assert.ok(suppression.repetitiveLowValueEvents[0].decayedHistoryHitCount < 1);
+  assert.equal(suppression.sourceRules.suggestedRules.length, 0);
+
+  const snapshot = {
+    meta: { timestamp: '2026-04-26T12:00:00.000Z' },
+    newsClusters: [],
+    newsClusterQuality: { reviewMetrics: { suspiciousNearDuplicates: [] } },
+  };
+  recordNoiseSuppressionHistory(snapshot);
+  assert.equal(Object.keys(context.noiseSuppressionHistory.duplicateBursts).length, 0);
 });

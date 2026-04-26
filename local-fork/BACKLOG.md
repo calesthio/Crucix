@@ -29,3 +29,5 @@ Recent promotions:
 - Bounded retention or time-decay for `runs/noise-suppression-history.json` was promoted into `local-fork/plan.json` as Epic 29, effort 29.5 on 2026-04-26.
 
 New items can be added here when they do not yet belong in the active roadmap.
+
+- Surface noise-suppression history decay and prune telemetry in `/api/health` or the review diagnostics UI so operators can see when stale suggestion weight has aged out, how many retained history entries remain, and whether pruning is actively keeping the state bounded.
