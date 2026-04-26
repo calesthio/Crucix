@@ -146,6 +146,25 @@ test('source ops surface attaches live source-health state when snapshot health 
             ],
           },
         },
+        {
+          id: 'europe::cluster-c',
+          headline: 'Europe cluster',
+          region: 'Europe',
+          storyCount: 2,
+          sourceCount: 1,
+          sourceProvenance: {
+            totalItems: 2,
+            uniqueSources: 2,
+            entries: [
+              { source: 'Operator Feed', type: 'unknown', runtimeSource: 'Operator Feed', count: 1 },
+              { source: 'Field Desk', type: 'unknown', runtimeSource: 'Operator Feed', count: 1 },
+            ],
+            topSources: [
+              { source: 'Operator Feed', type: 'unknown', runtimeSource: 'Operator Feed', count: 1 },
+              { source: 'Field Desk', type: 'unknown', runtimeSource: 'Operator Feed', count: 1 },
+            ],
+          },
+        },
       ],
       suspectSignals: [
         { category: 'source', signal: 'Telegram urgent cluster', evidenceSource: 'Telegram', source: 'Telegram', reason: 'Telegram shows urgent posts without corroboration' },
@@ -233,11 +252,17 @@ test('source ops surface attaches live source-health state when snapshot health 
   assert.ok(surface.performance.workflow.confidenceCaveats.some(item => /heuristic-only cluster/i.test(item)));
   assert.equal(surface.performance.workflow.attributionDiagnostics.version, 'source-attribution-diagnostics-v1');
   assert.equal(surface.performance.workflow.attributionDiagnostics.summary.aliasCollisionCount >= 1, true);
+  assert.equal(surface.performance.workflow.attributionDiagnostics.summary.expectedMultiPublisherBucketCount >= 1, true);
   assert.equal(surface.performance.workflow.attributionDiagnostics.summary.ambiguousMappingCount >= 1, true);
   assert.equal(surface.performance.workflow.attributionDiagnostics.summary.doubleCountRiskCount >= 1, true);
-  assert.ok(surface.performance.workflow.attributionDiagnostics.aliasCollisions.some(item => item.runtimeSource === 'GDELT'));
+  assert.ok(surface.performance.workflow.attributionDiagnostics.aliasCollisions.some(item => item.runtimeSource === 'Operator Feed'));
+  assert.ok(surface.performance.workflow.attributionDiagnostics.expectedMultiPublisherBuckets.some(item => item.runtimeSource === 'GDELT'));
   assert.ok(surface.performance.workflow.attributionDiagnostics.ambiguousMappings.some(item => item.sourceName === 'Operator Feed'));
-  assert.ok(surface.performance.workflow.attributionDiagnostics.doubleCountRisks.some(item => item.clusterId === 'iran::cluster-a'));
+  const iranRisk = surface.performance.workflow.attributionDiagnostics.doubleCountRisks.find(item => item.clusterId === 'iran::cluster-a');
+  assert.ok(iranRisk);
+  assert.ok(iranRisk.duplicateRuntimeSources.includes('Telegram'));
+  assert.ok(!iranRisk.duplicateRuntimeSources.includes('GDELT'));
+  assert.ok(iranRisk.expectedMultiPublisherBuckets.includes('GDELT'));
   assert.ok(Array.isArray(telegramPerf.attributionExplanation));
   assert.ok(telegramPerf.attributionExplanation.some(item => /clustered item/i.test(item)));
   assert.ok(Array.isArray(blueskyPerf.confidenceCaveats));

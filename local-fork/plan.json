@@ -822,7 +822,7 @@
           {
             "id": "effort-32.6",
             "title": "Distinguish expected multi-publisher runtime buckets from true alias-collision anomalies in attribution diagnostics, so broad aggregators like `GDELT` do not over-report routine publisher diversity as operator-actionable alias risk",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-32.7",
@@ -967,8 +967,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 115,
+    "sequence": 116,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-26-cycle-115"
+    "lastCompletedCycleId": "2026-04-26-cycle-116"
   }
 }

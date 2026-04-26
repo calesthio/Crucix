@@ -27,3 +27,4 @@ Recent promotions:
 New items can be added here when they do not yet belong in the active roadmap.
 
 - Add browser-level regression coverage for the shared operator surface shell so active-nav state, boundary copy, and admin action availability are validated after client-side render instead of only by static HTML fetches.
+- Add explicit source-registry metadata for expected multi-publisher runtime buckets so attribution diagnostics can classify aggregators like GDELT from data contract rather than a hard-coded heuristic list.
