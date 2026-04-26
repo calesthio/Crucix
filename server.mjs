@@ -29,6 +29,7 @@ const REVIEW_ACKS_PATH = join(RUNS_DIR, 'cluster-review-acks.json');
 const REVIEW_WORKFLOW_AUDIT_PATH = join(RUNS_DIR, 'review-workflow-audit.json');
 const CLUSTER_REPAIR_ACTIONS_PATH = join(RUNS_DIR, 'cluster-repair-actions.json');
 const NOISE_SUPPRESSION_HISTORY_PATH = join(RUNS_DIR, 'noise-suppression-history.json');
+const SETTINGS_ADMIN_AUDIT_PATH = join(RUNS_DIR, 'settings-admin-audit.json');
 const AGENT_ANALYSIS_VALIDATION_SCRIPT = join(ROOT, 'scripts/agent-analysis-validation-summary.mjs');
 const OPENSKY_STATE_PATH = join(ROOT, 'runs', 'cache', 'opensky-state.json');
 const OPERATOR_SETTINGS_PATH = process.env.OPERATOR_SETTINGS_PATH || join(ROOT, 'runs', 'operator-settings.json');
@@ -203,6 +204,10 @@ function loadJsonFile(path, fallback) {
 function saveJsonFile(path, data) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
+}
+
+function deepCloneJson(data) {
+  return data == null ? data : JSON.parse(JSON.stringify(data));
 }
 
 function isPlaceholderSecret(value = '') {
@@ -540,6 +545,144 @@ function mergeOperatorSettingsPatch(patch = {}) {
     },
   };
   return saveOperatorSettings(merged);
+}
+
+const SETTINGS_ADMIN_AUDIT_MAX_ENTRIES = 250;
+const settingsAdminAudit = Array.isArray(loadJsonFile(SETTINGS_ADMIN_AUDIT_PATH, []))
+  ? loadJsonFile(SETTINGS_ADMIN_AUDIT_PATH, [])
+  : [];
+
+function saveSettingsAdminAudit() {
+  saveJsonFile(SETTINGS_ADMIN_AUDIT_PATH, settingsAdminAudit.slice(-SETTINGS_ADMIN_AUDIT_MAX_ENTRIES));
+}
+
+function buildSettingsPayloadSummary(settings = {}) {
+  const preferences = settings?.preferences || {};
+  const sourcePreferences = preferences.sources || {};
+  const layoutPreferences = preferences.layout || {};
+  return {
+    version: settings?.version || null,
+    updatedAt: settings?.updatedAt || null,
+    layoutPreset: layoutPreferences.workspacePreset || null,
+    displayMode: layoutPreferences.displayMode || null,
+    enabledCategoryCount: Array.isArray(sourcePreferences.enabledCategories) ? sourcePreferences.enabledCategories.length : 0,
+    enabledSourceCount: Array.isArray(sourcePreferences.enabledSourceIds) ? sourcePreferences.enabledSourceIds.length : 0,
+    suppressedSourceCount: Array.isArray(sourcePreferences.suppressedSourceIds) ? sourcePreferences.suppressedSourceIds.length : 0,
+    quarantinedSourceCount: Array.isArray(sourcePreferences.quarantinedSourceIds) ? sourcePreferences.quarantinedSourceIds.length : 0,
+    noiseRuleCount: Array.isArray(sourcePreferences.noiseSuppression?.sourceRules) ? sourcePreferences.noiseSuppression.sourceRules.length : 0,
+  };
+}
+
+function recordSettingsAdminAudit(entry = {}) {
+  settingsAdminAudit.push({
+    id: `settings-audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    recordedAt: new Date().toISOString(),
+    ...entry,
+  });
+  while (settingsAdminAudit.length > SETTINGS_ADMIN_AUDIT_MAX_ENTRIES) settingsAdminAudit.shift();
+  saveSettingsAdminAudit();
+  return settingsAdminAudit[settingsAdminAudit.length - 1];
+}
+
+function settingsAdminAuditSnapshot(limit = 25) {
+  return settingsAdminAudit.slice(-Math.max(1, limit)).reverse();
+}
+
+function buildSettingsStateBundle() {
+  return {
+    version: 'settings-state-bundle-v1',
+    exportedAt: new Date().toISOString(),
+    config: {
+      operatorSettings: deepCloneJson(loadOperatorSettings()),
+    },
+    state: {
+      reviewAcks: Array.from(loadReviewAcks().values()).map(entry => deepCloneJson(entry)),
+      reviewWorkflowAudit: deepCloneJson(reviewWorkflowAudit),
+      clusterRepairActions: deepCloneJson(loadClusterRepairActions()),
+      noiseSuppressionHistory: deepCloneJson(loadJsonFile(NOISE_SUPPRESSION_HISTORY_PATH, null)),
+      operationalAlertsState: deepCloneJson(getOperationalAlertsState()),
+    },
+  };
+}
+
+function importSettingsStateBundle(payload = {}) {
+  const importedAt = new Date().toISOString();
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('settings-import-payload-required');
+  }
+  const isBundle = payload.version === 'settings-state-bundle-v1' || payload.config || payload.state;
+  if (!isBundle) {
+    const settingsPayload = payload?.preferences ? payload : { preferences: payload || {} };
+    const savedSettings = saveOperatorSettings(settingsPayload);
+    return {
+      mode: 'settings-only',
+      importedAt,
+      settings: savedSettings,
+      restored: {
+        reviewAcks: false,
+        reviewWorkflowAudit: false,
+        clusterRepairActions: false,
+        noiseSuppressionHistory: false,
+        operationalAlertsState: false,
+      },
+    };
+  }
+
+  const bundle = payload;
+  const operatorSettingsPayload = bundle?.config?.operatorSettings || operatorSettingsDefaults();
+  const savedSettings = saveOperatorSettings(operatorSettingsPayload);
+  const state = bundle?.state && typeof bundle.state === 'object' ? bundle.state : {};
+
+  const importedReviewAcks = Array.isArray(state.reviewAcks) ? state.reviewAcks : [];
+  reviewAcks.clear();
+  for (const entry of importedReviewAcks) {
+    const normalized = normalizeReviewAckEntry(entry);
+    if (!normalized) continue;
+    reviewAcks.set(reviewAckKey(normalized), normalized);
+  }
+  pruneReviewAcks();
+  saveReviewAcks();
+
+  const importedWorkflowAudit = Array.isArray(state.reviewWorkflowAudit) ? state.reviewWorkflowAudit : [];
+  reviewWorkflowAudit.length = 0;
+  for (const entry of importedWorkflowAudit.slice(-REVIEW_WORKFLOW_AUDIT_MAX_ENTRIES)) {
+    if (!entry || typeof entry !== 'object') continue;
+    reviewWorkflowAudit.push(entry);
+  }
+  saveReviewWorkflowAudit();
+
+  const importedClusterRepairActions = state.clusterRepairActions && typeof state.clusterRepairActions === 'object'
+    ? state.clusterRepairActions
+    : clusterRepairActionDefaults();
+  clusterRepairActions.version = 'cluster-repair-actions-v1';
+  clusterRepairActions.updatedAt = importedClusterRepairActions.updatedAt || null;
+  clusterRepairActions.suppressedClusterIds = Array.isArray(importedClusterRepairActions.suppressedClusterIds)
+    ? importedClusterRepairActions.suppressedClusterIds.slice(0, 500)
+    : [];
+  clusterRepairActions.decisions = Array.isArray(importedClusterRepairActions.decisions)
+    ? importedClusterRepairActions.decisions.slice(-CLUSTER_REPAIR_ACTION_MAX_HISTORY)
+    : [];
+  saveClusterRepairActions();
+
+  saveJsonFile(NOISE_SUPPRESSION_HISTORY_PATH, state.noiseSuppressionHistory ?? null);
+
+  const operationalAlertsState = state.operationalAlertsState && typeof state.operationalAlertsState === 'object'
+    ? state.operationalAlertsState
+    : { policies: {} };
+  saveOperationalAlertsState(operationalAlertsState);
+
+  return {
+    mode: 'bundle',
+    importedAt,
+    settings: savedSettings,
+    restored: {
+      reviewAcks: true,
+      reviewWorkflowAudit: true,
+      clusterRepairActions: true,
+      noiseSuppressionHistory: true,
+      operationalAlertsState: true,
+    },
+  };
 }
 
 function isLocalRequest(req) {
@@ -4878,8 +5021,11 @@ function buildAdminSettingsContract(snapshot = null) {
         export: true,
         import: true,
         writeApi: true,
+        stateBundle: true,
+        auditHistory: true,
       },
       persistedPreferences: operatorSettings.preferences,
+      latestAudit: settingsAdminAuditSnapshot(1)[0] || null,
     },
     access: {
       role: 'admin',
@@ -4894,12 +5040,19 @@ function buildAdminSettingsContract(snapshot = null) {
         exportEndpoint: '/api/settings/export',
         importEndpoint: '/api/settings/import',
         writeEndpoint: '/api/settings/operator',
+        auditEndpoint: '/api/settings/audit',
         runtimeControlEndpoint: '/api/runtime/control',
       },
       boundaries: {
         requiresLocalRequest: true,
         debugExposure: config.debugEndpoints?.exposure || 'local-only',
       },
+      backup: {
+        exportModes: ['settings', 'bundle'],
+        importModes: ['settings', 'bundle'],
+        bundleVersion: 'settings-state-bundle-v1',
+      },
+      auditTrail: settingsAdminAuditSnapshot(12),
     },
     notes: [
       ...operator.notes,
@@ -4949,12 +5102,49 @@ app.get('/api/llm/operations', async (req, res) => {
 });
 
 app.get('/api/settings/export', requireDebugAccess, (req, res) => {
-  res.json(loadOperatorSettings());
+  const mode = String(req.query?.mode || 'settings').trim().toLowerCase();
+  const payload = mode === 'bundle' ? buildSettingsStateBundle() : loadOperatorSettings();
+  const audit = recordSettingsAdminAudit({
+    action: 'export',
+    mode,
+    status: 'success',
+    summary: mode === 'bundle'
+      ? {
+          bundleVersion: payload.version,
+          settings: buildSettingsPayloadSummary(payload.config?.operatorSettings || {}),
+          state: {
+            reviewAcks: Array.isArray(payload.state?.reviewAcks) ? payload.state.reviewAcks.length : 0,
+            reviewWorkflowAudit: Array.isArray(payload.state?.reviewWorkflowAudit) ? payload.state.reviewWorkflowAudit.length : 0,
+            clusterRepairActions: Array.isArray(payload.state?.clusterRepairActions?.decisions) ? payload.state.clusterRepairActions.decisions.length : 0,
+            noiseSuppressionHistoryPresent: payload.state?.noiseSuppressionHistory != null,
+            operationalAlertPolicies: Object.keys(payload.state?.operationalAlertsState?.policies || {}).length,
+          },
+        }
+      : { settings: buildSettingsPayloadSummary(payload) },
+  });
+  res.json(mode === 'bundle' ? { ...payload, audit } : payload);
+});
+
+app.get('/api/settings/audit', requireDebugAccess, (req, res) => {
+  const requestedLimit = Number.parseInt(String(req.query?.limit || '25'), 10);
+  const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(requestedLimit, 100)) : 25;
+  res.json({
+    version: 'settings-admin-audit-v1',
+    endpoint: '/api/settings/audit',
+    totalEntries: settingsAdminAudit.length,
+    entries: settingsAdminAuditSnapshot(limit),
+  });
 });
 
 app.put('/api/settings/operator', requireDebugAccess, (req, res) => {
   const saved = mergeOperatorSettingsPatch(req.body || {});
-  res.json({ ok: true, settings: saved });
+  const audit = recordSettingsAdminAudit({
+    action: 'write',
+    mode: 'settings',
+    status: 'success',
+    summary: { settings: buildSettingsPayloadSummary(saved) },
+  });
+  res.json({ ok: true, settings: saved, audit });
 });
 
 app.post('/api/source-ops/control', requireDebugAccess, (req, res) => {
@@ -5119,9 +5309,27 @@ app.post('/api/review-workflow/action', requireDebugAccess, (req, res) => {
 });
 
 app.post('/api/settings/import', requireDebugAccess, (req, res) => {
-  const payload = req.body?.preferences ? req.body : { preferences: req.body || {} };
-  const saved = saveOperatorSettings(payload);
-  res.json({ ok: true, settings: saved });
+  try {
+    const imported = importSettingsStateBundle(req.body || {});
+    const audit = recordSettingsAdminAudit({
+      action: 'import',
+      mode: imported.mode,
+      status: 'success',
+      summary: {
+        settings: buildSettingsPayloadSummary(imported.settings),
+        restored: imported.restored,
+      },
+    });
+    res.json({ ok: true, ...imported, audit });
+  } catch (error) {
+    const audit = recordSettingsAdminAudit({
+      action: 'import',
+      mode: req.body?.version === 'settings-state-bundle-v1' ? 'bundle' : 'settings',
+      status: 'failed',
+      error: error.message || 'settings-import-failed',
+    });
+    res.status(400).json({ ok: false, error: error.message || 'settings-import-failed', audit });
+  }
 });
 
 app.post('/api/runtime/control', requireDebugAccess, (req, res) => {

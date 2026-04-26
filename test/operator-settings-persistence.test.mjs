@@ -108,6 +108,8 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(updated.settings.preferences.agentAnalysis.maxPublishedTippingPoints, 2);
     assert.deepEqual(updated.settings.preferences.alerts.operational.defaultRoute, ['telegram']);
     assert.deepEqual(updated.settings.preferences.alerts.operational.escalationRoute, ['telegram', 'discord']);
+    assert.equal(updated.audit.action, 'write');
+    assert.equal(updated.audit.mode, 'settings');
 
     const settings = await waitFor(settingsUrl, payload => payload?.layout?.controls?.visualsMode === 'lite', 30000);
     assert.equal(settings.layout.controls.mapMode, 'flat');
@@ -150,6 +152,52 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(exported.preferences.alerts.operational.sourceFailures.minFailedSources, 4);
     assert.equal(exported.preferences.alerts.operational.noiseSuppressionPressure.minRetainedDelta, 4);
 
+    const bundle = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/settings/export?mode=bundle`);
+    assert.equal(bundle.version, 'settings-state-bundle-v1');
+    assert.equal(bundle.audit.action, 'export');
+    assert.equal(bundle.audit.mode, 'bundle');
+    assert.equal(bundle.config.operatorSettings.preferences.layout.visualsMode, 'lite');
+    assert.equal(Array.isArray(bundle.state.reviewWorkflowAudit), true);
+    assert.equal(Array.isArray(bundle.state.clusterRepairActions.decisions), true);
+
+    const imported = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/settings/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...bundle,
+        config: {
+          ...bundle.config,
+          operatorSettings: {
+            ...bundle.config.operatorSettings,
+            preferences: {
+              ...bundle.config.operatorSettings.preferences,
+              layout: {
+                ...bundle.config.operatorSettings.preferences.layout,
+                visualsMode: 'full',
+                displayMode: 'desktop',
+              },
+            },
+          },
+        },
+      }),
+    });
+    assert.equal(imported.ok, true);
+    assert.equal(imported.mode, 'bundle');
+    assert.equal(imported.settings.preferences.layout.visualsMode, 'full');
+    assert.equal(imported.settings.preferences.layout.displayMode, 'desktop');
+    assert.equal(imported.restored.reviewAcks, true);
+    assert.equal(imported.audit.action, 'import');
+    assert.equal(imported.audit.mode, 'bundle');
+
+    const afterImport = await waitFor(settingsUrl, payload => payload?.layout?.controls?.visualsMode === 'full', 30000);
+    assert.equal(afterImport.layout.controls.displayMode, 'desktop');
+
+    const settingsAudit = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/settings/audit`);
+    assert.equal(settingsAudit.version, 'settings-admin-audit-v1');
+    assert.equal(settingsAudit.entries.some(entry => entry.action === 'write' && entry.mode === 'settings'), true);
+    assert.equal(settingsAudit.entries.some(entry => entry.action === 'export' && entry.mode === 'bundle'), true);
+    assert.equal(settingsAudit.entries.some(entry => entry.action === 'import' && entry.mode === 'bundle'), true);
+
     const page = await fetch(`http://127.0.0.1:${BASE_PORT}/settings`).then(r => r.text());
     assert.match(page, /activeSurface: 'settings'/i);
     assert.doesNotMatch(page, /id="saveBtn"/i);
@@ -161,6 +209,8 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     const adminPage = await fetch(`http://127.0.0.1:${BASE_PORT}/admin/settings`).then(r => r.text());
     assert.match(adminPage, /saveBtn/i);
     assert.match(adminPage, /exportBtn/i);
+    assert.match(adminPage, /exportBundleBtn/i);
+    assert.match(adminPage, /importBtn/i);
     assert.match(adminPage, /activeSurface: 'admin-settings'/i);
 
     const operatorContract = await fetchJson(settingsUrl);
@@ -169,12 +219,15 @@ test('operator settings persist, export, and influence runtime bootstrap state',
 
     const adminContract = await fetchJson(adminSettingsUrl);
     assert.equal(adminContract.persistence.capabilities.writeApi, true);
+    assert.equal(adminContract.persistence.capabilities.stateBundle, true);
+    assert.equal(adminContract.persistence.capabilities.auditHistory, true);
     assert.equal(adminContract.access.role, 'admin');
+    assert.equal(adminContract.admin.controls.auditEndpoint, '/api/settings/audit');
 
     const dashboard = await fetch(`http://127.0.0.1:${BASE_PORT}/`).then(r => r.text());
     assert.match(dashboard, /operatorSettings/);
-    assert.match(dashboard, /"visualsMode":"lite"/);
-    assert.match(dashboard, /"displayMode":"wallboard"/);
+    assert.match(dashboard, /"visualsMode":"full"/);
+    assert.match(dashboard, /"displayMode":"desktop"/);
     assert.match(dashboard, /"defaultRegion":"asiaPacific"/);
     assert.match(dashboard, /"workspacePreset":"source-ops"/);
     assert.match(dashboard, /renderWorkspacePresetStrip/);

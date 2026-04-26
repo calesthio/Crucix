@@ -67,6 +67,7 @@ async function withBootedServer({ port, env }, fn) {
       reviewWorkflowUrl: `http://127.0.0.1:${port}/api/brief/news/review`,
       reviewWorkflowActionUrl: `http://127.0.0.1:${port}/api/review-workflow/action`,
       reviewWorkflowAuditUrl: `http://127.0.0.1:${port}/api/review-workflow/audit`,
+      settingsAuditUrl: `http://127.0.0.1:${port}/api/settings/audit`,
       pageUrl: `http://127.0.0.1:${port}/settings`,
       adminPageUrl: `http://127.0.0.1:${port}/admin/settings`,
       llmOpsPageUrl: `http://127.0.0.1:${port}/llm-ops`,
@@ -85,7 +86,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
       OLLAMA_BASE_URL: 'http://127.0.0.1:11434',
       DEBUG_ENDPOINT_EXPOSURE: 'local-only',
     },
-  }, async ({ settingsUrl, adminSettingsUrl, llmOperationsUrl, reviewWorkflowUrl, reviewWorkflowActionUrl, reviewWorkflowAuditUrl, pageUrl, adminPageUrl, llmOpsPageUrl }) => {
+  }, async ({ settingsUrl, adminSettingsUrl, llmOperationsUrl, reviewWorkflowUrl, reviewWorkflowActionUrl, reviewWorkflowAuditUrl, settingsAuditUrl, pageUrl, adminPageUrl, llmOpsPageUrl }) => {
     const health = await waitFor(`http://127.0.0.1:${BASE_PORT}/api/health`, payload => payload?.runtimeIdentity?.pid && payload?.sweepWatchdog?.phase, 30000);
     assert.equal(typeof health.runtimeIdentity.pid, 'number');
     assert.equal(health.runtimeControl.version, 'runtime-control-v1');
@@ -180,8 +181,16 @@ test('booted operator and admin settings surfaces stay role-separated with local
 
     const admin = await waitFor(adminSettingsUrl, payload => payload?.version === 'admin-settings-v1', 30000);
     assert.equal(admin.persistence.capabilities.export, true);
+    assert.equal(admin.persistence.capabilities.import, true);
+    assert.equal(admin.persistence.capabilities.stateBundle, true);
+    assert.equal(admin.persistence.capabilities.auditHistory, true);
     assert.equal(admin.persistence.capabilities.writeApi, true);
     assert.equal(admin.access.role, 'admin');
+     assert.equal(admin.admin.boundaries.requiresLocalRequest, true);
++    assert.equal(admin.admin.controls.auditEndpoint, '/api/settings/audit');
++    assert.equal(admin.admin.backup.bundleVersion, 'settings-state-bundle-v1');
++    assert.equal(Array.isArray(admin.admin.auditTrail), true);
+     assert.equal(admin.runtimeControl.version, 'runtime-control-v1');
     assert.equal(admin.admin.boundaries.requiresLocalRequest, true);
     assert.equal(admin.runtimeControl.version, 'runtime-control-v1');
     assert.equal(typeof admin.runtimeControl.jobs.synthesis.attemptCount, 'number');
@@ -258,14 +267,29 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.match(llmOpsPage, /Failure class/i);
     assert.match(llmOpsPage, /Probe type/i);
 
+    const settingsExport = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/settings/export?mode=bundle`);
+    assert.equal(settingsExport.version, 'settings-state-bundle-v1');
+    assert.equal(settingsExport.audit.action, 'export');
+    assert.equal(settingsExport.audit.mode, 'bundle');
+    assert.equal(settingsExport.config.operatorSettings.version, 'operator-settings-store-v1');
+    assert.equal(Array.isArray(settingsExport.state.reviewAcks), true);
+    assert.equal(Array.isArray(settingsExport.state.reviewWorkflowAudit), true);
+
+    const settingsAudit = await waitFor(settingsAuditUrl, payload => Array.isArray(payload?.entries), 30000);
+    assert.equal(settingsAudit.version, 'settings-admin-audit-v1');
+    assert.equal(settingsAudit.entries.some(item => item.action === 'export' && item.mode === 'bundle'), true);
+
     const adminPage = await fetch(adminPageUrl).then(r => r.text());
     assert.match(adminPage, /Local control plane/i);
     assert.match(adminPage, /ops-shell\.js/i);
     assert.match(adminPage, /activeSurface: 'admin-settings'/i);
     assert.match(adminPage, /saveBtn/i);
     assert.match(adminPage, /exportBtn/i);
+    assert.match(adminPage, /exportBundleBtn/i);
+    assert.match(adminPage, /importBtn/i);
     assert.match(adminPage, /restartBtn/i);
     assert.match(adminPage, /stopBtn/i);
+    assert.match(adminPage, /Recent admin audit/i);
     assert.match(adminPage, /Noise suppression/i);
   });
 });
