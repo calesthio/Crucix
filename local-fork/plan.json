@@ -696,7 +696,7 @@
       {
         "id": "epic-29",
         "title": "Runtime control, restart safety, and sweep reliability",
-        "status": "in_progress",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-29.1",
@@ -731,7 +731,7 @@
           {
             "id": "effort-29.7",
             "title": "Add rolling per-sweep noise-suppression telemetry snapshots and a lightweight diagnostics trend view so operators can distinguish one-off aged-out or prune activity from sustained state-growth pressure over time",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -997,8 +997,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 120,
+    "sequence": 121,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-26-cycle-120"
+    "lastCompletedCycleId": "2026-04-26-cycle-121"
   }
 }

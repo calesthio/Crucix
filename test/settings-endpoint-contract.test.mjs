@@ -97,6 +97,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(health.noiseSuppressionTelemetry.version, 'noise-suppression-history-v2');
     assert.equal(typeof health.noiseSuppressionTelemetry.decayTelemetry.agedOutSuggestionCount, 'number');
     assert.equal(typeof health.noiseSuppressionTelemetry.pruneTelemetry.summary.retainedEntries, 'number');
+    assert.equal(health.noiseSuppressionTrend.version, 'noise-suppression-history-trend-v1');
+    assert.equal(typeof health.noiseSuppressionTrend.snapshotCount, 'number');
 
     const settings = await waitFor(settingsUrl, payload => payload?.version === 'operator-settings-v1', 30000);
     assert.deepEqual(settings.sections, ['layout', 'sources', 'sourceConsole', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']);
@@ -118,6 +120,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(settings.sourceConsole.noiseSuppression.version, 'noise-suppression-v1');
     assert.equal(typeof settings.sourceConsole.noiseSuppression.history.decayTelemetry.agedOutSuggestionCount, 'number');
     assert.equal(typeof settings.sourceConsole.noiseSuppression.history.pruneTelemetry.summary.retainedEntries, 'number');
+    assert.equal(settings.sourceConsole.noiseSuppression.trend.version, 'noise-suppression-history-trend-v1');
+    assert.equal(Array.isArray(settings.sourceConsole.noiseSuppression.trend.snapshots), true);
     assert.equal(settings.persistence.capabilities.export, false);
     assert.equal(settings.persistence.capabilities.writeApi, false);
     assert.equal(settings.sourceConsole.version, 'source-console-v1');

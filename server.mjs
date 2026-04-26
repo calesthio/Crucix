@@ -845,6 +845,32 @@ function summarizeNoiseSuppressionDecayTelemetry(history = noiseSuppressionHisto
   };
 }
 
+function buildNoiseSuppressionTelemetrySnapshot(snapshot = currentData || null, options = {}) {
+  const contract = buildNoiseSuppressionContract(snapshot, options);
+  return {
+    version: 'noise-suppression-history-trend-v1',
+    summary: {
+      agedOutSuggestionCount: contract?.history?.decayTelemetry?.agedOutSuggestionCount || 0,
+      retainedEntries: contract?.history?.pruneTelemetry?.summary?.retainedEntries || 0,
+      totalEntries: contract?.history?.pruneTelemetry?.summary?.totalEntries || 0,
+      expiredEntriesRemoved: contract?.history?.pruneTelemetry?.summary?.expiredEntriesRemoved || 0,
+      overflowEntriesRemoved: contract?.history?.pruneTelemetry?.summary?.overflowEntriesRemoved || 0,
+      pruningActive: Boolean(contract?.history?.pruneTelemetry?.pruningActive),
+    },
+    bucketCounts: {
+      duplicateBursts: contract?.history?.decayTelemetry?.bucketCounts?.duplicateBursts || 0,
+      repetitiveLowValueEvents: contract?.history?.decayTelemetry?.bucketCounts?.repetitiveLowValueEvents || 0,
+      sourceRuleHits: contract?.history?.decayTelemetry?.bucketCounts?.sourceRuleHits || 0,
+    },
+    candidateCounts: {
+      duplicateBursts: contract?.summary?.duplicateBurstCandidateCount || 0,
+      repetitiveLowValueEvents: contract?.summary?.repetitiveLowValueCandidateCount || 0,
+      suggestedSourceRules: contract?.summary?.suggestedSourceRuleCount || 0,
+      activeSourceRules: contract?.summary?.activeSourceRuleCount || 0,
+    },
+  };
+}
+
 function buildNoiseSuppressionContract(snapshot = currentData || null, options = {}) {
   const activeSnapshot = snapshot || currentData || null;
   const operatorSettings = loadOperatorSettings();
@@ -1227,7 +1253,10 @@ function buildReviewWorkflowContract(snapshot = currentData || null, review = nu
     } : null,
     lowConfidenceSources,
     promoteCandidates,
-    noiseSuppression: buildNoiseSuppressionContract(activeSnapshot),
+    noiseSuppression: {
+      ...buildNoiseSuppressionContract(activeSnapshot),
+      trend: memory.getNoiseSuppressionTelemetryHistory(),
+    },
     clusterRepair: buildClusterRepairWorkflow(activeSnapshot),
     auditTrail: reviewWorkflowAuditSnapshot(12),
   };
@@ -3802,7 +3831,10 @@ function buildOperatorSettingsContract(snapshot = null) {
         requiresLocalAdmin: true,
         supportedActions: ['suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine'],
       },
-      noiseSuppression: buildNoiseSuppressionContract(activeSnapshot),
+      noiseSuppression: {
+        ...buildNoiseSuppressionContract(activeSnapshot),
+        trend: memory.getNoiseSuppressionTelemetryHistory(),
+      },
     },
     llm: {
       provider: config.llm.provider || null,
@@ -4965,6 +4997,7 @@ app.get('/api/health', (req, res) => {
     clusterPressureStats: summarizeClusterPressureStats(),
     clusterRepairArtifacts: summarizeClusterRepairArtifacts(),
     noiseSuppressionTelemetry: buildNoiseSuppressionContract(currentData || null).history,
+    noiseSuppressionTrend: memory.getNoiseSuppressionTelemetryHistory(),
     trendSummary: memory.getTrendSummary(),
     agentAnalysis: currentData?.agentAnalysis ? {
       status: currentData.agentAnalysis.status,
@@ -5174,6 +5207,7 @@ async function runSweepCycle() {
     synthesized.clusterRepairArtifacts = clusterRepairArtifacts;
     synthesized.sourceOps = buildOperatorSourceOps(synthesized);
     recordNoiseSuppressionHistory(synthesized);
+    synthesized.noiseSuppressionTelemetrySnapshot = buildNoiseSuppressionTelemetrySnapshot(synthesized);
 
     // 4. Delta computation + memory
     const delta = memory.addRun(synthesized);
@@ -5183,6 +5217,7 @@ async function runSweepCycle() {
     synthesized.baseline6h = buildSixHourBaseline(synthesized, sixHourBaselineRun);
     synthesized.trendSummary = memory.getTrendSummary();
     synthesized.sourcePerformanceHistory = memory.getSourcePerformanceHistory();
+    synthesized.noiseSuppressionTrend = memory.getNoiseSuppressionTelemetryHistory();
     synthesized.sourceOps = buildOperatorSourceOps(synthesized);
     synthesized.agentAnalysis = buildAgentAnalysis(synthesized);
     synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({

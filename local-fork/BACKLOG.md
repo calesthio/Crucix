@@ -31,3 +31,5 @@ Recent promotions:
 - Rolling per-sweep noise-suppression telemetry snapshots and trend-view surfacing was promoted into `local-fork/plan.json` as Epic 29, effort 29.7 on 2026-04-26.
 
 New items can be added here when they do not yet belong in the active roadmap.
+
+- Add a simple sustained-pressure alert or queue threshold for noise-suppression telemetry so repeated retained-entry growth or consecutive prune-active sweeps can escalate from diagnostics-only visibility into an operator action cue.
