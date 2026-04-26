@@ -89,7 +89,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal('publishedAt' in health.lastSuccess, true);
 
     const settings = await waitFor(settingsUrl, payload => payload?.version === 'operator-settings-v1', 30000);
-    assert.deepEqual(settings.sections, ['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']);
+    assert.deepEqual(settings.sections, ['layout', 'sources', 'sourceConsole', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']);
     assert.equal(settings.layout.current, 'operator');
     assert.equal(Array.isArray(settings.layout.controls.availableDisplayModes), true);
     assert.equal(Array.isArray(settings.layout.controls.availableWorkspacePresets), true);
@@ -106,8 +106,12 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(Array.isArray(settings.sources.availableSources), true);
     assert.equal(settings.persistence.capabilities.export, false);
     assert.equal(settings.persistence.capabilities.writeApi, false);
+    assert.equal(settings.sourceConsole.version, 'source-console-v1');
+    assert.equal(settings.sourceConsole.surface, '/source-ops');
+    assert.equal(settings.sourceConsole.roleGrouping.enabled, true);
     assert.equal(settings.access.role, 'operator');
     assert.equal(settings.access.diagnosticsSurface, '/diagnostics');
+    assert.equal(settings.access.sourceConsoleSurface, '/source-ops');
     assert.equal(settings.access.localAdminRequired, true);
 
     const admin = await waitFor(adminSettingsUrl, payload => payload?.version === 'admin-settings-v1', 30000);
@@ -135,6 +139,10 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.doesNotMatch(page, /id="saveBtn"/i);
     assert.doesNotMatch(page, /id="exportBtn"/i);
 
+    const sourceOpsPage = await fetch(`http://127.0.0.1:${BASE_PORT}/source-ops`).then(r => r.text());
+    assert.match(sourceOpsPage, /Operator source console/i);
+    assert.match(sourceOpsPage, /source management console/i);
+
     const diagnosticsPage = await fetch(`http://127.0.0.1:${BASE_PORT}/diagnostics`).then(r => r.text());
     assert.match(diagnosticsPage, /Runtime and review diagnostics/i);
     assert.match(diagnosticsPage, /Operator settings/i);
@@ -146,5 +154,6 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.match(adminPage, /id="exportBtn"/i);
     assert.match(adminPage, /id="restartBtn"/i);
     assert.match(adminPage, /id="stopBtn"/i);
+    assert.match(adminPage, /Source ops/i);
   });
 });

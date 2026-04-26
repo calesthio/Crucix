@@ -723,7 +723,7 @@
           {
             "id": "effort-30.1",
             "title": "Build an operator-facing source management console for source enable-disable controls, category filtering, role grouping, and per-source selection without editing raw files",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-30.2",

@@ -100,7 +100,7 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   });
 
   assert.equal(contract.version, 'operator-settings-v1');
-  assert.equal(JSON.stringify(contract.sections), JSON.stringify(['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']));
+  assert.equal(JSON.stringify(contract.sections), JSON.stringify(['layout', 'sources', 'sourceConsole', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']));
   assert.equal(contract.layout.current, 'diagnostics');
   assert.equal(contract.layout.controls.displayMode, 'desktop');
   assert.equal(contract.layout.controls.workspacePreset, 'diagnostics');
@@ -129,12 +129,17 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.config.validation.valid, true);
   assert.equal(contract.sources.selection.supportsPerSourceControl, true);
   assert.equal(Array.isArray(contract.sources.availableSources), true);
+  assert.equal(contract.sourceConsole.version, 'source-console-v1');
+  assert.equal(contract.sourceConsole.surface, '/source-ops');
+  assert.equal(contract.sourceConsole.roleGrouping.enabled, true);
+  assert.equal(Array.isArray(contract.sourceConsole.inventory), true);
   assert.deepEqual(contract.sources.selection.enabledCategories, ['news']);
   assert.deepEqual(contract.sources.selection.enabledSourceIds, ['gdelt-global']);
   assert.equal(contract.persistence.capabilities.export, false);
   assert.equal(contract.persistence.capabilities.writeApi, false);
   assert.equal(contract.access.role, 'operator');
   assert.equal(contract.access.diagnosticsSurface, '/diagnostics');
+  assert.equal(contract.access.sourceConsoleSurface, '/source-ops');
   assert.equal(contract.access.localAdminRequired, true);
   assert.match(contract.notes[0], /centralizes current operator-visible settings/i);
 });

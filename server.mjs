@@ -2297,6 +2297,14 @@ app.get('/settings', async (req, res) => {
   res.type('html').send(injectDashboardRuntimeHtml(html));
 });
 
+app.get('/source-ops', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
+  const htmlPath = join(ROOT, 'dashboard/public/source-ops.html');
+  const html = readFileSync(htmlPath, 'utf-8');
+  res.type('html').send(injectDashboardRuntimeHtml(html));
+});
+
 app.get('/diagnostics', requireDebugAccess, async (req, res) => {
   const snapshot = await ensureCurrentData();
   if (!snapshot) return res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
@@ -2705,7 +2713,17 @@ function buildOperatorSettingsContract(snapshot = null) {
     category: item.category,
     lifecycle: item.lifecycle,
     liveState: item.liveState || null,
+    fusionRole: item.fusionRole || null,
+    trustProfile: item.trustProfile || null,
   })) : [];
+  const roleGroups = Array.isArray(sourceOps?.fusionRoles?.roles)
+    ? sourceOps.fusionRoles.roles.map(item => ({
+        role: item.role,
+        count: item.count,
+        trustMix: item.trustMix || {},
+        sourceIds: Array.isArray(item.sourceIds) ? item.sourceIds : [],
+      }))
+    : [];
   const enabledAlerts = [
     config.telegram?.botToken && config.telegram?.chatId ? 'telegram' : null,
     config.discord?.botToken || config.discord?.webhookUrl ? 'discord' : null,
@@ -2714,7 +2732,7 @@ function buildOperatorSettingsContract(snapshot = null) {
   return {
     version: 'operator-settings-v1',
     generatedAt: new Date().toISOString(),
-    sections: ['layout', 'sources', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence'],
+    sections: ['layout', 'sources', 'sourceConsole', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence'],
     layout: {
       current: operatorSettings.preferences.layout.workspacePreset || 'operator',
       available: [
@@ -2759,6 +2777,28 @@ function buildOperatorSettingsContract(snapshot = null) {
       health: {
         liveStateSummary: sourceOps?.inventory?.liveStateSummary || null,
       },
+    },
+    sourceConsole: {
+      version: 'source-console-v1',
+      surface: '/source-ops',
+      roleGrouping: {
+        enabled: true,
+        groups: roleGroups,
+      },
+      filtering: {
+        categoryOptions: categories,
+        lifecycleOptions: lifecycleStates,
+        supportsCategoryFiltering: true,
+        supportsRoleFiltering: true,
+        supportsLifecycleFiltering: true,
+      },
+      selection: {
+        persistence: 'server-file',
+        supportsPerSourceControl: true,
+        enabledCategories: operatorSettings.preferences.sources.enabledCategories,
+        enabledSourceIds: operatorSettings.preferences.sources.enabledSourceIds,
+      },
+      inventory: sourceItems,
     },
     llm: {
       provider: config.llm.provider || null,
@@ -2831,6 +2871,7 @@ function buildOperatorSettingsContract(snapshot = null) {
       diagnosticsSurface: '/diagnostics',
       adminSurface: '/admin/settings',
       adminApi: '/api/settings/admin',
+      sourceConsoleSurface: '/source-ops',
       localAdminRequired: true,
     },
     notes: [
