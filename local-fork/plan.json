@@ -696,7 +696,7 @@
       {
         "id": "epic-29",
         "title": "Runtime control, restart safety, and sweep reliability",
-        "status": "completed",
+        "status": "in_progress",
         "efforts": [
           {
             "id": "effort-29.1",
@@ -727,6 +727,11 @@
             "id": "effort-29.6",
             "title": "Surface noise-suppression history decay and prune telemetry in health and review diagnostics so operators can see when stale suggestion weight has aged out, how many retained history entries remain, and whether pruning is actively keeping state bounded",
             "status": "completed"
+          },
+          {
+            "id": "effort-29.7",
+            "title": "Add rolling per-sweep noise-suppression telemetry snapshots and a lightweight diagnostics trend view so operators can distinguish one-off aged-out or prune activity from sustained state-growth pressure over time",
+            "status": "pending"
           }
         ]
       },

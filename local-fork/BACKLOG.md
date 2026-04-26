@@ -28,7 +28,6 @@ Recent promotions:
 - Source-registry runtime-bucket metadata and registry-vs-observed attribution drift surfacing were promoted into `local-fork/plan.json` as Epic 32, effort 32.8 on 2026-04-26.
 - Bounded retention or time-decay for `runs/noise-suppression-history.json` was promoted into `local-fork/plan.json` as Epic 29, effort 29.5 on 2026-04-26.
 - Noise-suppression history decay and prune telemetry surfacing was promoted into `local-fork/plan.json` as Epic 29, effort 29.6 on 2026-04-26.
+- Rolling per-sweep noise-suppression telemetry snapshots and trend-view surfacing was promoted into `local-fork/plan.json` as Epic 29, effort 29.7 on 2026-04-26.
 
 New items can be added here when they do not yet belong in the active roadmap.
-
-- Add rolling per-sweep noise-suppression telemetry snapshots and a small diagnostics trend view so operators can tell whether aged-out history and prune activity are one-off events or a sustained state-growth pattern over time.
