@@ -15,6 +15,7 @@ import { createLLMProvider, OllamaProvider } from '../lib/llm/index.mjs';
 import { generateLLMIdeas } from '../lib/llm/ideas.mjs';
 import { buildSourceHealth } from '../lib/source-health.mjs';
 import { buildEvidenceSummary } from '../lib/evidence-summary.mjs';
+import { buildLlmCallTelemetry, combineLlmTelemetry } from '../lib/llm/telemetry.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -792,10 +793,23 @@ function parseClusterResponse(text = '', expectedLength = 0) {
 async function attemptClusterRepair(provider, rawText, slice, set, heuristic, news) {
   const system = 'You repair malformed model output into strict JSON only. Return no prose, no markdown.';
   const user = `Repair the prior clustering response into strict JSON. Return exactly one JSON object with key "items" containing exactly ${slice.length} objects. Schema per item: {idx:number, storyKey:string, subject:string, primaryRegion:string, confidence:string}. Valid idx values are only from this item list: ${JSON.stringify(slice)}. Prior response: ${JSON.stringify(String(rawText || '').slice(0, 6000))}`;
+  const requestStartedAt = Date.now();
   const res = await provider.complete(system, user, { maxTokens: 1800, timeout: 45000 });
   const repairText = (res.text || '').trim();
   const parsed = parseClusterResponse(repairText, slice.length);
-  return { repairText, parsed };
+  return {
+    repairText,
+    parsed,
+    telemetry: buildLlmCallTelemetry({
+      surface: 'news-clustering-repair',
+      provider: provider?.name || null,
+      model: res?.model || provider?.model || null,
+      usage: res?.usage || {},
+      latencyMs: Date.now() - requestStartedAt,
+      timeoutMs: 45000,
+      completion: parsed.ok ? 'completed' : 'fallback-after-repair',
+    }),
+  };
 }
 
 function getRegionClusterTuning(region = '') {
@@ -898,6 +912,13 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {
     tunedRegionCount: 0,
     perRegion: [],
     repairArtifacts: [],
+    telemetry: {
+      clusteringCalls: [],
+      repairCalls: [],
+      clusteringSummary: null,
+      repairSummary: null,
+      aggregate: null,
+    },
   };
   if (!news.length) {
     debug.fallbackReason = 'no-news';
@@ -942,7 +963,17 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {
           await new Promise(resolve => setTimeout(resolve, Math.min(800 * attempt, 1500)));
         }
         const retryNote = attempt > 0 ? ' Retry because the prior response was not parseable JSON. Return only the strict JSON object.' : '';
+        const requestStartedAt = Date.now();
         const res = await provider.complete(system, `${user}${retryNote}`, { maxTokens: 1400, timeout: tuning.repairTimeout || 45000 });
+        debug.telemetry.clusteringCalls.push(buildLlmCallTelemetry({
+          surface: 'news-clustering',
+          provider: provider?.name || null,
+          model: res?.model || provider?.model || null,
+          usage: res?.usage || {},
+          latencyMs: Date.now() - requestStartedAt,
+          timeoutMs: tuning.repairTimeout || 45000,
+          completion: 'completed',
+        }));
         lastText = (res.text || '').trim();
         debug[`raw_${set.region}${attempt > 0 ? `_retry${attempt}` : ''}`] = lastText.substring(0, 3000);
         parsedResult = parseClusterResponse(lastText, slice.length);
@@ -953,6 +984,7 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {
         repairAttempted = true;
         try {
           const repair = await attemptClusterRepair(provider, lastText, slice, set, heuristic, news);
+          if (repair?.telemetry) debug.telemetry.repairCalls.push(repair.telemetry);
           debug[`repair_${set.region}`] = repair.repairText.substring(0, 3000);
           if (repair.parsed.ok) {
             parsedResult = repair.parsed;
@@ -1050,6 +1082,9 @@ async function consolidateNewsWithLLM(news = [], llmProvider = null, options = {
   if (debug.used && !debug.fallbackReason && debug.heuristicFallbackCount > 0) debug.fallbackReason = 'partial-fallback';
   debug.review = buildClusterFailureReview(debug);
   debug.repairArtifactCount = Array.isArray(debug.repairArtifacts) ? debug.repairArtifacts.length : 0;
+  debug.telemetry.clusteringSummary = combineLlmTelemetry(debug.telemetry.clusteringCalls);
+  debug.telemetry.repairSummary = combineLlmTelemetry(debug.telemetry.repairCalls);
+  debug.telemetry.aggregate = combineLlmTelemetry([...debug.telemetry.clusteringCalls, ...debug.telemetry.repairCalls]);
   return { hints: mergedHints, debug };
 }
 

@@ -236,6 +236,16 @@ test('llm operations contract exposes provider health, mode forcing, fallback ch
       error: 'parse-failed',
       refinementState: 'failed',
       refinementCompletion: 'fallback-parse-failed',
+      llmTelemetry: {
+        surface: 'agent-analysis',
+        provider: 'ollama',
+        model: 'qwen',
+        latencyMs: 842,
+        timeoutMs: 90000,
+        completion: 'parse-failed',
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        cost: { available: true, estimatedUsd: 0, basis: 'local-provider' },
+      },
     },
     newsSourceReasoning: {
       totalSources: 30,
@@ -257,6 +267,8 @@ test('llm operations contract exposes provider health, mode forcing, fallback ch
   assert.equal(contract.fallbackChains[0].fallbackReason, 'all-candidate-sets-fell-back');
   assert.equal(contract.clusteringDebug.promptDebug.promptFingerprint, 'prompt-fp');
   assert.equal(contract.clusteringDebug.parseFailureArtifacts.totalArtifacts, 1);
+  assert.equal(typeof contract.llmTelemetry.clustering.aggregate.callCount, 'number');
+  assert.equal(contract.llmTelemetry.analysis.completion, 'parse-failed');
   assert.equal(contract.reasoningValidation.analysis.reasoningSurfacePresent, true);
   assert.deepEqual(contract.reasoningValidation.analysis.sourceReasoning.cautionRoles, ['exploratory']);
   assert.equal(contract.navigation.api, '/api/llm/operations');

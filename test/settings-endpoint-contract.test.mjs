@@ -150,6 +150,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(Array.isArray(llmOps.fallbackChains), true);
     assert.equal(Array.isArray(llmOps.recentFailures), true);
     assert.equal(llmOps.clusteringDebug.reviewEndpoint, '/api/brief/news/review');
+    assert.equal(typeof llmOps.llmTelemetry.clustering.aggregate.callCount, 'number');
     assert.equal(typeof llmOps.clusteringDebug.parseFailureArtifacts.totalArtifacts, 'number');
     assert.equal(llmOps.reasoningValidation.analysis.endpoint, '/api/analysis/validation-summary');
     assert.equal(typeof llmOps.reasoningValidation.analysis.reasoningSurfacePresent, 'boolean');
@@ -181,6 +182,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.match(llmOpsPage, /Admin settings/i);
     assert.match(llmOpsPage, /Clustering prompt debug/i);
     assert.match(llmOpsPage, /Reasoning surface validation/i);
+    assert.match(llmOpsPage, /Operator-visible cost, latency, and completion telemetry/i);
 
     const adminPage = await fetch(adminPageUrl).then(r => r.text());
     assert.match(adminPage, /Local control plane/i);

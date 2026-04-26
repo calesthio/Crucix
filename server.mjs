@@ -14,6 +14,7 @@ import { synthesize, generateIdeas, buildNewsClusters } from './dashboard/inject
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider } from './lib/llm/index.mjs';
 import { generateLLMIdeas } from './lib/llm/ideas.mjs';
+import { buildLlmCallTelemetry, combineLlmTelemetry } from './lib/llm/telemetry.mjs';
 import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
 import { buildSixHourBaseline } from './lib/baseline-sixhour.mjs';
@@ -1852,7 +1853,7 @@ function parseAgentAnalysisResponse(text = '') {
 }
 
 async function generateLLMAgentAnalysis(provider, snapshot = {}) {
-  if (!provider?.isConfigured) return { analysis: null, meta: { source: 'deterministic', used: false, error: 'llm-unavailable' } };
+  if (!provider?.isConfigured) return { analysis: null, meta: { source: 'deterministic', used: false, error: 'llm-unavailable', llmTelemetry: buildLlmCallTelemetry({ surface: 'agent-analysis', provider: provider?.name || null, model: provider?.model || null, completion: 'unavailable', timeoutMs: 90000 }) } };
   const fallback = buildDeterministicAgentAnalysis(snapshot);
   const systemPrompt = `You are an intelligence analyst producing structured operator-facing analysis from current signals, trend memory, and source-health context.
 
@@ -1888,12 +1889,15 @@ FALLBACK_DRAFT:
 ${JSON.stringify(fallback, null, 2)}`;
 
   try {
+    const requestStartedAt = Date.now();
     const result = await provider.complete(systemPrompt, userPrompt, { maxTokens: 4096, timeout: 90000 });
+    const latencyMs = Date.now() - requestStartedAt;
     const parsed = parseAgentAnalysisResponse(result.text);
-    if (!parsed) return { analysis: null, meta: { source: 'llm-failed', used: false, error: 'parse-failed', model: result.model || provider.model || null } };
-    return { analysis: parsed, meta: { source: 'llm', used: true, error: null, model: result.model || provider.model || null } };
+    const llmTelemetry = buildLlmCallTelemetry({ surface: 'agent-analysis', provider: provider?.name || null, model: result.model || provider.model || null, usage: result?.usage || {}, latencyMs, timeoutMs: 90000, completion: parsed ? 'completed' : 'parse-failed' });
+    if (!parsed) return { analysis: null, meta: { source: 'llm-failed', used: false, error: 'parse-failed', model: result.model || provider.model || null, llmTelemetry } };
+    return { analysis: parsed, meta: { source: 'llm', used: true, error: null, model: result.model || provider.model || null, llmTelemetry } };
   } catch (err) {
-    return { analysis: null, meta: { source: 'llm-failed', used: false, error: err.message, model: provider.model || null } };
+    return { analysis: null, meta: { source: 'llm-failed', used: false, error: err.message, model: provider.model || null, llmTelemetry: buildLlmCallTelemetry({ surface: 'agent-analysis', provider: provider?.name || null, model: provider?.model || null, timeoutMs: 90000, completion: /timeout|timed out|abort/i.test(err.message || '') ? 'timed-out' : 'failed' }) } };
   }
 }
 
@@ -1941,6 +1945,7 @@ function buildAgentAnalysisMeta(overrides = {}) {
     refinementCancelled: false,
     refinementTimedOut: false,
     refinementCompletion: null,
+    llmTelemetry: null,
     ...overrides,
   };
 }
@@ -3161,6 +3166,9 @@ function buildLlmOperationsContract(snapshot = null) {
   const analysisMeta = activeSnapshot.agentAnalysisMeta || buildAgentAnalysisMeta({ error: llmProvider?.isConfigured ? null : 'llm-unavailable' });
   const clusterArtifacts = summarizeClusterRepairArtifacts(Array.isArray(newsDebug?.repairArtifacts) && newsDebug.repairArtifacts.length ? newsDebug.repairArtifacts : undefined);
   const latestArtifact = clusterArtifacts.items?.[0] || null;
+  const emptyTelemetrySummary = { callCount: 0, measuredLatencyCount: 0, totalLatencyMs: 0, avgLatencyMs: null, maxLatencyMs: null, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 }, cost: { available: false, estimatedUsd: null, measuredCallCount: 0 }, completions: {} };
+  const clusteringTelemetry = newsDebug?.telemetry || {};
+  const analysisTelemetry = analysisMeta?.llmTelemetry || null;
   const recentFailures = [];
   const pushFailure = (surface, reason, detail = null, severity = 'warn') => {
     if (!reason) return;
@@ -3246,6 +3254,14 @@ function buildLlmOperationsContract(snapshot = null) {
         lastOutcome: runtimeControl.jobs?.ideas?.lastOutcome || null,
       },
     ],
+    llmTelemetry: {
+      clustering: {
+        aggregate: clusteringTelemetry.aggregate || emptyTelemetrySummary,
+        generation: clusteringTelemetry.clusteringSummary || emptyTelemetrySummary,
+        repair: clusteringTelemetry.repairSummary || emptyTelemetrySummary,
+      },
+      analysis: analysisTelemetry,
+    },
     clusteringDebug: {
       surface: 'news-clustering',
       reviewEndpoint: '/api/brief/news/review',
@@ -3280,6 +3296,11 @@ function buildLlmOperationsContract(snapshot = null) {
         totalArtifacts: clusterArtifacts.totalArtifacts || 0,
         topReasons: Array.isArray(clusterArtifacts.topReasons) ? clusterArtifacts.topReasons.slice(0, 4) : [],
         topRegions: Array.isArray(clusterArtifacts.topRegions) ? clusterArtifacts.topRegions.slice(0, 4) : [],
+      },
+      telemetry: {
+        aggregate: clusteringTelemetry.aggregate || emptyTelemetrySummary,
+        generation: clusteringTelemetry.clusteringSummary || emptyTelemetrySummary,
+        repair: clusteringTelemetry.repairSummary || emptyTelemetrySummary,
       },
     },
     reasoningValidation: {
@@ -3841,6 +3862,7 @@ app.get('/api/health', (req, res) => {
       refinementState: currentData.agentAnalysisMeta?.refinementState || 'not-requested',
       refinementCompletion: currentData.agentAnalysisMeta?.refinementCompletion || null,
       refinementTimedOut: Boolean(currentData.agentAnalysisMeta?.refinementTimedOut),
+      llmTelemetry: currentData.agentAnalysisMeta?.llmTelemetry || null,
     } : null,
   });
 });

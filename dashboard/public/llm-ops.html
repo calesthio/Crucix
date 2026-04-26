@@ -45,6 +45,11 @@ function esc(value){return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&
 function row(key, value){return `<div class="row"><div class="key">${esc(key)}</div><div class="val">${value}</div></div>`;}
 function renderCard(title, subtitle, body){return `<section class="card"><div class="mini">${esc(subtitle)}</div><h2>${esc(title)}</h2>${body}</section>`;}
 function renderFailure(item){return `<div class="item"><strong>${esc(item.surface || 'surface')}</strong><div>${esc(item.reason || 'unknown')}</div>${item.detail ? `<div class="mini">${esc(item.detail)}</div>` : ''}</div>`;}
+function renderTelemetrySummary(label, telemetry){
+  if(!telemetry) return `<div class="item"><strong>${esc(label)}</strong><div>No telemetry available.</div></div>`;
+  const cost = telemetry.cost?.available ? `$${Number(telemetry.cost.estimatedUsd || 0).toFixed(6)}` : 'unavailable';
+  return `<div class="item"><strong>${esc(label)}</strong><div>${esc(`calls ${telemetry.callCount || 0}, avg latency ${telemetry.avgLatencyMs ?? 'n/a'} ms, max latency ${telemetry.maxLatencyMs ?? 'n/a'} ms, tokens ${telemetry.usage?.totalTokens || 0}, cost ${cost}`)}</div><div class="mini">${esc(`completions ${JSON.stringify(telemetry.completions || {})}`)}</div></div>`;
+}
 function renderReasoningSummary(reasoning){
   if(!reasoning) return '<div class="item">No reasoning summary available.</div>';
   return `<div class="list">
@@ -84,6 +89,12 @@ async function boot(){
         row('Explanation', esc(data.modes?.explanation || 'n/a')),
       ].join('')),
       renderCard('Fallback chains', 'Current surfaces and fallback targets', `<div class="list">${(data.fallbackChains || []).map(item => `<div class="item"><strong>${esc(item.surface)}</strong><div class="mini">entry ${esc(item.entryMode || 'n/a')} → fallback ${esc(item.fallbackTarget || 'n/a')}</div><div>${esc(item.fallbackReason || 'no current fallback reason')}</div></div>`).join('')}</div>`),
+      renderCard('LLM telemetry', 'Operator-visible cost, latency, and completion telemetry', `<div class="list">${[
+        renderTelemetrySummary('Clustering aggregate', data.llmTelemetry?.clustering?.aggregate),
+        renderTelemetrySummary('Clustering generation', data.llmTelemetry?.clustering?.generation),
+        renderTelemetrySummary('Clustering repair', data.llmTelemetry?.clustering?.repair),
+        renderTelemetrySummary('Agent analysis', data.llmTelemetry?.analysis),
+      ].join('')}</div>`),
       renderCard('Recent failure reasons', 'Latest LLM-related failures or degradations', (data.recentFailures || []).length ? `<div class="list">${data.recentFailures.map(renderFailure).join('')}</div>` : '<div class="item">No recent LLM failures captured.</div>'),
       renderCard('Clustering prompt debug', 'Prompt-debug and parse-failure surface', [
         row('Review endpoint', `<a href="${esc(data.clusteringDebug?.reviewEndpoint || '/api/brief/news/review')}" target="_blank" rel="noreferrer">${esc(data.clusteringDebug?.reviewEndpoint || '/api/brief/news/review')}</a>`),

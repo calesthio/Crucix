@@ -770,7 +770,7 @@
           {
             "id": "effort-31.4",
             "title": "Add operator-visible cost, latency, and completion telemetry for LLM-backed clustering and analysis so expensive or degraded paths can be diagnosed quickly",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-31.5",
