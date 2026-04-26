@@ -84,6 +84,50 @@ const sweepWatchdogTelemetry = {
   lastRecoveredSweepStartedAt: null,
   lastOverdueAt: null,
 };
+const runtimeJobTelemetry = {
+  synthesis: {
+    active: false,
+    attemptCount: 0,
+    retryCount: 0,
+    cancellationCount: 0,
+    lastAttemptId: null,
+    lastStartedAt: null,
+    lastCompletedAt: null,
+    lastDurationMs: null,
+    lastOutcome: null,
+    lastError: null,
+    lastTimedOut: false,
+    timeoutMs: SWEEP_WATCHDOG_TIMEOUT_MS,
+  },
+  ideas: {
+    active: false,
+    attemptCount: 0,
+    retryCount: 0,
+    cancellationCount: 0,
+    lastAttemptId: null,
+    lastStartedAt: null,
+    lastCompletedAt: null,
+    lastDurationMs: null,
+    lastOutcome: null,
+    lastError: null,
+    lastTimedOut: false,
+    timeoutMs: 90000,
+  },
+  analysis: {
+    active: false,
+    attemptCount: 0,
+    retryCount: 0,
+    cancellationCount: 0,
+    lastAttemptId: null,
+    lastStartedAt: null,
+    lastCompletedAt: null,
+    lastDurationMs: null,
+    lastOutcome: null,
+    lastError: null,
+    lastTimedOut: false,
+    timeoutMs: 90000,
+  },
+};
 
 function loadJsonFile(path, fallback) {
   try {
@@ -2277,6 +2321,43 @@ function markRuntimePhase(phase, nowIso = new Date().toISOString()) {
   };
 }
 
+function beginRuntimeJob(jobKey, { attemptId = null, startedAt = new Date().toISOString(), isRetry = false } = {}) {
+  const prev = runtimeJobTelemetry[jobKey] || {};
+  runtimeJobTelemetry[jobKey] = {
+    ...prev,
+    active: true,
+    attemptCount: Number(prev.attemptCount || 0) + 1,
+    retryCount: Number(prev.retryCount || 0) + (isRetry ? 1 : 0),
+    lastAttemptId: attemptId,
+    lastStartedAt: startedAt,
+    lastOutcome: 'running',
+    lastError: null,
+    lastTimedOut: false,
+  };
+}
+
+function completeRuntimeJob(jobKey, { completedAt = new Date().toISOString(), durationMs = null, outcome = 'completed', error = null, timedOut = false, cancelled = false } = {}) {
+  const prev = runtimeJobTelemetry[jobKey] || {};
+  runtimeJobTelemetry[jobKey] = {
+    ...prev,
+    active: false,
+    cancellationCount: Number(prev.cancellationCount || 0) + (cancelled ? 1 : 0),
+    lastCompletedAt: completedAt,
+    lastDurationMs: durationMs,
+    lastOutcome: outcome,
+    lastError: error,
+    lastTimedOut: Boolean(timedOut),
+  };
+}
+
+function getRuntimeJobsSnapshot() {
+  return {
+    synthesis: { ...runtimeJobTelemetry.synthesis },
+    ideas: { ...runtimeJobTelemetry.ideas },
+    analysis: { ...runtimeJobTelemetry.analysis },
+  };
+}
+
 function completeRuntimePhase(phase = runtimeJobState.phase, nowIso = new Date().toISOString()) {
   runtimeJobState = {
     ...runtimeJobState,
@@ -2767,6 +2848,19 @@ function buildRuntimeControlContract(snapshot = null) {
   const port = config?.port ?? null;
   const startedAt = typeof startTime === 'number' ? new Date(startTime).toISOString() : null;
   const uptimeSeconds = typeof startTime === 'number' ? Math.floor((Date.now() - startTime) / 1000) : null;
+  const jobs = typeof getRuntimeJobsSnapshot === 'function'
+    ? getRuntimeJobsSnapshot()
+    : (typeof runtimeJobTelemetry !== 'undefined'
+      ? {
+          synthesis: { ...(runtimeJobTelemetry.synthesis || {}) },
+          ideas: { ...(runtimeJobTelemetry.ideas || {}) },
+          analysis: { ...(runtimeJobTelemetry.analysis || {}) },
+        }
+      : {
+          synthesis: {},
+          ideas: {},
+          analysis: {},
+        });
   return {
     version: 'runtime-control-v1',
     process: {
@@ -2800,6 +2894,7 @@ function buildRuntimeControlContract(snapshot = null) {
       agentAnalysisStatus: snapshot?.agentAnalysis?.status || null,
       agentAnalysisRefinementState: snapshot?.agentAnalysisMeta?.refinementState || null,
     },
+    jobs,
     controls: {
       endpoint: '/api/runtime/control',
       allowedActions: ['restart-safe', 'stop'],
@@ -3313,22 +3408,36 @@ async function enrichIdeasAndPublish(synthesized, delta) {
   if (!llmProvider?.isConfigured) {
     synthesized.ideas = [];
     synthesized.ideasSource = 'disabled';
+    completeRuntimeJob('ideas', { outcome: 'disabled', completedAt: new Date().toISOString(), durationMs: 0 });
     return synthesized;
   }
 
+  const attemptId = `ideas-refine-${String((runtimeJobTelemetry.ideas?.attemptCount || 0) + 1).padStart(4, '0')}`;
+  const startedAt = new Date().toISOString();
+  const startMs = Date.now();
+  markRuntimePhase('llm-ideas-refinement', startedAt);
+  beginRuntimeJob('ideas', { attemptId, startedAt, isRetry: (runtimeJobTelemetry.ideas?.attemptCount || 0) > 0 });
+
   try {
-    console.log('[Crucix] Generating LLM trade ideas...');
+    console.log(`[Crucix] Generating LLM trade ideas (${attemptId})...`);
     const previousIdeas = memory.getLastRun()?.ideas || [];
     const llmIdeas = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas);
     synthesized.ideas = llmIdeas || [];
     synthesized.ideasSource = llmIdeas ? 'llm' : 'llm-failed';
+    const durationMs = Date.now() - startMs;
+    completeRuntimeJob('ideas', { completedAt: new Date().toISOString(), durationMs, outcome: llmIdeas ? 'completed' : 'fallback-empty' });
     console.log(`[Crucix] LLM ideas ready: ${synthesized.ideas.length} (${synthesized.ideasSource})`);
   } catch (llmErr) {
+    const durationMs = Date.now() - startMs;
+    const timedOut = /timeout|timed out|abort/i.test(llmErr.message || '');
     console.error('[Crucix] LLM ideas failed (non-fatal):', llmErr.message);
     synthesized.ideas = [];
     synthesized.ideasSource = 'llm-failed';
+    completeRuntimeJob('ideas', { completedAt: new Date().toISOString(), durationMs, outcome: timedOut ? 'timed-out' : 'failed', error: llmErr.message || null, timedOut });
+    failRuntimePhase(timedOut ? 'llm-ideas-timeout' : (llmErr.message || 'llm-ideas-error'), 'llm-ideas-refinement');
   }
 
+  if (runtimeJobState.phase === 'llm-ideas-refinement') completeRuntimePhase('llm-ideas-refinement');
   currentData = synthesized;
   broadcast({ type: 'ideas_update', data: currentData });
   return synthesized;
@@ -3350,6 +3459,7 @@ async function enrichAgentAnalysisAndPublish(synthesized) {
   const startedAt = new Date().toISOString();
   const startMs = Date.now();
   markRuntimePhase('llm-analysis-refinement', startedAt);
+  beginRuntimeJob('analysis', { attemptId, startedAt, isRetry: (runtimeJobTelemetry.analysis?.attemptCount || 0) > 0 });
   synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({
     refinementState: 'pending',
     refinementAttemptId: attemptId,
@@ -3387,6 +3497,7 @@ async function enrichAgentAnalysisAndPublish(synthesized) {
       });
     }
     console.log(`[Crucix] Agent analysis ready: ${synthesized.agentAnalysis.status} (${synthesized.agentAnalysisMeta?.source || 'deterministic'}) [${synthesized.agentAnalysisMeta?.refinementCompletion || 'unknown'}]`);
+    completeRuntimeJob('analysis', { completedAt: new Date().toISOString(), durationMs, outcome: analysis ? 'completed' : 'fallback-empty' });
     completeRuntimePhase('llm-analysis-refinement');
   } catch (err) {
     const durationMs = Date.now() - startMs;
@@ -3406,6 +3517,7 @@ async function enrichAgentAnalysisAndPublish(synthesized) {
       refinementTimedOut: timedOut,
       refinementCompletion: timedOut ? 'fallback-timeout' : 'fallback-error',
     });
+    completeRuntimeJob('analysis', { completedAt: new Date().toISOString(), durationMs, outcome: timedOut ? 'timed-out' : 'failed', error: err.message || null, timedOut });
     failRuntimePhase(timedOut ? 'llm-analysis-timeout' : (err.message || 'llm-analysis-error'), 'llm-analysis-refinement');
   }
 
@@ -3427,6 +3539,8 @@ async function runSweepCycle() {
 
   sweepInProgress = true;
   sweepStartedAt = new Date().toISOString();
+  const synthesisAttemptId = `sweep-${String((runtimeJobTelemetry.synthesis?.attemptCount || 0) + 1).padStart(4, '0')}`;
+  beginRuntimeJob('synthesis', { attemptId: synthesisAttemptId, startedAt: sweepStartedAt, isRetry: (runtimeJobTelemetry.synthesis?.attemptCount || 0) > 0 });
   markRuntimePhase('briefing', sweepStartedAt);
   broadcast({ type: 'sweep_start', timestamp: sweepStartedAt });
   console.log(`\n${'='.repeat(60)}`);
@@ -3513,9 +3627,11 @@ async function runSweepCycle() {
       });
     }
 
+    completeRuntimeJob('synthesis', { completedAt: new Date().toISOString(), durationMs: Date.now() - new Date(sweepStartedAt).getTime(), outcome: 'completed' });
     completeRuntimePhase('synthesis');
   } catch (err) {
     console.error('[Crucix] Sweep failed:', err.message);
+    completeRuntimeJob('synthesis', { completedAt: new Date().toISOString(), durationMs: sweepStartedAt ? (Date.now() - new Date(sweepStartedAt).getTime()) : null, outcome: /timeout|timed out|abort/i.test(err.message || '') ? 'timed-out' : 'failed', error: err.message || null, timedOut: /timeout|timed out|abort/i.test(err.message || '') });
     failRuntimePhase(err.message || 'sweep-failed');
     broadcast({ type: 'sweep_error', error: err.message });
   } finally {

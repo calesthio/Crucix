@@ -711,7 +711,7 @@
           {
             "id": "effort-29.4",
             "title": "Add timeout, cancellation, retry, and completion telemetry for deferred LLM and synthesis work so slow, hung, and failed jobs are operationally distinguishable",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },

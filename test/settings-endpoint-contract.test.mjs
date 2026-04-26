@@ -81,6 +81,9 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(typeof health.runtimeIdentity.pid, 'number');
     assert.equal(health.runtimeControl.version, 'runtime-control-v1');
     assert.equal(health.runtimeControl.process.pid, health.runtimeIdentity.pid);
+    assert.equal(typeof health.runtimeControl.jobs.synthesis.attemptCount, 'number');
+    assert.equal(typeof health.runtimeControl.jobs.ideas.timeoutMs, 'number');
+    assert.equal(typeof health.runtimeControl.jobs.analysis.timeoutMs, 'number');
     assert.equal(typeof health.sweepWatchdog.phase, 'string');
     assert.equal('recoveryClassification' in health.sweepWatchdog, true);
     assert.equal('publishedAt' in health.lastSuccess, true);
@@ -113,6 +116,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(admin.access.role, 'admin');
     assert.equal(admin.admin.boundaries.requiresLocalRequest, true);
     assert.equal(admin.runtimeControl.version, 'runtime-control-v1');
+    assert.equal(typeof admin.runtimeControl.jobs.synthesis.attemptCount, 'number');
+    assert.equal('lastOutcome' in admin.runtimeControl.jobs.ideas, true);
     assert.equal(Array.isArray(admin.runtimeControl.controls.allowedActions), true);
     assert.equal(admin.runtimeControl.controls.allowedActions.includes('restart-safe'), true);
     assert.equal(admin.runtimeControl.controls.allowedActions.includes('stop'), true);

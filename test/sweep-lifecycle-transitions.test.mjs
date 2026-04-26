@@ -43,6 +43,11 @@ function buildHarness(overrides = {}) {
       lastRecoveryAt: null,
       lastRecoveryReason: null,
     },
+    runtimeJobTelemetry: {
+      synthesis: { active: false, attemptCount: 0, retryCount: 0, cancellationCount: 0, lastAttemptId: null, lastStartedAt: null, lastCompletedAt: null, lastDurationMs: null, lastOutcome: null, lastError: null, lastTimedOut: false, timeoutMs: 2700000 },
+      ideas: { active: false, attemptCount: 0, retryCount: 0, cancellationCount: 0, lastAttemptId: null, lastStartedAt: null, lastCompletedAt: null, lastDurationMs: null, lastOutcome: null, lastError: null, lastTimedOut: false, timeoutMs: 90000 },
+      analysis: { active: false, attemptCount: 0, retryCount: 0, cancellationCount: 0, lastAttemptId: null, lastStartedAt: null, lastCompletedAt: null, lastDurationMs: null, lastOutcome: null, lastError: null, lastTimedOut: false, timeoutMs: 90000 },
+    },
     llmProvider: { isConfigured: false, model: 'test-model' },
     telegramAlerter: { isConfigured: false, evaluateAndAlert() { throw new Error('should not alert'); } },
     discordAlerter: { isConfigured: false, evaluateAndAlert() { throw new Error('should not alert'); } },
@@ -81,7 +86,7 @@ function buildHarness(overrides = {}) {
     ${extractChunk('const SWEEP_WATCHDOG_TIMEOUT_MS =', 'function loadJsonFile(path, fallback) {')}
     ${extractChunk('function markRuntimePhase(phase, nowIso = new Date().toISOString()) {', 'function syncSnapshotRuntimeFreshness(snapshot = null) {')}
     ${extractChunk('async function runSweepCycle() {', '// === Startup ===')}
-    globalThis.__cycleHarness = { runSweepCycle, getSweepWatchdogSnapshot, runSweepWatchdog };
+    globalThis.__cycleHarness = { runSweepCycle, getSweepWatchdogSnapshot, runSweepWatchdog, getRuntimeJobsSnapshot };
   `, context);
   return { context, writes, broadcasts, syncCalls, memoryPrunes };
 }
@@ -101,6 +106,9 @@ test('runSweepCycle clears lifecycle state and syncs snapshot after a successful
   assert.equal(context.currentData?.agentAnalysis?.status, 'ready');
   assert.equal(context.currentData?.ideasSource, 'disabled');
   assert.equal(context.runtimeJobState.lastCompletedPhase, 'synthesis');
+  const jobs = context.__cycleHarness.getRuntimeJobsSnapshot();
+  assert.equal(jobs.synthesis.attemptCount, 1);
+  assert.equal(jobs.synthesis.lastOutcome, 'completed');
 });
 
 test('runSweepCycle clears lifecycle state and emits sweep_error after a failed sweep', async () => {
@@ -116,6 +124,9 @@ test('runSweepCycle clears lifecycle state and emits sweep_error after a failed 
   assert.equal(broadcasts[1]?.error, 'boom');
   assert.equal(syncCalls.length, 1);
   assert.equal(context.runtimeJobState.lastFailureReason, 'boom');
+  const jobs = context.__cycleHarness.getRuntimeJobsSnapshot();
+  assert.equal(jobs.synthesis.lastOutcome, 'failed');
+  assert.equal(jobs.synthesis.lastError, 'boom');
 });
 
 test('runSweepCycle recovers an overdue stuck gate before starting a new sweep', async () => {
