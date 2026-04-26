@@ -22,7 +22,6 @@ Recent promotions:
 - End-to-end regression coverage for `POST /api/review-workflow/action` and `GET /api/review-workflow/audit` was promoted into `local-fork/plan.json` as Epic 34, effort 34.5 on 2026-04-26.
 - Endpoint-level regression coverage for cluster-repair workflow actions and suppressed-cluster state was promoted into `local-fork/plan.json` as Epic 34, effort 34.6 on 2026-04-26.
 - Attribution-diagnostics follow-on work to distinguish routine aggregator publisher mixes from true alias-collision anomalies was promoted into `local-fork/plan.json` as Epic 32, effort 32.6 on 2026-04-26.
+- Rolling noise-suppression match history and per-rule hit counters were promoted into `local-fork/plan.json` as Epic 32, effort 32.7 on 2026-04-26.
 
 New items can be added here when they do not yet belong in the active roadmap.
-
-- Persist rolling noise-suppression match history and per-rule hit counters so duplicate-burst, low-value, and source-rule suggestions reflect multi-sweep behavior instead of only the current snapshot.
