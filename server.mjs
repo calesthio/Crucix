@@ -58,6 +58,17 @@ let runtimeJobState = {
 };
 const startTime = Date.now();
 const sseClients = new Set();
+let serverInstance = null;
+let sweepIntervalHandle = null;
+let watchdogIntervalHandle = null;
+let shutdownPromise = null;
+let shuttingDown = false;
+const runtimeLifecycle = {
+  phase: 'booting',
+  ready: false,
+  shuttingDown: false,
+  shutdownReason: null,
+};
 const selectionMemory = new Map();
 const selectionMemoryTelemetry = {
   ttlExpired: 0,
@@ -193,6 +204,106 @@ function saveJsonFile(path, data) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
 }
+
+function isPlaceholderSecret(value = '') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return false;
+  return [
+    'changeme',
+    'replace-me',
+    'replace_me',
+    'your-token-here',
+    'your_api_key_here',
+    'your-api-key-here',
+    'example',
+    'test',
+    'todo',
+  ].includes(normalized);
+}
+
+function isValidHttpUrl(value = '') {
+  if (!String(value || '').trim()) return false;
+  try {
+    const parsed = new URL(String(value));
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function shouldAutoOpenBrowser() {
+  const raw = String(process.env.CRUCIX_AUTO_OPEN_BROWSER || '').trim().toLowerCase();
+  if (['0', 'false', 'no', 'off'].includes(raw)) return false;
+  if (['1', 'true', 'yes', 'on'].includes(raw)) return true;
+  return Boolean(process.stdout?.isTTY) && !process.env.CI;
+}
+
+function validateStartupEnvironment() {
+  const issues = [];
+  const warnings = [];
+  const llmProviderName = String(config.llm?.provider || '').trim();
+  const llmProviderLower = llmProviderName.toLowerCase();
+  const llmApiKey = String(config.llm?.apiKey || '').trim();
+  const telegramToken = String(config.telegram?.botToken || '').trim();
+  const telegramChatId = String(config.telegram?.chatId || '').trim();
+  const discordToken = String(config.discord?.botToken || '').trim();
+  const discordWebhookUrl = String(config.discord?.webhookUrl || '').trim();
+
+  if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) {
+    issues.push({ key: 'PORT', message: 'PORT must be an integer between 1 and 65535.' });
+  }
+  if (!Number.isInteger(config.refreshIntervalMinutes) || config.refreshIntervalMinutes < 1) {
+    issues.push({ key: 'REFRESH_INTERVAL_MINUTES', message: 'REFRESH_INTERVAL_MINUTES must be at least 1.' });
+  }
+  if (!Number.isInteger(config.review?.sweepWatchdogPollSeconds) || config.review.sweepWatchdogPollSeconds < 5) {
+    issues.push({ key: 'SWEEP_WATCHDOG_POLL_SECONDS', message: 'SWEEP_WATCHDOG_POLL_SECONDS must be at least 5.' });
+  }
+  if (!['local-only', 'open'].includes(config.debugEndpoints?.exposure || 'local-only')) {
+    issues.push({ key: 'DEBUG_ENDPOINT_EXPOSURE', message: 'DEBUG_ENDPOINT_EXPOSURE must be local-only or open.' });
+  }
+  if (llmProviderName && !config.llm?.model) {
+    warnings.push({ key: 'LLM_MODEL', message: 'LLM provider is configured without an explicit model override.' });
+  }
+  if (llmProviderName && !['ollama', 'codex'].includes(llmProviderLower) && !llmApiKey) {
+    issues.push({ key: 'LLM_API_KEY', message: `LLM provider ${llmProviderName} requires LLM_API_KEY.` });
+  }
+  if (llmApiKey && isPlaceholderSecret(llmApiKey)) {
+    issues.push({ key: 'LLM_API_KEY', message: 'LLM_API_KEY looks like a placeholder value.' });
+  }
+  if (telegramToken && !telegramChatId) {
+    issues.push({ key: 'TELEGRAM_CHAT_ID', message: 'TELEGRAM_CHAT_ID is required when TELEGRAM_BOT_TOKEN is configured.' });
+  }
+  if (!telegramToken && telegramChatId) {
+    issues.push({ key: 'TELEGRAM_BOT_TOKEN', message: 'TELEGRAM_BOT_TOKEN is required when TELEGRAM_CHAT_ID is configured.' });
+  }
+  if (telegramToken && isPlaceholderSecret(telegramToken)) {
+    issues.push({ key: 'TELEGRAM_BOT_TOKEN', message: 'TELEGRAM_BOT_TOKEN looks like a placeholder value.' });
+  }
+  if (discordToken && isPlaceholderSecret(discordToken)) {
+    issues.push({ key: 'DISCORD_BOT_TOKEN', message: 'DISCORD_BOT_TOKEN looks like a placeholder value.' });
+  }
+  if (discordWebhookUrl && !isValidHttpUrl(discordWebhookUrl)) {
+    issues.push({ key: 'DISCORD_WEBHOOK_URL', message: 'DISCORD_WEBHOOK_URL must be a valid http(s) URL.' });
+  }
+  if (config.llm?.baseUrl && !isValidHttpUrl(config.llm.baseUrl)) {
+    issues.push({ key: 'OLLAMA_BASE_URL', message: 'OLLAMA_BASE_URL must be a valid http(s) URL when configured.' });
+  }
+  if (llmProviderLower === 'ollama' && !config.llm?.baseUrl) {
+    warnings.push({ key: 'OLLAMA_BASE_URL', message: 'OLLAMA_BASE_URL is not set, so the default local Ollama endpoint will be used.' });
+  }
+  if ((config.debugEndpoints?.exposure || 'local-only') === 'open') {
+    warnings.push({ key: 'DEBUG_ENDPOINT_EXPOSURE', message: 'Debug endpoints are openly exposed. Prefer local-only outside trusted local development.' });
+  }
+
+  return {
+    valid: issues.length === 0,
+    checkedAt: new Date().toISOString(),
+    issues,
+    warnings,
+  };
+}
+
+const startupValidation = validateStartupEnvironment();
 
 function normalizeToken(value = '') {
   return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -3092,6 +3203,15 @@ llmProviderProbeState = {
 const telegramAlerter = new TelegramAlerter(config.telegram);
 const discordAlerter = new DiscordAlerter(config.discord || {});
 
+if (!startupValidation.valid) {
+  console.error('[Crucix] Startup configuration validation failed:');
+  for (const issue of startupValidation.issues) console.error(`  - ${issue.key}: ${issue.message}`);
+}
+if (startupValidation.warnings.length) {
+  console.warn('[Crucix] Startup configuration warnings:');
+  for (const warning of startupValidation.warnings) console.warn(`  - ${warning.key}: ${warning.message}`);
+}
+
 if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
 if (telegramAlerter.isConfigured) {
   console.log('[Crucix] Telegram alerts enabled');
@@ -4963,8 +5083,17 @@ app.get('/api/health', (req, res) => {
       }
     : readOpenSkyRuntimeState();
   const sourceOps = buildOperatorSourceOps(currentData || null);
-  res.json({
-    status: 'ok',
+  const responseStatus = shuttingDown ? 503 : 200;
+  res.status(responseStatus).json({
+    status: shuttingDown ? 'shutting-down' : 'ok',
+    lifecycle: {
+      phase: runtimeLifecycle.phase,
+      ready: runtimeLifecycle.ready,
+      shuttingDown: runtimeLifecycle.shuttingDown,
+      shutdownReason: runtimeLifecycle.shutdownReason,
+      dataReady: Boolean(currentData),
+    },
+    startupValidation,
     runtimeIdentity: {
       pid: process.pid,
       port: config.port,
@@ -5298,6 +5427,10 @@ async function runSweepCycle() {
 
 // === Startup ===
 async function start() {
+  if (!startupValidation.valid) {
+    throw new Error(`Startup validation failed with ${startupValidation.issues.length} issue(s).`);
+  }
+
   const port = config.port;
 
   console.log(`
@@ -5314,9 +5447,9 @@ async function start() {
   ╚══════════════════════════════════════════════╝
   `);
 
-  const server = app.listen(port);
+  serverInstance = app.listen(port);
 
-  server.on('error', (err) => {
+  serverInstance.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.error(`\n[Crucix] FATAL: Port ${port} is already in use!`);
       console.error(`[Crucix] A previous Crucix instance may still be running.`);
@@ -5329,18 +5462,24 @@ async function start() {
     process.exit(1);
   });
 
-  server.on('listening', async () => {
+  serverInstance.on('listening', async () => {
     console.log(`[Crucix] Server running on http://localhost:${port}`);
     console.log(`[Crucix] Runtime identity: pid=${process.pid} cwd=${ROOT}`);
+    runtimeLifecycle.phase = 'serving';
+    runtimeLifecycle.ready = true;
 
     // Auto-open browser
     // NOTE: On Windows, `start` in PowerShell is an alias for Start-Service, not cmd's start.
     // We must use `cmd /c start ""` to ensure it works in both cmd.exe and PowerShell.
     const openCmd = process.platform === 'win32' ? 'cmd /c start ""' :
                     process.platform === 'darwin' ? 'open' : 'xdg-open';
-    exec(`${openCmd} "http://localhost:${port}"`, (err) => {
-      if (err) console.log('[Crucix] Could not auto-open browser:', err.message);
-    });
+    if (shouldAutoOpenBrowser()) {
+      exec(`${openCmd} "http://localhost:${port}"`, (err) => {
+        if (err) console.log('[Crucix] Could not auto-open browser:', err.message);
+      });
+    } else {
+      console.log('[Crucix] Browser auto-open disabled for this runtime');
+    }
 
     // Try to load existing data first for instant display, but do not block initial sweep startup on it.
     try {
@@ -5375,8 +5514,8 @@ async function start() {
     });
 
     // Schedule recurring sweeps
-    setInterval(runSweepCycle, config.refreshIntervalMinutes * 60 * 1000);
-    setInterval(() => {
+    sweepIntervalHandle = setInterval(runSweepCycle, config.refreshIntervalMinutes * 60 * 1000);
+    watchdogIntervalHandle = setInterval(() => {
       try {
         runSweepWatchdog();
       } catch (err) {
@@ -5386,12 +5525,62 @@ async function start() {
   });
 }
 
+async function shutdown(reason = 'signal') {
+  if (shutdownPromise) return shutdownPromise;
+  shuttingDown = true;
+  runtimeLifecycle.phase = 'shutting-down';
+  runtimeLifecycle.ready = false;
+  runtimeLifecycle.shuttingDown = true;
+  runtimeLifecycle.shutdownReason = reason;
+  syncSnapshotRuntimeFreshness(currentData);
+  console.log(`[Crucix] Graceful shutdown started (${reason})`);
+
+  shutdownPromise = (async () => {
+    if (sweepIntervalHandle) {
+      clearInterval(sweepIntervalHandle);
+      sweepIntervalHandle = null;
+    }
+    if (watchdogIntervalHandle) {
+      clearInterval(watchdogIntervalHandle);
+      watchdogIntervalHandle = null;
+    }
+    telegramAlerter.stopPolling();
+    await discordAlerter.stop().catch(err => {
+      console.error('[Crucix] Discord shutdown failed (non-fatal):', err?.message || err);
+    });
+    for (const client of sseClients) {
+      try { client.end(); } catch {}
+    }
+    sseClients.clear();
+    if (serverInstance) {
+      await new Promise(resolve => serverInstance.close(() => resolve()));
+      serverInstance = null;
+    }
+    runtimeLifecycle.phase = 'stopped';
+    console.log('[Crucix] Shutdown complete');
+  })();
+
+  return shutdownPromise;
+}
+
 // Graceful error handling — log full stack traces for diagnosis
 process.on('unhandledRejection', (err) => {
   console.error('[Crucix] Unhandled rejection:', err?.stack || err?.message || err);
 });
 process.on('uncaughtException', (err) => {
   console.error('[Crucix] Uncaught exception:', err?.stack || err?.message || err);
+});
+process.on('SIGTERM', () => {
+  shutdown('SIGTERM').then(() => process.exit(0)).catch(err => {
+    console.error('[Crucix] Shutdown failed:', err?.stack || err?.message || err);
+    process.exit(1);
+  });
+});
+process.on('SIGINT', () => {
+  shutdown('SIGINT').then(() => process.exit(0)).catch(err => {
+    console.error('[Crucix] Shutdown failed:', err?.stack || err?.message || err);
+    process.exit(1);
+  });
 });
 
 start().catch(err => {
