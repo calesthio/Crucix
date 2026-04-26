@@ -168,6 +168,32 @@ test('source ops surface attaches live source-health state when snapshot health 
           suspiciousNearDuplicateCount: 1,
         },
       },
+      sourcePerformanceHistory: {
+        version: 'source-performance-history-v1',
+        snapshotCount: 2,
+        snapshots: [
+          {
+            timestamp: '2026-04-26T12:00:00.000Z',
+            summary: { totalMeasuredSources: 30, withClusterAttribution: 4, withSignalContribution: 3, degradedOrFailing: 1, byTrustOutcome: { supportive: 1, mixed: 1, degraded: 1, none: 27 } },
+            validationViews: { clusterQuality: [{ label: 'Low quality', value: 3 }], reviewPressure: [{ label: 'Low confidence', value: 3 }] },
+            topImpactSources: [{ name: 'Bluesky', attentionScore: 5 }],
+          },
+          {
+            timestamp: '2026-04-26T11:40:00.000Z',
+            summary: { totalMeasuredSources: 30, withClusterAttribution: 2, withSignalContribution: 2, degradedOrFailing: 2, byTrustOutcome: { supportive: 0, mixed: 1, degraded: 2, none: 27 } },
+            validationViews: { clusterQuality: [{ label: 'Low quality', value: 4 }], reviewPressure: [{ label: 'Low confidence', value: 4 }] },
+            topImpactSources: [{ name: 'Bluesky', attentionScore: 3 }],
+          },
+        ],
+        deltaViews: [
+          {
+            currentTimestamp: '2026-04-26T12:00:00.000Z',
+            previousTimestamp: '2026-04-26T11:40:00.000Z',
+            summaryDelta: { withClusterAttribution: 2, withSignalContribution: 1, degradedOrFailing: -1, byTrustOutcome: { supportive: 1, mixed: 0, degraded: -1, none: 0 }, clusterQuality: { 'Low quality': -1 }, reviewPressure: { 'Low confidence': -1 } },
+            topSourceShifts: [{ name: 'Bluesky', attentionScoreDelta: 2, status: 'retained' }],
+          },
+        ],
+      },
     },
   });
   const acled = surface.inventory.items.find(item => item.name === 'ACLED');
@@ -207,4 +233,9 @@ test('source ops surface attaches live source-health state when snapshot health 
   assert.ok(blueskyPerf.confidenceCaveats.some(item => /failed|degradation/i.test(item)));
   assert.equal(surface.history.current.failingNow, 1);
   assert.equal(surface.history.current.failureCounts['external-limit'], 1);
+  assert.equal(surface.performanceHistory.version, 'source-performance-history-v1');
+  assert.equal(surface.performanceHistory.snapshotCount, 2);
+  assert.equal(surface.performanceHistory.snapshots[0].summary.withClusterAttribution, 4);
+  assert.equal(surface.performanceHistory.deltaViews[0].summaryDelta.withClusterAttribution, 2);
+  assert.equal(surface.performanceHistory.deltaViews[0].topSourceShifts[0].name, 'Bluesky');
 });

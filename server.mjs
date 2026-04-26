@@ -2979,6 +2979,7 @@ function buildOperatorSettingsContract(snapshot = null) {
         topImpactSources: Array.isArray(sourceOps?.performance?.topImpactSources) ? sourceOps.performance.topImpactSources : [],
         measurementNotes: sourceOps?.performance?.measurementNotes || null,
       },
+      performanceHistory: sourceOps?.performanceHistory || null,
       healthHistory: sourceOps?.history || null,
       sourceControls: {
         version: 'source-ops-control-v1',
@@ -4037,6 +4038,7 @@ async function runSweepCycle() {
     synthesized.clusterReviewStats = clusterReviewStats;
     synthesized.clusterPressureStats = clusterPressureStats;
     synthesized.clusterRepairArtifacts = clusterRepairArtifacts;
+    synthesized.sourceOps = buildOperatorSourceOps(synthesized);
 
     // 4. Delta computation + memory
     const delta = memory.addRun(synthesized);
@@ -4045,6 +4047,8 @@ async function runSweepCycle() {
     const sixHourBaselineRun = memory.getBaselineRun(6);
     synthesized.baseline6h = buildSixHourBaseline(synthesized, sixHourBaselineRun);
     synthesized.trendSummary = memory.getTrendSummary();
+    synthesized.sourcePerformanceHistory = memory.getSourcePerformanceHistory();
+    synthesized.sourceOps = buildOperatorSourceOps(synthesized);
     synthesized.agentAnalysis = buildAgentAnalysis(synthesized);
     synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({
       error: llmProvider?.isConfigured ? null : 'llm-unavailable',

@@ -12,12 +12,11 @@ Recent promotions:
 - Endpoint-level contract coverage for reasoning metadata on `/api/analysis` and `/api/brief/news` was promoted into `local-fork/plan.json` as Epic 26, effort 26.4 on 2026-04-25.
 - Direct per-cluster source provenance or cluster-to-runtime-source attribution was promoted into `local-fork/plan.json` as Epic 26, effort 26.5 on 2026-04-25 and completed in cycle 086.
 - Remaining settings safety, preset lifecycle, dashboard performance, and map-event surfacing backlog items were promoted into `local-fork/plan.json` as Epic 36, efforts 36.1 through 36.6 on 2026-04-25.
+- Shared navigation and page-shell work was promoted into `local-fork/plan.json` as Epic 32, effort 32.5 on 2026-04-26.
+- Deferred ideas-enrichment phase telemetry was promoted into `local-fork/plan.json` as Epic 31, effort 31.5 on 2026-04-26.
+- Source-control audit history and undo metadata was promoted into `local-fork/plan.json` as Epic 33, effort 33.5 on 2026-04-26.
+- Historical source-performance trend snapshots and delta views were promoted into `local-fork/plan.json` as Epic 30, effort 30.5 on 2026-04-26.
+- Active LLM provider readiness probing was promoted into `local-fork/plan.json` as Epic 31, effort 31.6 on 2026-04-26.
+- Endpoint-level regression coverage for settings-driven agent-analysis publish behavior was promoted into `local-fork/plan.json` as Epic 34, effort 34.4 on 2026-04-26.
 
 New items can be added here when they do not yet belong in the active roadmap.
-
-- Add a shared navigation and page-shell component for dashboard-adjacent operator, diagnostics, and admin surfaces so labels, links, and boundary explanations do not drift as more control-plane pages are added. Added to backlog on 2026-04-25 after cycle 094.
-- Extend runtime phase telemetry and recovery classification to deferred ideas enrichment so watchdog and `/api/health` can distinguish post-publish idea-generation hangs from analysis refinement hangs. Added to backlog on 2026-04-25 after cycle 095.
-- Add source-control audit history and undo metadata for suppress and quarantine actions so local-admin mutations are attributable, reviewable, and safely reversible during incident triage. Added to backlog on 2026-04-26 after cycle 101.
-- Add historical source-performance trend snapshots and delta views so the operator workflow can compare attribution, cluster quality, and trust-outcome shifts across sweeps instead of only reading the current snapshot. Added to backlog on 2026-04-26 after cycle 102.
-- Add an active LLM provider readiness probe and last-success/last-failure heartbeat so provider health on `/llm-ops` reflects live reachability and model readiness, not only configuration-derived posture. Added to backlog on 2026-04-26 after cycle 103.
-- Add endpoint-level regression coverage for settings-driven agent-analysis publish-policy behavior so horizon filtering, tipping-point thresholds, and deterministic-fallback suppression are validated against live `/api/analysis` output rather than only settings contracts. Added to backlog on 2026-04-26 after cycle 105.
