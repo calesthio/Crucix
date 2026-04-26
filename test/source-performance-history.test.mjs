@@ -30,6 +30,17 @@ test('source performance history snapshots and deltas are reconstructed from com
                 reviewPressure: [{ label: 'Low confidence', value: 1 }],
               },
               attributionHeadlines: [{ name: 'ACLED', attentionScore: 7 }],
+              runtimeBucketDrift: {
+                version: 'source-runtime-bucket-drift-v1',
+                totalDriftCount: 2,
+                singlePublisherMismatchCount: 1,
+                missingAggregatorAliasCount: 1,
+                highSeverityCount: 1,
+                items: [
+                  { runtimeSource: 'Telegram', driftKind: 'single-publisher-mismatch', severity: 'high', observedPublisherCount: 3, clusterCount: 2, summary: 'Telegram mismatch' },
+                  { runtimeSource: 'GDELT', driftKind: 'missing-aggregator-alias', severity: 'low', observedPublisherCount: 4, clusterCount: 1, summary: 'GDELT alias gap' }
+                ],
+              },
               topImpactSources: [
                 { name: 'ACLED', attentionScore: 7, trustOutcome: 'supportive' },
                 { name: 'Bluesky', attentionScore: 5, trustOutcome: 'degraded' }
@@ -54,6 +65,16 @@ test('source performance history snapshots and deltas are reconstructed from com
                 reviewPressure: [{ label: 'Low confidence', value: 3 }],
               },
               attributionHeadlines: [{ name: 'Bluesky', attentionScore: 4 }],
+              runtimeBucketDrift: {
+                version: 'source-runtime-bucket-drift-v1',
+                totalDriftCount: 1,
+                singlePublisherMismatchCount: 1,
+                missingAggregatorAliasCount: 0,
+                highSeverityCount: 0,
+                items: [
+                  { runtimeSource: 'Telegram', driftKind: 'single-publisher-mismatch', severity: 'medium', observedPublisherCount: 2, clusterCount: 1, summary: 'Telegram earlier mismatch' }
+                ],
+              },
               topImpactSources: [
                 { name: 'Bluesky', attentionScore: 4, trustOutcome: 'degraded' },
                 { name: 'Telegram', attentionScore: 3, trustOutcome: 'mixed' }
@@ -78,8 +99,13 @@ test('source performance history snapshots and deltas are reconstructed from com
     assert.equal(history.deltaViews[0].summaryDelta.byTrustOutcome.supportive, 1);
     assert.equal(history.deltaViews[0].summaryDelta.clusterQuality['High quality'], 2);
     assert.equal(history.deltaViews[0].summaryDelta.reviewPressure['Low confidence'], -2);
+    assert.equal(history.snapshots[0].runtimeBucketDrift.totalDriftCount, 2);
+    assert.equal(history.deltaViews[0].summaryDelta.runtimeBucketDrift.totalDriftCount, 1);
+    assert.equal(history.deltaViews[0].summaryDelta.runtimeBucketDrift.missingAggregatorAliasCount, 1);
     assert.equal(history.deltaViews[0].topSourceShifts[0].name, 'ACLED');
     assert.equal(history.deltaViews[0].topSourceShifts[0].status, 'new');
+    assert.equal(history.deltaViews[0].topRuntimeBucketShifts[0].runtimeSource, 'GDELT');
+    assert.equal(history.deltaViews[0].topRuntimeBucketShifts[0].status, 'new');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

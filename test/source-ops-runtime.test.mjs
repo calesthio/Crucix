@@ -200,12 +200,31 @@ test('source ops surface attaches live source-health state when snapshot health 
             timestamp: '2026-04-26T12:00:00.000Z',
             summary: { totalMeasuredSources: 30, withClusterAttribution: 4, withSignalContribution: 3, degradedOrFailing: 1, byTrustOutcome: { supportive: 1, mixed: 1, degraded: 1, none: 27 } },
             validationViews: { clusterQuality: [{ label: 'Low quality', value: 3 }], reviewPressure: [{ label: 'Low confidence', value: 3 }] },
+            runtimeBucketDrift: {
+              totalDriftCount: 2,
+              singlePublisherMismatchCount: 1,
+              missingAggregatorAliasCount: 1,
+              highSeverityCount: 1,
+              items: [
+                { runtimeSource: 'Telegram', severity: 'high' },
+                { runtimeSource: 'GDELT', severity: 'low' },
+              ],
+            },
             topImpactSources: [{ name: 'Bluesky', attentionScore: 5 }],
           },
           {
             timestamp: '2026-04-26T11:40:00.000Z',
             summary: { totalMeasuredSources: 30, withClusterAttribution: 2, withSignalContribution: 2, degradedOrFailing: 2, byTrustOutcome: { supportive: 0, mixed: 1, degraded: 2, none: 27 } },
             validationViews: { clusterQuality: [{ label: 'Low quality', value: 4 }], reviewPressure: [{ label: 'Low confidence', value: 4 }] },
+            runtimeBucketDrift: {
+              totalDriftCount: 1,
+              singlePublisherMismatchCount: 1,
+              missingAggregatorAliasCount: 0,
+              highSeverityCount: 0,
+              items: [
+                { runtimeSource: 'Telegram', severity: 'medium' },
+              ],
+            },
             topImpactSources: [{ name: 'Bluesky', attentionScore: 3 }],
           },
         ],
@@ -213,8 +232,9 @@ test('source ops surface attaches live source-health state when snapshot health 
           {
             currentTimestamp: '2026-04-26T12:00:00.000Z',
             previousTimestamp: '2026-04-26T11:40:00.000Z',
-            summaryDelta: { withClusterAttribution: 2, withSignalContribution: 1, degradedOrFailing: -1, byTrustOutcome: { supportive: 1, mixed: 0, degraded: -1, none: 0 }, clusterQuality: { 'Low quality': -1 }, reviewPressure: { 'Low confidence': -1 } },
+            summaryDelta: { withClusterAttribution: 2, withSignalContribution: 1, degradedOrFailing: -1, byTrustOutcome: { supportive: 1, mixed: 0, degraded: -1, none: 0 }, clusterQuality: { 'Low quality': -1 }, reviewPressure: { 'Low confidence': -1 }, runtimeBucketDrift: { totalDriftCount: 1, singlePublisherMismatchCount: 0, missingAggregatorAliasCount: 1, highSeverityCount: 1 } },
             topSourceShifts: [{ name: 'Bluesky', attentionScoreDelta: 2, status: 'retained' }],
+            topRuntimeBucketShifts: [{ runtimeSource: 'GDELT', status: 'new', severityDelta: 1, observedPublisherDelta: 1 }],
           },
         ],
       },
@@ -287,6 +307,9 @@ test('source ops surface attaches live source-health state when snapshot health 
   assert.equal(surface.performanceHistory.version, 'source-performance-history-v1');
   assert.equal(surface.performanceHistory.snapshotCount, 2);
   assert.equal(surface.performanceHistory.snapshots[0].summary.withClusterAttribution, 4);
+  assert.equal(surface.performanceHistory.snapshots[0].runtimeBucketDrift.totalDriftCount, 2);
   assert.equal(surface.performanceHistory.deltaViews[0].summaryDelta.withClusterAttribution, 2);
+  assert.equal(surface.performanceHistory.deltaViews[0].summaryDelta.runtimeBucketDrift.totalDriftCount, 1);
   assert.equal(surface.performanceHistory.deltaViews[0].topSourceShifts[0].name, 'Bluesky');
+  assert.equal(surface.performanceHistory.deltaViews[0].topRuntimeBucketShifts[0].runtimeSource, 'GDELT');
 });

@@ -49,6 +49,19 @@ function buildRun({ timestamp, healthFailed = 0, chronicFailureCount = 0, recent
             reviewPressure: [{ label: 'Low confidence', value: recentFailureCount }],
           },
           attributionHeadlines: [{ name: 'ACLED', attentionScore }],
+          attributionDiagnostics: {
+            runtimeBucketDrift: {
+              version: 'source-runtime-bucket-drift-v1',
+              totalDriftCount: healthFailed ? 2 : 1,
+              singlePublisherMismatchCount: 1,
+              missingAggregatorAliasCount: healthFailed ? 1 : 0,
+              highSeverityCount: healthFailed ? 1 : 0,
+              items: [
+                { runtimeSource: 'Telegram', driftKind: 'single-publisher-mismatch', severity: healthFailed ? 'high' : 'medium', observedPublisherCount: healthFailed ? 3 : 2, clusterCount: 1, summary: 'Telegram drift' },
+                ...(healthFailed ? [{ runtimeSource: 'GDELT', driftKind: 'missing-aggregator-alias', severity: 'low', observedPublisherCount: 4, clusterCount: 1, summary: 'GDELT alias drift' }] : []),
+              ],
+            },
+          },
         },
         topImpactSources: [{ name: 'ACLED', attentionScore, trustOutcome: healthFailed ? 'degraded' : 'supportive' }],
       },
@@ -90,6 +103,8 @@ test('MemoryManager persists runtime history and signal state into sqlite-backed
     const sourcePerformanceHistory = reloaded.getSourcePerformanceHistory();
     assert.equal(sourcePerformanceHistory.snapshotCount, 2);
     assert.equal(sourcePerformanceHistory.snapshots[0].topImpactSources[0].attentionScore, 9);
+    assert.equal(sourcePerformanceHistory.snapshots[0].runtimeBucketDrift.totalDriftCount, 1);
+    assert.equal(sourcePerformanceHistory.deltaViews[0].summaryDelta.runtimeBucketDrift.totalDriftCount, -1);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
