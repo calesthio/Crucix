@@ -14,27 +14,29 @@ function extractChunk(startMarker, endMarker) {
   return source.slice(start, end);
 }
 
+const writes = [];
 const context = {
   console,
   module: { exports: {} },
   exports: {},
   loadOperatorSettings: () => ({ preferences: { sources: { noiseSuppression: { duplicateBurst: { enabled: false, minSimilarClusters: 2 }, repetitiveLowValue: { enabled: false, maxStoryCount: 1, maxSourceCount: 1 }, sourceRules: [] } } } }),
   operatorSettingsDefaults: () => ({ preferences: { sources: { noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 2 }, repetitiveLowValue: { enabled: true, maxStoryCount: 1, maxSourceCount: 1 }, sourceRules: [] } } } }),
-  resolveSourceInventory: () => ({ items: [] }),
-  findSourceForCluster: cluster => {
-    const runtimeSource = cluster?.sourceProvenance?.topSources?.[0]?.runtimeSource || '';
-    return runtimeSource === 'Source A' ? { id: 'src-a', name: 'Source A' } : null;
-  },
+  inventoryItems: [],
+  buildOperatorSourceOps: snapshot => snapshot?.sourceOps || { inventory: { items: context.inventoryItems || [] } },
+  noiseSuppressionHistory: { version: 'noise-suppression-history-v1', updatedAt: null, lastSweepAt: null, duplicateBursts: {}, repetitiveLowValueEvents: {}, sourceRuleHits: {} },
+  NOISE_SUPPRESSION_HISTORY_PATH: '/tmp/noise-suppression-history.json',
+  saveJsonFile: (path, data) => writes.push({ path, data }),
+  normalizeToken: value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ''),
   clusterRepairActions: { suppressedClusterIds: ['old-cluster'], decisions: [{ id: 'd1', action: 'suppress-cluster', clusterId: 'old-cluster' }] },
 };
 vm.createContext(context);
 vm.runInContext(`
   ${extractChunk('function summarizeClusterReviewMetrics(clusters = []) {', 'function buildReasoningSourceContext(snapshot = {}) {')}
-  ${extractChunk('function buildNoiseSuppressionContract(snapshot = currentData || null) {', 'function buildReviewWorkflowContract(snapshot = currentData || null, review = null) {')}
-  module.exports = { summarizeClusterReviewMetrics, summarizeWeakClusterReasons, buildClusterRepairWorkflow, buildNoiseSuppressionContract };
+  ${extractChunk('function noiseSuppressionHistoryDefaults() {', 'function buildReviewWorkflowContract(snapshot = currentData || null, review = null) {')}
+  module.exports = { summarizeClusterReviewMetrics, summarizeWeakClusterReasons, buildClusterRepairWorkflow, buildNoiseSuppressionContract, recordNoiseSuppressionHistory };
 `, context);
 
-const { buildClusterRepairWorkflow, buildNoiseSuppressionContract } = context.module.exports;
+const { buildClusterRepairWorkflow, buildNoiseSuppressionContract, recordNoiseSuppressionHistory } = context.module.exports;
 
 test('buildClusterRepairWorkflow explains weak clusters and exposes bounded actions', () => {
   const workflow = buildClusterRepairWorkflow({
@@ -98,14 +100,47 @@ test('buildClusterRepairWorkflow explains weak clusters and exposes bounded acti
 });
 
 test('buildNoiseSuppressionContract derives duplicate, low-value, and source-rule candidates', () => {
-  context.resolveSourceInventory = () => ({ items: [{ id: 'src-a', name: 'Source A' }] });
+  context.inventoryItems = [{ id: 'src-a', name: 'Source A' }];
   context.loadOperatorSettings = () => ({ preferences: { sources: { noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 2 }, repetitiveLowValue: { enabled: true, maxStoryCount: 1, maxSourceCount: 1 }, sourceRules: [{ sourceId: 'src-a', action: 'suppress', reason: 'known burst source', enabled: true }] } } } });
+  context.noiseSuppressionHistory = {
+    version: 'noise-suppression-history-v1',
+    updatedAt: '2026-04-26T12:00:00.000Z',
+    lastSweepAt: '2026-04-26T12:00:00.000Z',
+    duplicateBursts: { 'duplicateburst::iran::clustera::clusterb::a': { hitCount: 3, firstSeenAt: '2026-04-26T10:00:00.000Z', lastSeenAt: '2026-04-26T12:00:00.000Z' } },
+    repetitiveLowValueEvents: { 'repetitivelowvalue::srca::iran::a': { hitCount: 2, firstSeenAt: '2026-04-26T11:00:00.000Z', lastSeenAt: '2026-04-26T12:00:00.000Z' } },
+    sourceRuleHits: { 'src-a': { sourceId: 'src-a', sourceName: 'Source A', duplicateBurstCount: 3, repetitiveLowValueCount: 2, totalHitCount: 5, firstSeenAt: '2026-04-26T10:00:00.000Z', lastSeenAt: '2026-04-26T12:00:00.000Z' } },
+  };
   const suppression = buildNoiseSuppressionContract({
     newsClusters: [{ id: 'cluster-a', headline: 'A', region: 'Iran', storyCount: 1, sourceCount: 1, quality: 'low', confidenceLabel: 'weak', qualityFlags: ['single-source'], sourceProvenance: { topSources: [{ runtimeSource: 'Source A' }] } }],
     newsClusterQuality: { reviewMetrics: { suspiciousNearDuplicates: [{ region: 'Iran', similarity: 0.92, clusterA: { id: 'cluster-a', headline: 'A', region: 'Iran' }, clusterB: { id: 'cluster-b', headline: 'B', region: 'Iran' } }] } },
   });
   assert.equal(suppression.version, 'noise-suppression-v1');
   assert.equal(suppression.duplicateBursts.length, 1);
+  assert.equal(suppression.duplicateBursts[0].historyHitCount, 3);
   assert.equal(suppression.repetitiveLowValueEvents.length, 1);
+  assert.equal(suppression.repetitiveLowValueEvents[0].historyHitCount, 2);
   assert.equal(suppression.sourceRules.activeRules[0].sourceId, 'src-a');
+  assert.equal(suppression.sourceRules.activeRules[0].hitCount, 5);
+});
+
+test('recordNoiseSuppressionHistory persists rolling counters for repeated sweeps', () => {
+  writes.length = 0;
+  context.inventoryItems = [{ id: 'src-a', name: 'Source A' }];
+  context.loadOperatorSettings = () => ({ preferences: { sources: { noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 2 }, repetitiveLowValue: { enabled: true, maxStoryCount: 1, maxSourceCount: 1 }, sourceRules: [] } } } });
+  context.noiseSuppressionHistory = { version: 'noise-suppression-history-v1', updatedAt: null, lastSweepAt: null, duplicateBursts: {}, repetitiveLowValueEvents: {}, sourceRuleHits: {} };
+  const snapshot = {
+    meta: { timestamp: '2026-04-26T12:30:00.000Z' },
+    newsClusters: [{ id: 'cluster-a', headline: 'A', region: 'Iran', storyCount: 1, sourceCount: 1, quality: 'low', confidenceLabel: 'weak', qualityFlags: ['single-source'], sourceProvenance: { topSources: [{ runtimeSource: 'Source A' }] } }],
+    newsClusterQuality: { reviewMetrics: { suspiciousNearDuplicates: [{ region: 'Iran', similarity: 0.92, clusterA: { id: 'cluster-a', headline: 'A', region: 'Iran' }, clusterB: { id: 'cluster-b', headline: 'B', region: 'Iran' } }] } },
+  };
+  recordNoiseSuppressionHistory(snapshot);
+  recordNoiseSuppressionHistory(snapshot);
+  const persisted = context.noiseSuppressionHistory;
+  assert.equal(Object.keys(persisted.duplicateBursts).length, 1);
+  assert.equal(Object.values(persisted.duplicateBursts)[0].hitCount, 2);
+  assert.equal(Object.values(persisted.repetitiveLowValueEvents)[0].hitCount, 2);
+  assert.equal(persisted.sourceRuleHits['src-a'].duplicateBurstCount, 2);
+  assert.equal(persisted.sourceRuleHits['src-a'].repetitiveLowValueCount, 2);
+  assert.equal(persisted.sourceRuleHits['src-a'].totalHitCount, 4);
+  assert.equal(writes.length, 2);
 });

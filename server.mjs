@@ -28,6 +28,7 @@ const MEMORY_DIR = join(RUNS_DIR, 'memory');
 const REVIEW_ACKS_PATH = join(RUNS_DIR, 'cluster-review-acks.json');
 const REVIEW_WORKFLOW_AUDIT_PATH = join(RUNS_DIR, 'review-workflow-audit.json');
 const CLUSTER_REPAIR_ACTIONS_PATH = join(RUNS_DIR, 'cluster-repair-actions.json');
+const NOISE_SUPPRESSION_HISTORY_PATH = join(RUNS_DIR, 'noise-suppression-history.json');
 const AGENT_ANALYSIS_VALIDATION_SCRIPT = join(ROOT, 'scripts/agent-analysis-validation-summary.mjs');
 const OPENSKY_STATE_PATH = join(ROOT, 'runs', 'cache', 'opensky-state.json');
 const OPERATOR_SETTINGS_PATH = process.env.OPERATOR_SETTINGS_PATH || join(ROOT, 'runs', 'operator-settings.json');
@@ -84,6 +85,7 @@ const REVIEW_WORKFLOW_AUDIT_MAX_ENTRIES = Math.max(20, Number(config.review?.wor
 const reviewAcks = loadReviewAcks();
 const reviewWorkflowAudit = loadReviewWorkflowAudit();
 const clusterRepairActions = loadClusterRepairActions();
+const noiseSuppressionHistory = loadNoiseSuppressionHistory();
 const sweepWatchdogTelemetry = {
   recoveryCount: 0,
   lastRecoveryAt: null,
@@ -603,6 +605,103 @@ function recordClusterRepairDecision(entry = {}) {
   return clusterRepairActions.decisions[clusterRepairActions.decisions.length - 1];
 }
 
+function noiseSuppressionHistoryDefaults() {
+  return {
+    version: 'noise-suppression-history-v1',
+    updatedAt: null,
+    lastSweepAt: null,
+    duplicateBursts: {},
+    repetitiveLowValueEvents: {},
+    sourceRuleHits: {},
+  };
+}
+
+function loadNoiseSuppressionHistory() {
+  const loaded = loadJsonFile(NOISE_SUPPRESSION_HISTORY_PATH, noiseSuppressionHistoryDefaults());
+  const base = loaded && typeof loaded === 'object' ? loaded : noiseSuppressionHistoryDefaults();
+  return {
+    version: 'noise-suppression-history-v1',
+    updatedAt: base.updatedAt || null,
+    lastSweepAt: base.lastSweepAt || null,
+    duplicateBursts: base.duplicateBursts && typeof base.duplicateBursts === 'object' ? base.duplicateBursts : {},
+    repetitiveLowValueEvents: base.repetitiveLowValueEvents && typeof base.repetitiveLowValueEvents === 'object' ? base.repetitiveLowValueEvents : {},
+    sourceRuleHits: base.sourceRuleHits && typeof base.sourceRuleHits === 'object' ? base.sourceRuleHits : {},
+  };
+}
+
+function saveNoiseSuppressionHistory() {
+  noiseSuppressionHistory.version = 'noise-suppression-history-v1';
+  saveJsonFile(NOISE_SUPPRESSION_HISTORY_PATH, noiseSuppressionHistory);
+}
+
+function buildNoiseSuppressionHistoryKey(parts = []) {
+  return parts.map(part => normalizeToken(part)).filter(Boolean).join('::') || 'unknown';
+}
+
+function touchNoiseSuppressionHistoryBucket(bucket = {}, key = '', detail = {}, recordedAt = new Date().toISOString()) {
+  const existing = bucket[key] && typeof bucket[key] === 'object' ? bucket[key] : null;
+  bucket[key] = {
+    key,
+    firstSeenAt: existing?.firstSeenAt || recordedAt,
+    lastSeenAt: recordedAt,
+    hitCount: Math.max(0, Number(existing?.hitCount) || 0) + 1,
+    ...existing,
+    ...detail,
+    key,
+    firstSeenAt: existing?.firstSeenAt || recordedAt,
+    lastSeenAt: recordedAt,
+    hitCount: Math.max(0, Number(existing?.hitCount) || 0) + 1,
+  };
+  return bucket[key];
+}
+
+function recordNoiseSuppressionHistory(snapshot = currentData || null) {
+  const activeSnapshot = snapshot || currentData || null;
+  if (!activeSnapshot) return noiseSuppressionHistory;
+  const recordedAt = activeSnapshot?.meta?.timestamp || new Date().toISOString();
+  const suppression = buildNoiseSuppressionContract(activeSnapshot, { history: noiseSuppressionHistory, persist: false });
+  for (const burst of suppression.duplicateBursts || []) {
+    const key = buildNoiseSuppressionHistoryKey(['duplicate-burst', burst.region, ...(burst.clusterIds || []), burst.headline]);
+    touchNoiseSuppressionHistoryBucket(noiseSuppressionHistory.duplicateBursts, key, {
+      region: burst.region || 'Unknown',
+      headline: burst.headline || 'duplicate burst',
+      clusterIds: Array.isArray(burst.clusterIds) ? burst.clusterIds : [],
+      similarity: burst.similarity || 0,
+      historyType: 'duplicate-burst',
+    }, recordedAt);
+  }
+  for (const item of suppression.repetitiveLowValueEvents || []) {
+    const key = buildNoiseSuppressionHistoryKey(['repetitive-low-value', item.sourceId || item.sourceName || 'unknown', item.region, item.headline || item.clusterId]);
+    touchNoiseSuppressionHistoryBucket(noiseSuppressionHistory.repetitiveLowValueEvents, key, {
+      region: item.region || 'Unknown',
+      headline: item.headline || item.clusterId || 'low value cluster',
+      clusterId: item.clusterId || null,
+      sourceId: item.sourceId || null,
+      sourceName: item.sourceName || null,
+      historyType: 'repetitive-low-value',
+    }, recordedAt);
+  }
+  for (const item of [...(suppression.repetitiveLowValueEvents || []), ...(suppression.duplicateBursts || []).flatMap(burst => burst.sources || [])]) {
+    const sourceId = item?.sourceId || null;
+    if (!sourceId) continue;
+    const bucket = noiseSuppressionHistory.sourceRuleHits;
+    const existing = bucket[sourceId] && typeof bucket[sourceId] === 'object' ? bucket[sourceId] : null;
+    bucket[sourceId] = {
+      sourceId,
+      sourceName: item.sourceName || existing?.sourceName || sourceId,
+      firstSeenAt: existing?.firstSeenAt || recordedAt,
+      lastSeenAt: recordedAt,
+      repetitiveLowValueCount: Math.max(0, Number(existing?.repetitiveLowValueCount) || 0) + ((item.historyType === 'repetitive-low-value') ? 1 : 0),
+      duplicateBurstCount: Math.max(0, Number(existing?.duplicateBurstCount) || 0) + ((item.historyType === 'duplicate-burst') ? 1 : 0),
+    };
+    bucket[sourceId].totalHitCount = bucket[sourceId].repetitiveLowValueCount + bucket[sourceId].duplicateBurstCount;
+  }
+  noiseSuppressionHistory.updatedAt = recordedAt;
+  noiseSuppressionHistory.lastSweepAt = recordedAt;
+  saveNoiseSuppressionHistory();
+  return noiseSuppressionHistory;
+}
+
 function resolveSourceInventory(snapshot = currentData || null) {
   const sourceOps = snapshot?.sourceOps || buildOperatorSourceOps(snapshot || null);
   const items = Array.isArray(sourceOps?.inventory?.items) ? sourceOps.inventory.items : [];
@@ -628,22 +727,45 @@ function findSourceForCluster(cluster = {}, snapshot = currentData || null) {
   return findSourceByAttribution(topSource?.runtimeSource || topSource?.source || '', snapshot);
 }
 
-function buildNoiseSuppressionContract(snapshot = currentData || null) {
+function buildNoiseSuppressionContract(snapshot = currentData || null, options = {}) {
   const activeSnapshot = snapshot || currentData || null;
   const operatorSettings = loadOperatorSettings();
   const controls = operatorSettings.preferences.sources.noiseSuppression || operatorSettingsDefaults().preferences.sources.noiseSuppression;
+  const history = options?.history || noiseSuppressionHistory || noiseSuppressionHistoryDefaults();
   const clusters = Array.isArray(activeSnapshot?.newsClusters) ? activeSnapshot.newsClusters : [];
   const reviewMetrics = activeSnapshot?.newsClusterQuality?.reviewMetrics || summarizeClusterReviewMetrics(clusters);
   const duplicatePairs = Array.isArray(reviewMetrics?.suspiciousNearDuplicates) ? reviewMetrics.suspiciousNearDuplicates : [];
+  const sourceRuleUsage = new Map();
   const duplicateBursts = duplicatePairs
-    .map(pair => ({
-      id: `${pair?.region || 'Unknown'}::${pair?.clusterA?.id || 'a'}::${pair?.clusterB?.id || 'b'}`,
-      region: pair?.region || pair?.clusterA?.region || pair?.clusterB?.region || 'Unknown',
-      similarity: Number((pair?.similarity || 0).toFixed(3)),
-      clusterIds: [pair?.clusterA?.id, pair?.clusterB?.id].filter(Boolean),
-      headline: pair?.clusterA?.headline || pair?.clusterB?.headline || 'duplicate burst',
-      clusterCount: [pair?.clusterA?.id, pair?.clusterB?.id].filter(Boolean).length,
-    }))
+    .map(pair => {
+      const clusterIds = [pair?.clusterA?.id, pair?.clusterB?.id].filter(Boolean);
+      const sources = clusterIds
+        .map(clusterId => {
+          const cluster = clusters.find(item => item?.id === clusterId);
+          const sourceItem = findSourceForCluster(cluster, activeSnapshot);
+          if (!sourceItem?.id) return null;
+          const next = sourceRuleUsage.get(sourceItem.id) || { sourceId: sourceItem.id, sourceName: sourceItem.name, repetitiveLowValueCount: 0, duplicateBurstCount: 0 };
+          next.duplicateBurstCount += 1;
+          sourceRuleUsage.set(sourceItem.id, next);
+          return { sourceId: sourceItem.id, sourceName: sourceItem.name, historyType: 'duplicate-burst' };
+        })
+        .filter(Boolean);
+      const historyKey = buildNoiseSuppressionHistoryKey(['duplicate-burst', pair?.region, ...clusterIds, pair?.clusterA?.headline || pair?.clusterB?.headline]);
+      const historical = history?.duplicateBursts?.[historyKey] || null;
+      return {
+        id: `${pair?.region || 'Unknown'}::${pair?.clusterA?.id || 'a'}::${pair?.clusterB?.id || 'b'}`,
+        historyKey,
+        region: pair?.region || pair?.clusterA?.region || pair?.clusterB?.region || 'Unknown',
+        similarity: Number((pair?.similarity || 0).toFixed(3)),
+        clusterIds,
+        headline: pair?.clusterA?.headline || pair?.clusterB?.headline || 'duplicate burst',
+        clusterCount: clusterIds.length,
+        historyHitCount: Math.max(0, Number(historical?.hitCount) || 0),
+        firstSeenAt: historical?.firstSeenAt || null,
+        lastSeenAt: historical?.lastSeenAt || null,
+        sources,
+      };
+    })
     .filter(item => item.clusterCount >= (controls?.duplicateBurst?.minSimilarClusters || 2))
     .slice(0, 6);
   const repetitiveLowValueEvents = clusters
@@ -655,50 +777,71 @@ function buildNoiseSuppressionContract(snapshot = currentData || null) {
     .slice(0, 8)
     .map(cluster => {
       const sourceItem = findSourceForCluster(cluster, activeSnapshot);
+      if (sourceItem?.id) {
+        const next = sourceRuleUsage.get(sourceItem.id) || { sourceId: sourceItem.id, sourceName: sourceItem.name, repetitiveLowValueCount: 0, duplicateBurstCount: 0 };
+        next.repetitiveLowValueCount += 1;
+        sourceRuleUsage.set(sourceItem.id, next);
+      }
+      const historyKey = buildNoiseSuppressionHistoryKey(['repetitive-low-value', sourceItem?.id || sourceItem?.name || 'unknown', cluster.region, cluster.headline || cluster.id]);
+      const historical = history?.repetitiveLowValueEvents?.[historyKey] || null;
       return {
         clusterId: cluster.id,
+        historyKey,
         headline: cluster.headline || cluster.id,
         region: cluster.region || 'Unknown',
         storyCount: cluster.storyCount || 0,
         sourceCount: cluster.sourceCount || 0,
         sourceId: sourceItem?.id || null,
         sourceName: sourceItem?.name || null,
+        historyType: 'repetitive-low-value',
+        historyHitCount: Math.max(0, Number(historical?.hitCount) || 0),
+        firstSeenAt: historical?.firstSeenAt || null,
+        lastSeenAt: historical?.lastSeenAt || null,
       };
     });
-  const sourceRuleUsage = new Map();
-  for (const cluster of repetitiveLowValueEvents) {
-    if (!cluster.sourceId) continue;
-    const next = sourceRuleUsage.get(cluster.sourceId) || { sourceId: cluster.sourceId, sourceName: cluster.sourceName, repetitiveLowValueCount: 0, duplicateBurstCount: 0 };
-    next.repetitiveLowValueCount += 1;
-    sourceRuleUsage.set(cluster.sourceId, next);
-  }
-  for (const burst of duplicateBursts) {
-    for (const clusterId of burst.clusterIds) {
-      const cluster = clusters.find(item => item?.id === clusterId);
-      const sourceItem = findSourceForCluster(cluster, activeSnapshot);
-      if (!sourceItem?.id) continue;
-      const next = sourceRuleUsage.get(sourceItem.id) || { sourceId: sourceItem.id, sourceName: sourceItem.name, repetitiveLowValueCount: 0, duplicateBurstCount: 0 };
-      next.duplicateBurstCount += 1;
-      sourceRuleUsage.set(sourceItem.id, next);
-    }
-  }
   const inventory = resolveSourceInventory(activeSnapshot).items;
-  const activeRules = Array.isArray(controls?.sourceRules) ? controls.sourceRules.map(rule => ({
-    ...rule,
-    sourceName: inventory.find(item => item.id === rule.sourceId)?.name || rule.sourceId,
-  })) : [];
+  const activeRules = Array.isArray(controls?.sourceRules) ? controls.sourceRules.map(rule => {
+    const hitStats = history?.sourceRuleHits?.[rule.sourceId] || null;
+    return {
+      ...rule,
+      sourceName: inventory.find(item => item.id === rule.sourceId)?.name || rule.sourceId,
+      hitCount: hitStats?.totalHitCount || 0,
+      duplicateBurstCount: hitStats?.duplicateBurstCount || 0,
+      repetitiveLowValueCount: hitStats?.repetitiveLowValueCount || 0,
+      firstSeenAt: hitStats?.firstSeenAt || null,
+      lastSeenAt: hitStats?.lastSeenAt || null,
+    };
+  }) : [];
   const activeRuleIds = new Set(activeRules.map(rule => rule.sourceId));
   const suggestedRules = Array.from(sourceRuleUsage.values())
-    .filter(item => (item.repetitiveLowValueCount + item.duplicateBurstCount) >= 2 && !activeRuleIds.has(item.sourceId))
-    .sort((a, b) => ((b.repetitiveLowValueCount + b.duplicateBurstCount) - (a.repetitiveLowValueCount + a.duplicateBurstCount)) || String(a.sourceId).localeCompare(String(b.sourceId)))
+    .map(item => {
+      const historical = history?.sourceRuleHits?.[item.sourceId] || {};
+      const repetitiveLowValueCount = (historical?.repetitiveLowValueCount || 0) + item.repetitiveLowValueCount;
+      const duplicateBurstCount = (historical?.duplicateBurstCount || 0) + item.duplicateBurstCount;
+      return {
+        ...item,
+        repetitiveLowValueCount,
+        duplicateBurstCount,
+        hitCount: repetitiveLowValueCount + duplicateBurstCount,
+        firstSeenAt: historical?.firstSeenAt || null,
+        lastSeenAt: historical?.lastSeenAt || null,
+      };
+    })
+    .filter(item => item.hitCount >= 2 && !activeRuleIds.has(item.sourceId))
+    .sort((a, b) => (b.hitCount - a.hitCount) || String(a.sourceId).localeCompare(String(b.sourceId)))
     .slice(0, 6)
     .map(item => ({
       ...item,
       suggestedAction: 'suppress',
-      suggestedReason: `Suggested because ${item.sourceName || item.sourceId} repeatedly appears in low-value or duplicate-heavy weak clusters.`,
+      suggestedReason: `Suggested because ${item.sourceName || item.sourceId} repeatedly appears in low-value or duplicate-heavy weak clusters across recent sweeps.`,
     }));
   return {
     version: 'noise-suppression-v1',
+    history: {
+      version: history?.version || 'noise-suppression-history-v1',
+      updatedAt: history?.updatedAt || null,
+      lastSweepAt: history?.lastSweepAt || null,
+    },
     controls,
     tuningBounds: {
       duplicateBurstMinSimilarClusters: { min: 2, max: 6 },
@@ -4899,6 +5042,7 @@ async function runSweepCycle() {
     synthesized.clusterPressureStats = clusterPressureStats;
     synthesized.clusterRepairArtifacts = clusterRepairArtifacts;
     synthesized.sourceOps = buildOperatorSourceOps(synthesized);
+    recordNoiseSuppressionHistory(synthesized);
 
     // 4. Delta computation + memory
     const delta = memory.addRun(synthesized);

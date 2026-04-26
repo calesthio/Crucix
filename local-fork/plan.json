@@ -832,7 +832,7 @@
           {
             "id": "effort-32.7",
             "title": "Persist rolling noise-suppression match history and per-rule hit counters so duplicate-burst, low-value, and source-rule suggestions reflect multi-sweep behavior instead of only the current snapshot",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-32.8",
@@ -982,8 +982,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 117,
+    "sequence": 118,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-26-cycle-117"
+    "lastCompletedCycleId": "2026-04-26-cycle-118"
   }
 }

@@ -27,4 +27,6 @@ Recent promotions:
 - Source-registry metadata for expected multi-publisher runtime buckets was promoted into `local-fork/plan.json` as Epic 23, effort 23.4 on 2026-04-26.
 - Source-registry runtime-bucket metadata and registry-vs-observed attribution drift surfacing were promoted into `local-fork/plan.json` as Epic 32, effort 32.8 on 2026-04-26.
 
+- Add bounded retention or time-decay for `runs/noise-suppression-history.json` so one-off duplicate bursts and retired sources do not accumulate indefinite suggestion weight or unbounded state growth.
+
 New items can be added here when they do not yet belong in the active roadmap.
