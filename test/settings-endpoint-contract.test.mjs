@@ -107,10 +107,11 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(health.operationalAlerts.version, 'operational-alert-routing-v1');
     assert.equal(typeof health.operationalAlerts.policies.staleSweep.active, 'boolean');
     assert.equal(typeof health.operationalAlerts.policies.noiseSuppressionPressure.active, 'boolean');
-    assert.equal(typeof health.operationalAlerts.policies.noiseSuppressionPressure.active, 'boolean');
+    assert.equal(health.sdrCorroboration.version, 'sdr-corroboration-v1');
+    assert.equal(Array.isArray(health.sdrCorroboration.coveredZones), true);
 
     const settings = await waitFor(settingsUrl, payload => payload?.version === 'operator-settings-v1', 30000);
-    assert.deepEqual(settings.sections, ['layout', 'sources', 'sourceConsole', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']);
+    assert.deepEqual(settings.sections, ['layout', 'sources', 'sourceConsole', 'sdrCorroboration', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']);
     assert.equal(settings.layout.current, 'operator');
     assert.equal(Array.isArray(settings.layout.controls.availableDisplayModes), true);
     assert.equal(Array.isArray(settings.layout.controls.availableWorkspacePresets), true);
@@ -131,6 +132,9 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(typeof settings.sourceConsole.noiseSuppression.history.pruneTelemetry.summary.retainedEntries, 'number');
     assert.equal(settings.sourceConsole.noiseSuppression.trend.version, 'noise-suppression-history-trend-v1');
     assert.equal(Array.isArray(settings.sourceConsole.noiseSuppression.trend.snapshots), true);
+    assert.equal(settings.sdrCorroboration.version, 'sdr-corroboration-v1');
+    assert.equal(Array.isArray(settings.sdrCorroboration.watchProfiles), true);
+    assert.equal(Array.isArray(settings.sdrCorroboration.priorityChecks), true);
     assert.equal(settings.persistence.capabilities.export, false);
     assert.equal(settings.alerts.operational.version, 'operational-alert-routing-v1');
     assert.equal(settings.alerts.criticalEvents.version, 'critical-event-policy-v1');

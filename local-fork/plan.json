@@ -1030,13 +1030,25 @@
             "status": "pending"
           }
         ]
+      },
+      {
+        "id": "epic-38",
+        "title": "SDR corroboration workflow and RF-side analyst prompts",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-38.1",
+            "title": "Expose an SDR corroboration contract that turns public KiwiSDR coverage into analyst-facing watch profiles, covered zones, and prioritized regional RF-side checks for active Crucix signals",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 143,
+    "sequence": 144,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-143"
+    "lastCompletedCycleId": "2026-04-27-cycle-144"
   },
   "backlog": [
     {
@@ -1059,6 +1071,13 @@
       "status": "pending",
       "source": "cycle-143",
       "reason": "The routing contract now exposes who would be notified and through which routes, but retained delivery outcomes and resend state should be tracked before an automatic outbound send loop is enabled."
+    },
+    {
+      "id": "backlog-2026-04-27-sdr-session-automation",
+      "title": "Add bounded SDR session automation and capture evidence for high-priority corroboration checks",
+      "status": "pending",
+      "source": "cycle-144",
+      "reason": "The first SDR corroboration slice selects regions, watch profiles, and candidate receivers, but Crucix still needs bounded receiver-session automation, capture artifacts, and retained evidence summaries before it can claim direct RF-side observation support."
     }
   ]
 }

@@ -107,6 +107,7 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(health.operationalAlerts.version, 'operational-alert-routing-v1');
     assert.equal(health.criticalEventQueue.version, 'critical-event-queue-v1');
     assert.equal(health.criticalEventRouting.version, 'critical-event-routing-v1');
+    assert.equal(health.sdrCorroboration.version, 'sdr-corroboration-v1');
     assert.equal(Array.isArray(health.criticalEventQueue.confidenceStates), true);
     assert.equal(Array.isArray(health.criticalEventRouting.eligibleCandidates), true);
     assert.equal(typeof health.criticalEventQueue.promotedCount, 'number');
@@ -122,6 +123,7 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(data.reviewWorkflow.version, 'review-workflow-v1');
     assert.equal(data.criticalEventQueue.version, 'critical-event-queue-v1');
     assert.equal(data.criticalEventRouting.version, 'critical-event-routing-v1');
+    assert.equal(data.sdrCorroboration.version, 'sdr-corroboration-v1');
     assert.equal(Array.isArray(data.criticalEventQueue.candidates), true);
     assert.equal(Array.isArray(data.criticalEventRouting.eligibleCandidates), true);
     assert.equal(typeof data.criticalEventQueue.activeCount, 'number');
@@ -147,8 +149,9 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(typeof news.llm.providerConfigured, 'boolean');
 
     const settings = await waitFor(settingsUrl, payload => payload?.version === 'operator-settings-v1', 30000);
-    assert.deepEqual(settings.sections, ['layout', 'sources', 'sourceConsole', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']);
+    assert.deepEqual(settings.sections, ['layout', 'sources', 'sourceConsole', 'sdrCorroboration', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']);
     assert.equal(settings.sourceConsole.version, 'source-console-v1');
+    assert.equal(settings.sdrCorroboration.version, 'sdr-corroboration-v1');
     assert.equal(settings.config.contract.version, 'runtime-config-v1');
     assert.equal(settings.persistence.capabilities.writeApi, false);
     assert.equal(settings.alerts.criticalEvents.queue.version, 'critical-event-queue-v1');

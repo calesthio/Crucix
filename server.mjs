@@ -4710,6 +4710,147 @@ function buildCriticalEventPolicyContract(snapshot = null) {
   };
 }
 
+function buildSdrCorroborationContract(snapshot = null) {
+  const sdr = snapshot?.sdr || {};
+  const zones = Array.isArray(sdr.zones) ? sdr.zones : [];
+  const allReceivers = zones.flatMap(zone => (zone.receivers || []).map(receiver => ({
+    region: zone.region || 'Unknown',
+    zoneCount: Number(zone.count || 0),
+    name: receiver.name || 'Unnamed SDR receiver',
+    lat: Number(receiver.lat || 0),
+    lon: Number(receiver.lon || 0),
+  })));
+  const watchProfiles = [
+    {
+      id: 'maritime-chokepoint',
+      label: 'Maritime chokepoint disruption',
+      description: 'Use nearby HF receivers when blockade, mining, tanker harassment, or coastal disruption claims need RF-side context.',
+      recommendedBands: ['2-4 MHz maritime/utility', '4-9 MHz marine HF', '8-18 MHz long-haul maritime'],
+      lookFor: ['distress or coordination traffic increase', 'sudden silence where traffic is normally present', 'interference or jamming reports', 'persistent utility traffic tied to the affected waterway'],
+      mapsToClasses: ['chokepointDisruption'],
+    },
+    {
+      id: 'aviation-incident',
+      label: 'Aviation incident or airspace disruption',
+      description: 'Use nearby SDR coverage to check for unusual HF aviation support traffic when ADS-B, OpenSky, or OSINT claims suggest disruption.',
+      recommendedBands: ['2-23 MHz aeronautical HF', 'regional VOLMET/weather', 'navigation beacon checks'],
+      lookFor: ['HF traffic surge', 'route diversions or handoff irregularities', 'beacon or navigation outages', 'emergency or contingency voice traffic'],
+      mapsToClasses: ['aviationIncident'],
+    },
+    {
+      id: 'conflict-chatter',
+      label: 'Conflict or government-site incident',
+      description: 'Use public SDR receivers as a corroboration prompt when conflict chatter or violence claims emerge in a region with RF visibility.',
+      recommendedBands: ['3-8 MHz regional utility', 'HF military/utility', 'local beacon and interference checks'],
+      lookFor: ['abrupt activity spikes', 'unusual noise floor or jamming', 'sustained utility traffic', 'anomalous silence after reported activity'],
+      mapsToClasses: ['governmentSiteViolence'],
+    },
+  ];
+  const watchProfileByClass = new Map(watchProfiles.flatMap(profile => (profile.mapsToClasses || []).map(classId => [classId, profile])));
+  const zoneIndex = new Map(zones.map(zone => [String(zone.region || '').toLowerCase(), zone]));
+  const matchZone = (value = '') => {
+    const text = String(value || '').toLowerCase();
+    if (!text) return null;
+    for (const zone of zones) {
+      const region = String(zone.region || '').toLowerCase();
+      if (region && (text.includes(region) || region.includes(text))) return zone;
+    }
+    if (/(iran|hormuz|gulf)/.test(text)) return zoneIndex.get('iran') || zoneIndex.get('middle east') || null;
+    if (/(ukraine|donetsk|crimea|odessa|zaporizhzhia)/.test(text)) return zoneIndex.get('ukraine / eastern europe') || null;
+    if (/(taiwan|south china sea|strait)/.test(text)) return zoneIndex.get('taiwan strait') || zoneIndex.get('south china sea') || null;
+    if (/(korea|korean)/.test(text)) return zoneIndex.get('korean peninsula') || null;
+    return null;
+  };
+  const candidateChecks = [];
+  const queueCandidates = buildCriticalEventQueueContract(snapshot).candidates || [];
+  for (const candidate of queueCandidates) {
+    const zone = matchZone(candidate.region || candidate.label || candidate.summary || '');
+    if (!zone || !zone.count) continue;
+    const profile = watchProfileByClass.get(candidate.classId) || watchProfiles[2];
+    candidateChecks.push({
+      source: 'critical-event-queue',
+      label: candidate.label,
+      region: zone.region,
+      trigger: candidate.classId,
+      priority: candidate.promotion?.crossedThreshold ? 'high' : 'medium',
+      confidenceLabel: candidate.confidenceLabel || 'preliminary',
+      receiverCount: Number(zone.count || 0),
+      watchProfile: {
+        id: profile.id,
+        label: profile.label,
+        recommendedBands: profile.recommendedBands,
+        lookFor: profile.lookFor,
+      },
+      suggestedReceivers: (zone.receivers || []).slice(0, 3).map(receiver => ({ name: receiver.name || 'Unnamed SDR receiver', lat: Number(receiver.lat || 0), lon: Number(receiver.lon || 0) })),
+      rationale: candidate.evidenceSummary?.summary || candidate.promotion?.summary || 'Queue candidate has enough salience to justify an SDR-side corroboration check if regional coverage exists.',
+    });
+  }
+  for (const signal of (snapshot?.suspectSignals || []).slice(0, 8)) {
+    const zone = matchZone(signal.region || signal.signal || signal.reason || '');
+    if (!zone || !zone.count) continue;
+    const profile = /aviation|air/.test(`${signal.signal || ''} ${signal.reason || ''}`.toLowerCase())
+      ? watchProfiles[1]
+      : /blockade|chokepoint|maritime|ship|tanker|hormuz/.test(`${signal.signal || ''} ${signal.reason || ''}`.toLowerCase())
+        ? watchProfiles[0]
+        : watchProfiles[2];
+    candidateChecks.push({
+      source: 'suspect-signal',
+      label: signal.signal || 'Suspect regional signal',
+      region: zone.region,
+      trigger: signal.category || 'signal',
+      priority: signal.confidence === 'high' ? 'high' : 'medium',
+      confidenceLabel: signal.confidence || 'medium',
+      receiverCount: Number(zone.count || 0),
+      watchProfile: {
+        id: profile.id,
+        label: profile.label,
+        recommendedBands: profile.recommendedBands,
+        lookFor: profile.lookFor,
+      },
+      suggestedReceivers: (zone.receivers || []).slice(0, 3).map(receiver => ({ name: receiver.name || 'Unnamed SDR receiver', lat: Number(receiver.lat || 0), lon: Number(receiver.lon || 0) })),
+      rationale: signal.reason || 'Suspect signal overlaps a region with public SDR visibility.',
+    });
+  }
+  const dedupedChecks = [];
+  const seen = new Set();
+  for (const item of candidateChecks) {
+    const key = `${item.source}:${item.label}:${item.region}:${item.watchProfile.id}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    dedupedChecks.push(item);
+  }
+  const blindZones = zones.filter(zone => Number(zone.count || 0) === 0).map(zone => zone.region || 'Unknown');
+  const coveredZones = zones.filter(zone => Number(zone.count || 0) > 0).map(zone => ({
+    region: zone.region || 'Unknown',
+    receiverCount: Number(zone.count || 0),
+    sampleReceivers: (zone.receivers || []).slice(0, 3).map(receiver => ({ name: receiver.name || 'Unnamed SDR receiver', lat: Number(receiver.lat || 0), lon: Number(receiver.lon || 0) })),
+  }));
+  return {
+    version: 'sdr-corroboration-v1',
+    enabled: Number(sdr.online || sdr.total || 0) > 0,
+    purpose: 'Expose where public SDR coverage exists and turn active signals into concrete RF-side corroboration prompts.',
+    capability: {
+      remoteCheckReady: coveredZones.length > 0,
+      requiresHumanTuning: true,
+      automationMode: 'receiver-selection-and-watch-profile',
+    },
+    network: {
+      totalReceivers: Number(sdr.total || allReceivers.length || 0),
+      onlineReceivers: Number(sdr.online || allReceivers.length || 0),
+      coveredZoneCount: coveredZones.length,
+      blindZoneCount: blindZones.length,
+    },
+    watchProfiles,
+    coveredZones,
+    blindZones,
+    priorityChecks: dedupedChecks.slice(0, 8),
+    notes: [
+      'This surface does not claim that Crucix is decoding or attributing radio traffic automatically. It identifies where public SDR coverage exists and what an analyst should check next.',
+      'Confidence should only improve when RF-side observations materially support or weaken a claim alongside other evidence, not from receiver presence alone.',
+    ],
+  };
+}
+
 function summarizeOperationalAlertState(snapshot = null) {
   const operatorSettings = loadOperatorSettings();
   const prefs = operatorSettings.preferences.alerts?.operational || operatorSettingsDefaults().preferences.alerts.operational;
@@ -4887,7 +5028,7 @@ function buildOperatorSettingsContract(snapshot = null) {
   return {
     version: 'operator-settings-v1',
     generatedAt: new Date().toISOString(),
-    sections: ['layout', 'sources', 'sourceConsole', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence'],
+    sections: ['layout', 'sources', 'sourceConsole', 'sdrCorroboration', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence'],
     layout: {
       current: operatorSettings.preferences.layout.workspacePreset || 'operator',
       available: [
@@ -5043,6 +5184,7 @@ function buildOperatorSettingsContract(snapshot = null) {
         trend: memory.getNoiseSuppressionTelemetryHistory(),
       },
     },
+    sdrCorroboration: buildSdrCorroborationContract(activeSnapshot),
     llm: {
       provider: config.llm.provider || null,
       model: llmProvider?.model || config.llm.model || null,
@@ -5664,6 +5806,7 @@ app.get('/api/data', async (req, res) => {
   const reviewQueue = buildOperatorReviewQueue(review, { quality: snapshot.newsClusterQuality || null });
   const criticalEventQueue = buildCriticalEventQueueContract(snapshot);
   const criticalEventRouting = buildCriticalEventRoutingContract(snapshot);
+  const sdrCorroboration = buildSdrCorroborationContract(snapshot);
   res.json({
     ...snapshot,
     llmState,
@@ -5671,6 +5814,7 @@ app.get('/api/data', async (req, res) => {
     reviewQueue,
     criticalEventQueue,
     criticalEventRouting,
+    sdrCorroboration,
     reviewWorkflow: buildReviewWorkflowContract(snapshot, { queue: reviewQueue, review }),
     sourceInventory: sourceOps.inventory,
     sourceOps,
@@ -6264,6 +6408,7 @@ app.get('/api/health', (req, res) => {
   const operationalAlerts = summarizeOperationalAlertState(currentData || null);
   const criticalEventQueue = buildCriticalEventQueueContract(currentData || null);
   const criticalEventRouting = buildCriticalEventRoutingContract(currentData || null);
+  const sdrCorroboration = buildSdrCorroborationContract(currentData || null);
   const responseStatus = shuttingDown ? 503 : 200;
   res.status(responseStatus).json({
     status: shuttingDown ? 'shutting-down' : 'ok',
@@ -6333,6 +6478,7 @@ app.get('/api/health', (req, res) => {
     operationalAlerts,
     criticalEventQueue,
     criticalEventRouting,
+    sdrCorroboration,
   });
 });
 

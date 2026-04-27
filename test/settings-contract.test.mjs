@@ -168,7 +168,7 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   });
 
   assert.equal(contract.version, 'operator-settings-v1');
-  assert.equal(JSON.stringify(contract.sections), JSON.stringify(['layout', 'sources', 'sourceConsole', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']));
+  assert.equal(JSON.stringify(contract.sections), JSON.stringify(['layout', 'sources', 'sourceConsole', 'sdrCorroboration', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']));
   assert.equal(contract.layout.current, 'diagnostics');
   assert.equal(contract.layout.controls.displayMode, 'desktop');
   assert.equal(contract.layout.controls.workspacePreset, 'diagnostics');
@@ -240,6 +240,10 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.sources.selection.noiseSuppression.duplicateBurst.minSimilarClusters, 3);
   assert.equal(contract.sourceConsole.noiseSuppression.version, 'noise-suppression-v1');
   assert.equal(Array.isArray(contract.sourceConsole.noiseSuppression.sourceRules.activeRules), true);
+  assert.equal(contract.sdrCorroboration.version, 'sdr-corroboration-v1');
+  assert.equal(typeof contract.sdrCorroboration.capability.remoteCheckReady, 'boolean');
+  assert.equal(Array.isArray(contract.sdrCorroboration.watchProfiles), true);
+  assert.equal(Array.isArray(contract.sdrCorroboration.priorityChecks), true);
   assert.equal(contract.persistence.capabilities.export, false);
   assert.equal(contract.persistence.capabilities.writeApi, false);
   assert.equal(contract.access.role, 'operator');

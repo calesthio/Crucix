@@ -148,6 +148,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(settings.persistence.persistedPreferences.layout.visualsMode, 'lite');
     assert.equal(settings.persistence.persistedPreferences.sources.noiseSuppression.sourceRules[0].sourceId, 'gdelt-global');
     assert.equal(settings.alerts.operational.version, 'operational-alert-routing-v1');
+    assert.equal(settings.sdrCorroboration.version, 'sdr-corroboration-v1');
     assert.equal(settings.alerts.criticalEvents.version, 'critical-event-policy-v1');
     assert.equal(settings.alerts.criticalEvents.queue.version, 'critical-event-queue-v1');
     assert.equal(settings.alerts.criticalEvents.routing.version, 'critical-event-routing-v1');
@@ -249,6 +250,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(sourceAudit.entries.some(entry => entry.action === 'quarantine-source' && entry.sourceId === 'gdelt-global'), true);
 
     const operatorContract = await fetchJson(settingsUrl);
+    assert.equal(operatorContract.sdrCorroboration.version, 'sdr-corroboration-v1');
     assert.equal(operatorContract.persistence.capabilities.writeApi, false);
     assert.equal(operatorContract.access.role, 'operator');
 
