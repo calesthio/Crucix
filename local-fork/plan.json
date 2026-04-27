@@ -1100,21 +1100,33 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-43",
+        "title": "Runtime restart audit live feedback",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-43.1",
+            "title": "Add live refresh or poll-backed completion feedback for queued restart-safe actions on admin and diagnostics surfaces",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 151,
+    "sequence": 152,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-151"
+    "lastCompletedCycleId": "2026-04-27-cycle-152"
   },
   "backlog": [
     {
-      "id": "backlog-2026-04-27-runtime-restart-audit-live-refresh",
-      "title": "Add live refresh or poll-backed completion feedback for queued restart-safe actions on admin and diagnostics surfaces",
+      "id": "backlog-2026-04-27-runtime-restart-audit-shared-poller",
+      "title": "Centralize restart-audit polling and completion messaging in the shared ops shell instead of per-page inline logic",
       "status": "pending",
-      "source": "cycle-151",
-      "reason": "Restart audit is now visible as a timeline, but operators still have to reload manually to watch queued actions turn into completed or failed outcomes after pressing restart-safe."
+      "source": "cycle-152",
+      "reason": "Admin and diagnostics pages now each implement small restart-audit poll loops inline. A shared shell helper would reduce drift, simplify future runtime action feedback, and keep operator messaging consistent across surfaces."
     },
     {
       "id": "backlog-2026-04-27-critical-event-classifier-observability",

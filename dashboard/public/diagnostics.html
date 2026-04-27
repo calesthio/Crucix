@@ -22,8 +22,11 @@ const shell = mountOpsShell({
 });
 function tags(items){return `<div class="tags">${items.map(item => `<span class="tag">${esc(item)}</span>`).join('')}</div>`;}
 function restartAuditRows(items){return (items || []).map(item => `<div><strong>${esc(item.phase || 'unknown')}</strong><div class="mini">${esc(item.recordedAt || item.completedAt || item.queuedAt || 'n/a')} • ${esc(item.status || 'unknown')} • mode ${esc(item.replacementMode || 'n/a')}</div><div class="mini">port ${esc(String(item.port || 'n/a'))} • live PID ${esc(String(item.livePid || 'n/a'))} • started PID ${esc(String(item.startedPid || 'n/a'))} • rotation ${esc(item.rotationProved === true ? 'proved' : item.rotationProved === false ? 'not proved' : 'n/a')}</div>${item.error ? `<div class="mini">${esc(item.error)}</div>` : ''}</div>`).join('') || '<div class="mini">No retained restart-safe audit entries yet.</div>';}
+let restartAuditPollHandle = null;
+function clearRestartAuditPoll(){ if(restartAuditPollHandle){ clearTimeout(restartAuditPollHandle); restartAuditPollHandle = null; } }
+function scheduleRestartAuditPoll(message='Restart-safe is queued, polling diagnostics…'){ clearRestartAuditPoll(); restartAuditPollHandle = setTimeout(() => { shell.status.textContent = message; boot({ preserveStatus: message }); }, 2000); }
 async function fetchJson(url){ const res = await fetch(url); if(!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); }
-async function boot(){
+async function boot(options = {}){
   try {
     const [settings, reviewStats, analysisReview, reviewWorkflow] = await Promise.all([
       fetchJson('/api/settings/admin'),
@@ -31,7 +34,9 @@ async function boot(){
       fetchJson('/api/analysis/review'),
       fetchJson('/api/brief/news/review'),
     ]);
-    shell.status.textContent = `Loaded diagnostics at ${new Date(settings.generatedAt).toLocaleString()}`;
+    const latestRestartAudit = settings.runtimeControl?.restartAudit?.recentEntries?.[0] || null;
+    const preserveStatus = options?.preserveStatus || null;
+    shell.status.textContent = preserveStatus || `Loaded diagnostics at ${new Date(settings.generatedAt).toLocaleString()}`;
     shell.content.hidden = false;
     shell.content.innerHTML = [
       renderCard('Surface boundaries', 'Separated information architecture', [row('Operator surface', esc(settings.access?.operatorSurface || '/settings')), row('Diagnostics surface', esc(settings.access?.diagnosticsSurface || '/diagnostics')), row('Admin surface', esc('/admin/settings')), row('Debug exposure', esc(settings.admin?.boundaries?.debugExposure || 'unknown'))].join('')),
@@ -45,6 +50,12 @@ async function boot(){
       renderCard('Diagnostic endpoints', 'Direct inspection links', `<div class="list"><a href="/api/brief/news/review" target="_blank" rel="noreferrer">News review payload</a><a href="/api/brief/news/review/stats" target="_blank" rel="noreferrer">News review stats</a><a href="/api/brief/news/review/acks" target="_blank" rel="noreferrer">Review acknowledgements</a><a href="/api/review-workflow/audit" target="_blank" rel="noreferrer">Review workflow audit</a><a href="/api/settings/admin" target="_blank" rel="noreferrer">Admin settings contract</a><a href="/api/runtime-history/diagnostics" target="_blank" rel="noreferrer">Runtime history diagnostics</a></div>`),
       renderCard('Notes', 'Intent', `<pre>- Diagnostics now exposes direct local-admin review workflow controls with audit capture.\n- Operator settings remains the normal read-only control view.\n- Admin settings remains the broader local-write control plane.</pre>`),
     ].join('');
+    if (latestRestartAudit?.phase === 'queued') {
+      scheduleRestartAuditPoll('Restart-safe is queued, polling diagnostics…');
+    } else {
+      clearRestartAuditPoll();
+      if (preserveStatus && latestRestartAudit?.phase) shell.status.textContent = `Latest restart-safe outcome: ${latestRestartAudit.phase} (${latestRestartAudit.status || 'unknown'})`;
+    }
     shell.content.querySelectorAll('button[data-review-action]').forEach(btn => btn.addEventListener('click', async () => {
       const payload = { action: btn.dataset.reviewAction };
       if (btn.dataset.source) payload.sourceId = btn.dataset.source;
