@@ -208,8 +208,10 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.alerts.criticalEvents.queue.version, 'critical-event-queue-v1');
   assert.equal(contract.alerts.criticalEvents.queue.audit.version, 'critical-event-queue-audit-v1');
   assert.equal(contract.alerts.criticalEvents.routing.version, 'critical-event-routing-v1');
+  assert.equal(contract.alerts.criticalEvents.routing.delivery.version, 'critical-event-delivery-audit-v1');
   assert.equal(Array.isArray(contract.alerts.criticalEvents.queue.candidates), true);
   assert.equal(Array.isArray(contract.alerts.criticalEvents.queue.audit.recentTransitions), true);
+  assert.equal(Array.isArray(contract.alerts.criticalEvents.routing.delivery.recentRecords), true);
   assert.equal(contract.alerts.criticalEvents.queue.confidenceStates.includes('official-confirmation'), true);
   assert.equal(Array.isArray(contract.alerts.criticalEvents.routing.eligibleCandidates), true);
   assert.equal(contract.alerts.criticalEvents.taxonomy.some(item => item.id === 'governmentSiteViolence' && item.severity === 'critical'), true);
@@ -303,6 +305,24 @@ test('critical-event queue retains transition audit entries when status changes 
   assert.equal(contract.queue.audit.totalEntries >= 1, true);
   assert.equal(contract.queue.audit.recentTransitions[0].candidateId.startsWith('radiationAnomaly:'), true);
   assert.match(contract.queue.audit.recentTransitions[0].transition, /new->promoted|new->monitoring/);
+});
+
+test('critical-event routing exposes delivery audit and resend posture without sending notifications', () => {
+  const contract = buildCriticalEventPolicyContract({
+    corroboratedSignals: [{
+      signal: 'Radiation anomaly detected near reactor complex',
+      reason: 'Official radiation dashboard and sensor network both show elevated gamma readings.',
+      region: 'Ukraine',
+      evidenceSource: 'official sensor network',
+      sourceHealth: 'hard-data',
+      confidence: 'high',
+      freshestTs: '2099-04-25T20:05:00.000Z',
+    }],
+  });
+  assert.equal(contract.routing.delivery.version, 'critical-event-delivery-audit-v1');
+  assert.equal(contract.routing.delivery.recentRecords.length >= 1, true);
+  assert.equal(contract.routing.delivery.recentRecords[0].deliveryState, 'preview-only');
+  assert.equal(contract.routing.delivery.recentRecords[0].lastOutcome, 'not-sent-contract-only');
 });
 
 test('noise suppression pressure summaries escalate retained-growth and prune streaks into operator cues', () => {

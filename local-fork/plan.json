@@ -1061,7 +1061,7 @@
           {
             "id": "effort-39.3",
             "title": "Add delivery outcome audit and resend state for critical-event notifications before any automatic outbound send loop is enabled",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -1080,9 +1080,9 @@
     ]
   },
   "cycleState": {
-    "sequence": 147,
+    "sequence": 148,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-147"
+    "lastCompletedCycleId": "2026-04-27-cycle-148"
   },
   "backlog": [
     {
@@ -1105,6 +1105,13 @@
       "status": "pending",
       "source": "cycle-147",
       "reason": "Transition history is now retained in state and surfaced in the contract, but operator-facing diagnostics and UI workflows still need a clearer review surface for browsing, filtering, and interpreting queue history over time."
+    },
+    {
+      "id": "backlog-2026-04-27-critical-event-delivery-operator-surface",
+      "title": "Expose critical-event delivery audit and resend posture on operator-facing diagnostics surfaces",
+      "status": "pending",
+      "source": "cycle-148",
+      "reason": "Delivery audit and resend posture now exist in contract state, but operators still need a clearer diagnostics and UI surface to review preview-only outcomes, blocked routes, and future resend eligibility over time."
     }
   ]
 }

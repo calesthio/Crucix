@@ -92,6 +92,7 @@ const CLUSTER_PRESSURE_STATE_KEY = 'cluster-review:pressure';
 const CLUSTER_PRESSURE_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 const CRITICAL_EVENT_QUEUE_STATE_KEY = 'critical-events:queue';
 const CRITICAL_EVENT_QUEUE_AUDIT_STATE_KEY = 'critical-events:queue-audit';
+const CRITICAL_EVENT_DELIVERY_STATE_KEY = 'critical-events:delivery';
 const CRITICAL_EVENT_QUEUE_RETENTION_MS = Math.max(1, Number(config.review?.criticalEventQueueRetentionHours || 24)) * 60 * 60 * 1000;
 const CRITICAL_EVENT_QUEUE_RETRY_INTERVAL_MS = Math.max(1, Number(config.review?.criticalEventQueueRetryMinutes || 5)) * 60 * 1000;
 const CRITICAL_EVENT_QUEUE_MAX_RETRIES = Math.max(1, Number(config.review?.criticalEventQueueMaxRetries || 6));
@@ -4377,6 +4378,60 @@ function appendCriticalEventQueueAuditEntries(entries = [], nowIso = new Date().
   return saveCriticalEventQueueAuditState(merged);
 }
 
+function getCriticalEventDeliveryState() {
+  const stateKey = typeof CRITICAL_EVENT_DELIVERY_STATE_KEY === 'string' ? CRITICAL_EVENT_DELIVERY_STATE_KEY : 'critical-events:delivery';
+  const state = typeof memory?.getSignalState === 'function' ? memory.getSignalState(stateKey) : null;
+  return state && typeof state === 'object'
+    ? state
+    : { version: 'critical-event-delivery-audit-v1', updatedAt: null, records: {} };
+}
+
+function saveCriticalEventDeliveryState(state = null) {
+  if (!state || typeof memory?.setSignalState !== 'function') return state;
+  memory.setSignalState(typeof CRITICAL_EVENT_DELIVERY_STATE_KEY === 'string' ? CRITICAL_EVENT_DELIVERY_STATE_KEY : 'critical-events:delivery', state);
+  return state;
+}
+
+function reconcileCriticalEventDeliveryAudit(queue = null, routing = null, nowIso = new Date().toISOString()) {
+  const current = getCriticalEventDeliveryState();
+  const nextRecords = { ...(current.records || {}) };
+  const queueCandidates = Array.isArray(queue?.candidates) ? queue.candidates : [];
+  const routingCandidates = Array.isArray(routing?.eligibleCandidates) ? routing.eligibleCandidates : [];
+  const routingById = new Map(routingCandidates.map(item => [item.candidateId, item]));
+  for (const candidate of queueCandidates) {
+    const existing = nextRecords[candidate.candidateId] && typeof nextRecords[candidate.candidateId] === 'object' ? nextRecords[candidate.candidateId] : null;
+    const routeInfo = routingById.get(candidate.candidateId) || null;
+    const shouldNotify = Boolean(routeInfo?.shouldNotify);
+    const dispatchMode = routing?.dispatchMode || 'contract-only';
+    const routePlan = routeInfo?.routePlan || { defaultRoute: [], escalationRoute: [], activeRoutes: [] };
+    nextRecords[candidate.candidateId] = {
+      candidateId: candidate.candidateId,
+      classId: candidate.classId,
+      label: candidate.label,
+      status: candidate.status,
+      confidenceLabel: candidate.confidenceLabel,
+      deliveryState: dispatchMode === 'contract-only'
+        ? (candidate.status === 'promoted' ? 'preview-only' : 'not-eligible')
+        : (shouldNotify ? 'ready' : 'blocked-no-route'),
+      dispatchMode,
+      shouldNotify,
+      resendEligible: Boolean(existing?.deliveryState === 'failed' || existing?.deliveryState === 'sent'),
+      lastAttemptAt: existing?.lastAttemptAt || null,
+      lastDeliveredAt: existing?.lastDeliveredAt || null,
+      lastOutcome: existing?.lastOutcome || (dispatchMode === 'contract-only' ? 'not-sent-contract-only' : null),
+      attemptCount: Number(existing?.attemptCount || 0),
+      routePlan,
+      messagePreview: routeInfo?.messagePreview || null,
+      updatedAt: nowIso,
+    };
+  }
+  const bounded = Object.fromEntries(Object.values(nextRecords)
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+    .slice(0, 200)
+    .map(item => [item.candidateId, item]));
+  return saveCriticalEventDeliveryState({ version: 'critical-event-delivery-audit-v1', updatedAt: nowIso, records: bounded });
+}
+
 function slugCriticalEventValue(value = '') {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120) || 'unknown';
 }
@@ -4804,6 +4859,10 @@ function buildCriticalEventRoutingContract(snapshot = null) {
         messagePreview: preview,
       };
     });
+  const deliveryAudit = reconcileCriticalEventDeliveryAudit(queue, {
+    dispatchMode: 'contract-only',
+    eligibleCandidates,
+  });
   return {
     version: 'critical-event-routing-v1',
     enabled: Boolean(config.alerting?.enabled) && Boolean(prefs.enabled),
@@ -4813,6 +4872,14 @@ function buildCriticalEventRoutingContract(snapshot = null) {
     escalationRoute: Array.isArray(prefs.escalationRoute) ? prefs.escalationRoute : [],
     eligibleCount: eligibleCandidates.length,
     eligibleCandidates: eligibleCandidates.slice(0, 8),
+    delivery: {
+      version: 'critical-event-delivery-audit-v1',
+      stateKey: typeof CRITICAL_EVENT_DELIVERY_STATE_KEY === 'string' ? CRITICAL_EVENT_DELIVERY_STATE_KEY : 'critical-events:delivery',
+      updatedAt: deliveryAudit.updatedAt || null,
+      totalRecords: Object.keys(deliveryAudit.records || {}).length,
+      recentRecords: Object.values(deliveryAudit.records || {}).slice(0, 8),
+      resendStates: ['preview-only', 'not-eligible', 'ready', 'blocked-no-route', 'sent', 'failed'],
+    },
     notes: [
       'Critical-event routing exposes who would be notified, with what confidence, corroboration basis, and unresolved caveats.',
       'This contract is route-ready and previewable without silently emitting outbound operator notifications during validation.',
