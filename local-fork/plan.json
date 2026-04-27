@@ -1088,21 +1088,33 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-42",
+        "title": "Runtime restart audit workflow surfaces",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-42.1",
+            "title": "Expose restart-safe audit as a clearer diagnostics timeline and action-history surface across diagnostics and admin views",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 150,
+    "sequence": 151,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-150"
+    "lastCompletedCycleId": "2026-04-27-cycle-151"
   },
   "backlog": [
     {
-      "id": "backlog-2026-04-27-runtime-restart-audit-ui",
-      "title": "Expose runtime restart audit as a clearer diagnostics timeline and action-history surface",
+      "id": "backlog-2026-04-27-runtime-restart-audit-live-refresh",
+      "title": "Add live refresh or poll-backed completion feedback for queued restart-safe actions on admin and diagnostics surfaces",
       "status": "pending",
-      "source": "cycle-150",
-      "reason": "Restart-safe audit is now retained and exposed in admin/runtime contract JSON, but operators still need a clearer diagnostics view for browsing restart attempts, queue failures, rotation proof, and health outcomes over time without reading raw payloads."
+      "source": "cycle-151",
+      "reason": "Restart audit is now visible as a timeline, but operators still have to reload manually to watch queued actions turn into completed or failed outcomes after pressing restart-safe."
     },
     {
       "id": "backlog-2026-04-27-critical-event-classifier-observability",

@@ -277,6 +277,10 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal('classification' in llmOps.provider.readiness.lastFailure, true);
     assert.equal('lastProbeType' in llmOps.provider.readiness, true);
 
+    const adminRuntimePage = await fetch(`http://127.0.0.1:${BASE_PORT}/admin/settings`).then(r => r.text());
+    assert.match(adminRuntimePage, /Restart-safe audit history/i);
+    assert.match(adminRuntimePage, /Retained action history/i);
+
     const page = await fetch(pageUrl).then(r => r.text());
     assert.match(page, /read-only operator view/i);
     assert.match(page, /ops-shell\.js/i);
@@ -308,6 +312,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.match(diagnosticsPage, /activeSurface: 'diagnostics'/i);
     assert.match(diagnosticsPage, /Noise suppression/i);
     assert.match(diagnosticsPage, /Operator cue/i);
+    assert.match(diagnosticsPage, /Restart-safe audit timeline/i);
+    assert.match(diagnosticsPage, /Runtime history diagnostics/i);
 
     const llmOpsPage = await fetch(llmOpsPageUrl).then(r => r.text());
     assert.match(llmOpsPage, /Provider health and fallback operations/i);
