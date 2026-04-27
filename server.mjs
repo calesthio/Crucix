@@ -20,6 +20,7 @@ import { DiscordAlerter } from './lib/alerts/discord.mjs';
 import { buildSixHourBaseline } from './lib/baseline-sixhour.mjs';
 import { getFreshnessPolicy } from './lib/freshness-policy.mjs';
 import { buildSourceOpsSurface } from './lib/source-ops-runtime.mjs';
+import { appendRuntimeRestartAudit } from './lib/runtime-restart.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -31,6 +32,7 @@ const CLUSTER_REPAIR_ACTIONS_PATH = join(RUNS_DIR, 'cluster-repair-actions.json'
 const NOISE_SUPPRESSION_HISTORY_PATH = join(RUNS_DIR, 'noise-suppression-history.json');
 const SETTINGS_ADMIN_AUDIT_PATH = join(RUNS_DIR, 'settings-admin-audit.json');
 const SOURCE_CONTROL_AUDIT_PATH = join(RUNS_DIR, 'source-control-audit.json');
+const RUNTIME_RESTART_AUDIT_PATH = join(RUNS_DIR, 'runtime-restart-audit.json');
 const AGENT_ANALYSIS_VALIDATION_SCRIPT = join(ROOT, 'scripts/agent-analysis-validation-summary.mjs');
 const OPENSKY_STATE_PATH = join(ROOT, 'runs', 'cache', 'opensky-state.json');
 const OPERATOR_SETTINGS_PATH = process.env.OPERATOR_SETTINGS_PATH || join(ROOT, 'runs', 'operator-settings.json');
@@ -219,6 +221,24 @@ function saveJsonFile(path, data) {
 
 function deepCloneJson(data) {
   return data == null ? data : JSON.parse(JSON.stringify(data));
+}
+
+function runtimeRestartAuditDefaults() {
+  return {
+    version: 'runtime-restart-audit-v1',
+    updatedAt: null,
+    history: [],
+  };
+}
+
+function getRuntimeRestartAuditState() {
+  const state = loadJsonFile(RUNTIME_RESTART_AUDIT_PATH, runtimeRestartAuditDefaults());
+  if (!state || typeof state !== 'object') return runtimeRestartAuditDefaults();
+  return {
+    version: 'runtime-restart-audit-v1',
+    updatedAt: state.updatedAt || null,
+    history: Array.isArray(state.history) ? state.history : [],
+  };
 }
 
 function isPlaceholderSecret(value = '') {
@@ -5596,6 +5616,9 @@ function buildRuntimeControlContract(snapshot = null) {
           ideas: {},
           analysis: {},
         });
+  const restartAudit = typeof getRuntimeRestartAuditState === 'function'
+    ? getRuntimeRestartAuditState()
+    : { version: 'runtime-restart-audit-v1', updatedAt: null, history: [] };
   return {
     version: 'runtime-control-v1',
     process: {
@@ -5630,6 +5653,17 @@ function buildRuntimeControlContract(snapshot = null) {
       agentAnalysisRefinementState: snapshot?.agentAnalysisMeta?.refinementState || null,
     },
     jobs,
+    restartAudit: {
+      version: restartAudit.version || 'runtime-restart-audit-v1',
+      endpoint: '/api/runtime/control',
+      updatedAt: restartAudit.updatedAt || null,
+      totalEntries: Array.isArray(restartAudit.history) ? restartAudit.history.length : 0,
+      recentEntries: Array.isArray(restartAudit.history) ? restartAudit.history.slice(0, 8) : [],
+      notes: [
+        'Retained restart-safe audit shows queued and completed restart attempts with listener-rotation proof when available.',
+        'Entries are sourced from local restart-safe control flow and helper outcomes, not inferred from chat responses.',
+      ],
+    },
     controls: {
       endpoint: '/api/runtime/control',
       allowedActions: ['restart-safe', 'stop'],
@@ -6384,7 +6418,16 @@ app.post('/api/runtime/control', requireDebugAccess, (req, res) => {
     return res.status(400).json({ ok: false, error: 'Unsupported runtime control action', allowedActions: runtimeControl.controls.allowedActions });
   }
   if (action === 'restart-safe') {
-    res.json({ ok: true, accepted: true, action, queuedAt: new Date().toISOString(), process: runtimeControl.process });
+    const queuedAt = new Date().toISOString();
+    appendRuntimeRestartAudit(RUNTIME_RESTART_AUDIT_PATH, {
+      action,
+      phase: 'queued',
+      requestedByPid: process.pid,
+      queuedAt,
+      status: 'accepted',
+      port: runtimeControl.process.port,
+    });
+    res.json({ ok: true, accepted: true, action, queuedAt, process: runtimeControl.process });
     setTimeout(() => {
       try {
         const out = spawn(process.execPath, [join(ROOT, 'scripts', 'restart-helper.mjs')], {
@@ -6396,6 +6439,15 @@ app.post('/api/runtime/control', requireDebugAccess, (req, res) => {
         out.unref();
         writeFileSync(RUNTIME_CONTROL_LOG_PATH, `${new Date().toISOString()} queued restart-safe from pid=${process.pid}\n`, { flag: 'a' });
       } catch (error) {
+        appendRuntimeRestartAudit(RUNTIME_RESTART_AUDIT_PATH, {
+          action,
+          phase: 'queue-failed',
+          requestedByPid: process.pid,
+          queuedAt,
+          status: 'failed',
+          port: runtimeControl.process.port,
+          error: error.message || 'failed-to-queue-restart-helper',
+        });
         writeFileSync(RUNTIME_CONTROL_LOG_PATH, `${new Date().toISOString()} failed to queue restart-safe from pid=${process.pid}: ${error.message}\n`, { flag: 'a' });
       }
     }, 100);

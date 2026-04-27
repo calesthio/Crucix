@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyListenerOwnership, evaluateRestartTransition, parseLsofLines } from '../lib/runtime-restart.mjs';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { appendRuntimeRestartAudit, classifyListenerOwnership, evaluateRestartTransition, loadRuntimeRestartAudit, parseLsofLines } from '../lib/runtime-restart.mjs';
 
 test('parseLsofLines extracts listener rows', () => {
   const rows = parseLsofLines(`COMMAND   PID      USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\nnode    94748 rightclaw   12u  IPv6 0x1      0t0  TCP *:3117 (LISTEN)\n`);
@@ -17,6 +20,21 @@ test('classifyListenerOwnership only claims clearly owned Crucix listeners', () 
   assert.equal(owned.owned, true);
   assert.equal(foreignNode.owned, false);
   assert.equal(foreignNonNode.owned, false);
+});
+
+test('appendRuntimeRestartAudit retains newest restart outcomes first', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'crucix-runtime-restart-'));
+  const path = join(dir, 'runtime-restart-audit.json');
+  appendRuntimeRestartAudit(path, { action: 'restart-safe', phase: 'queued', status: 'accepted', recordedAt: '2026-04-27T18:00:00.000Z' }, 3);
+  appendRuntimeRestartAudit(path, { action: 'restart-safe', phase: 'completed', status: 'ok', livePid: 123, rotationProved: true, recordedAt: '2026-04-27T18:05:00.000Z' }, 3);
+  const loaded = loadRuntimeRestartAudit(path);
+  assert.equal(loaded.version, 'runtime-restart-audit-v1');
+  assert.equal(loaded.updatedAt, '2026-04-27T18:05:00.000Z');
+  assert.equal(loaded.history.length, 2);
+  assert.equal(loaded.history[0].phase, 'completed');
+  assert.equal(loaded.history[0].livePid, 123);
+  assert.equal(loaded.history[1].phase, 'queued');
+  assert.equal(JSON.parse(readFileSync(path, 'utf8')).history.length, 2);
 });
 
 test('evaluateRestartTransition recognizes cleared, replacement, waiting, and foreign listener states', () => {

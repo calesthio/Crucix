@@ -3,15 +3,16 @@ import { spawn } from 'node:child_process';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { classifyListenerOwnership, evaluateRestartTransition, listPortListeners, waitForHealth } from '../lib/runtime-restart.mjs';
+import { appendRuntimeRestartAudit, classifyListenerOwnership, evaluateRestartTransition, listPortListeners, waitForHealth } from '../lib/runtime-restart.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const port = Number(process.env.PORT || 3117);
 const healthUrl = `http://127.0.0.1:${port}/api/health`;
 const repoRoot = ROOT;
+const runtimeRestartAuditPath = join(ROOT, 'runs', 'runtime-restart-audit.json');
 
 function log(line) { console.log(`[Crucix restart] ${line}`); }
-function fail(line) { console.error(`[Crucix restart] ${line}`); process.exit(1); }
+function fail(line) { throw new Error(String(line || 'restart-helper-failed')); }
 async function sleep(ms){ await new Promise(r => setTimeout(r, ms)); }
 
 async function killOwnedListeners() {
@@ -67,6 +68,7 @@ async function startCrucix() {
 }
 
 async function main() {
+  const startedAt = new Date().toISOString();
   log(`Inspecting port ${port} ownership before restart.`);
   const restartState = await killOwnedListeners();
   let pid = null;
@@ -86,7 +88,36 @@ async function main() {
   if (!rotationProved) fail(`Health check passed but PID rotation was not proved. Previous PID(s): ${[...previousPids].join(', ') || 'none'}, live PID: ${livePid || 'unknown'}.`);
   log(`Health check passed for ${healthUrl}.`);
   log(`Live listener PID ${livePid || pid} on port ${port}.`);
-  console.log(JSON.stringify({ ok: true, port, startedPid: pid, livePid, replacementMode, rotationProved, healthStatus: health?.status || null, lastSweep: health?.lastSweep || null }, null, 2));
+  const result = { ok: true, port, startedPid: pid, livePid, replacementMode, rotationProved, healthStatus: health?.status || null, lastSweep: health?.lastSweep || null };
+  appendRuntimeRestartAudit(runtimeRestartAuditPath, {
+    action: 'restart-safe',
+    phase: 'completed',
+    status: 'ok',
+    port,
+    requestedByPid: process.ppid || null,
+    helperPid: process.pid,
+    startedAt,
+    completedAt: new Date().toISOString(),
+    previousPids: [...previousPids],
+    startedPid: pid,
+    livePid,
+    replacementMode,
+    rotationProved,
+    healthStatus: health?.status || null,
+    lastSweep: health?.lastSweep || null,
+  });
+  console.log(JSON.stringify(result, null, 2));
 }
 
-main().catch(error => fail(error?.stack || error?.message || String(error)));
+main().catch(error => {
+  appendRuntimeRestartAudit(runtimeRestartAuditPath, {
+    action: 'restart-safe',
+    phase: 'failed',
+    status: 'failed',
+    port,
+    helperPid: process.pid,
+    completedAt: new Date().toISOString(),
+    error: error?.message || String(error),
+  });
+  fail(error?.stack || error?.message || String(error));
+});

@@ -400,6 +400,8 @@ test('admin settings contract exposes local-write controls separately from opera
   assert.equal(contract.admin.boundaries.requiresLocalRequest, true);
   assert.equal(contract.admin.controls.writeEndpoint, '/api/settings/operator');
   assert.equal(contract.admin.controls.runtimeHistoryDiagnosticsEndpoint, '/api/runtime-history/diagnostics');
+  assert.equal(contract.runtimeControl.restartAudit.version, 'runtime-restart-audit-v1');
+  assert.equal(Array.isArray(contract.runtimeControl.restartAudit.recentEntries), true);
 });
 
 test('llm operations contract exposes provider health, mode forcing, fallback chains, and recent failure reasons', () => {

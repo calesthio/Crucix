@@ -238,6 +238,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(admin.runtimeControl.version, 'runtime-control-v1');
     assert.equal(admin.admin.boundaries.requiresLocalRequest, true);
     assert.equal(admin.runtimeControl.version, 'runtime-control-v1');
+    assert.equal(admin.runtimeControl.restartAudit.version, 'runtime-restart-audit-v1');
+    assert.equal(Array.isArray(admin.runtimeControl.restartAudit.recentEntries), true);
     assert.equal(typeof admin.runtimeControl.jobs.synthesis.attemptCount, 'number');
     assert.equal('lastOutcome' in admin.runtimeControl.jobs.ideas, true);
     assert.equal(Array.isArray(admin.runtimeControl.controls.allowedActions), true);
