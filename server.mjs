@@ -91,6 +91,7 @@ const CLUSTER_REVIEW_DECAY_HALF_LIFE_MS = 3 * 24 * 60 * 60 * 1000;
 const CLUSTER_PRESSURE_STATE_KEY = 'cluster-review:pressure';
 const CLUSTER_PRESSURE_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 const CRITICAL_EVENT_QUEUE_STATE_KEY = 'critical-events:queue';
+const CRITICAL_EVENT_QUEUE_AUDIT_STATE_KEY = 'critical-events:queue-audit';
 const CRITICAL_EVENT_QUEUE_RETENTION_MS = Math.max(1, Number(config.review?.criticalEventQueueRetentionHours || 24)) * 60 * 60 * 1000;
 const CRITICAL_EVENT_QUEUE_RETRY_INTERVAL_MS = Math.max(1, Number(config.review?.criticalEventQueueRetryMinutes || 5)) * 60 * 1000;
 const CRITICAL_EVENT_QUEUE_MAX_RETRIES = Math.max(1, Number(config.review?.criticalEventQueueMaxRetries || 6));
@@ -4322,6 +4323,60 @@ function getCriticalEventQueueState() {
     : { version: 'critical-event-queue-state-v1', updatedAt: null, candidates: {} };
 }
 
+function getCriticalEventQueueAuditState() {
+  const stateKey = typeof CRITICAL_EVENT_QUEUE_AUDIT_STATE_KEY === 'string' ? CRITICAL_EVENT_QUEUE_AUDIT_STATE_KEY : 'critical-events:queue-audit';
+  const state = typeof memory?.getSignalState === 'function' ? memory.getSignalState(stateKey) : null;
+  return state && typeof state === 'object'
+    ? state
+    : { version: 'critical-event-queue-audit-v1', updatedAt: null, entries: [] };
+}
+
+function saveCriticalEventQueueAuditState(state = null) {
+  if (!state || typeof memory?.setSignalState !== 'function') return state;
+  memory.setSignalState(typeof CRITICAL_EVENT_QUEUE_AUDIT_STATE_KEY === 'string' ? CRITICAL_EVENT_QUEUE_AUDIT_STATE_KEY : 'critical-events:queue-audit', state);
+  return state;
+}
+
+function buildCriticalEventQueueAuditEntry(candidate = {}, previous = null, nowIso = new Date().toISOString()) {
+  const previousStatus = previous?.status || null;
+  const nextStatus = candidate?.status || null;
+  const previousConfidence = previous?.confidenceLabel || null;
+  const nextConfidence = candidate?.confidenceLabel || null;
+  const previousPromotionState = previous?.promotion?.state || null;
+  const nextPromotionState = candidate?.promotion?.state || null;
+  return {
+    id: `${candidate.candidateId || 'candidate'}:${nowIso}`,
+    at: nowIso,
+    candidateId: candidate.candidateId || null,
+    classId: candidate.classId || null,
+    label: candidate.label || null,
+    region: candidate.region || null,
+    signalId: candidate.signalId || null,
+    transition: `${previousStatus || 'new'}->${nextStatus || 'unknown'}`,
+    previousStatus,
+    nextStatus,
+    previousConfidence,
+    nextConfidence,
+    previousPromotionState,
+    nextPromotionState,
+    basis: candidate?.promotion?.basis || [],
+    unresolved: candidate?.promotion?.unresolved || [],
+    summary: candidate?.evidenceSummary?.summary || candidate?.promotion?.summary || null,
+  };
+}
+
+function appendCriticalEventQueueAuditEntries(entries = [], nowIso = new Date().toISOString()) {
+  if (!Array.isArray(entries) || !entries.length) return getCriticalEventQueueAuditState();
+  const maxEntries = 200;
+  const current = getCriticalEventQueueAuditState();
+  const merged = {
+    version: 'critical-event-queue-audit-v1',
+    updatedAt: nowIso,
+    entries: [...(Array.isArray(current.entries) ? current.entries : []), ...entries].slice(-maxEntries),
+  };
+  return saveCriticalEventQueueAuditState(merged);
+}
+
 function slugCriticalEventValue(value = '') {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120) || 'unknown';
 }
@@ -4505,7 +4560,9 @@ function processCriticalEventQueue(snapshot = {}) {
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
   const state = pruneCriticalEventQueueState(getCriticalEventQueueState(), nowMs);
+  const previousCandidates = { ...(state.candidates || {}) };
   const nextCandidates = { ...(state.candidates || {}) };
+  const auditEntries = [];
   const normalizeSignals = (kind, items = []) => {
     if (typeof attachSignalIds === 'function') return attachSignalIds(kind, items || []);
     return (items || []).map((item, index) => ({ ...item, id: item?.id || `${kind}-${index}` }));
@@ -4620,6 +4677,16 @@ function processCriticalEventQueue(snapshot = {}) {
     }
   }
 
+  for (const [candidateId, candidate] of Object.entries(nextCandidates)) {
+    const previous = previousCandidates[candidateId] || null;
+    const changed = !previous
+      || previous.status !== candidate.status
+      || previous.confidenceLabel !== candidate.confidenceLabel
+      || (previous.promotion?.state || null) !== (candidate.promotion?.state || null)
+      || (previous.promotion?.crossedThreshold || false) !== (candidate.promotion?.crossedThreshold || false);
+    if (changed) auditEntries.push(buildCriticalEventQueueAuditEntry(candidate, previous, nowIso));
+  }
+
   const bounded = Object.values(nextCandidates)
     .sort((a, b) => new Date(b.lastSeenAt || 0).getTime() - new Date(a.lastSeenAt || 0).getTime())
     .slice(0, maxItems);
@@ -4631,12 +4698,14 @@ function processCriticalEventQueue(snapshot = {}) {
   if (typeof memory?.setSignalState === 'function') {
     memory.setSignalState(typeof CRITICAL_EVENT_QUEUE_STATE_KEY === 'string' ? CRITICAL_EVENT_QUEUE_STATE_KEY : 'critical-events:queue', finalState);
   }
+  if (auditEntries.length) appendCriticalEventQueueAuditEntries(auditEntries, nowIso);
   return finalState;
 }
 
 function buildCriticalEventQueueContract(snapshot = null) {
   if (snapshot) processCriticalEventQueue(snapshot);
   const state = pruneCriticalEventQueueState(getCriticalEventQueueState(), Date.now());
+  const auditState = getCriticalEventQueueAuditState();
   const candidates = Object.values(state.candidates || {})
     .sort((a, b) => {
       const statusRank = { promoted: 0, monitoring: 1, discarded: 2 };
@@ -4669,6 +4738,13 @@ function buildCriticalEventQueueContract(snapshot = null) {
   return {
     version: 'critical-event-queue-v1',
     stateKey,
+    audit: {
+      version: 'critical-event-queue-audit-v1',
+      stateKey: typeof CRITICAL_EVENT_QUEUE_AUDIT_STATE_KEY === 'string' ? CRITICAL_EVENT_QUEUE_AUDIT_STATE_KEY : 'critical-events:queue-audit',
+      updatedAt: auditState.updatedAt || null,
+      totalEntries: Array.isArray(auditState.entries) ? auditState.entries.length : 0,
+      recentTransitions: (Array.isArray(auditState.entries) ? auditState.entries : []).slice(-8).reverse(),
+    },
     updatedAt: state.updatedAt || null,
     retryIntervalMinutes: Math.round(retryIntervalMs / 60000),
     maxRetries,

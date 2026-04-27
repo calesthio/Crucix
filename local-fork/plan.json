@@ -1056,7 +1056,7 @@
           {
             "id": "effort-39.2",
             "title": "Persist retained audit history for critical-event queue transitions so operators can inspect when candidates moved between monitoring, corroborated, official-confirmation, and discarded states",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-39.3",
@@ -1080,9 +1080,9 @@
     ]
   },
   "cycleState": {
-    "sequence": 146,
+    "sequence": 147,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-146"
+    "lastCompletedCycleId": "2026-04-27-cycle-147"
   },
   "backlog": [
     {
@@ -1098,6 +1098,13 @@
       "status": "pending",
       "source": "cycle-146",
       "reason": "The classifier now consumes richer metadata, but operators and future tuning work would benefit from seeing why a signal matched a class, which cues fired, and when a near-tie was intentionally discarded as ambiguous."
+    },
+    {
+      "id": "backlog-2026-04-27-critical-event-audit-operator-surface",
+      "title": "Expose critical-event queue transition audit on operator-facing diagnostics surfaces",
+      "status": "pending",
+      "source": "cycle-147",
+      "reason": "Transition history is now retained in state and surfaced in the contract, but operator-facing diagnostics and UI workflows still need a clearer review surface for browsing, filtering, and interpreting queue history over time."
     }
   ]
 }
