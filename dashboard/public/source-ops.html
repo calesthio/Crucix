@@ -17,6 +17,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <div id="app"></div>
 <script src="/ops-shell.js"></script>
 <script>
+{
 const { esc, mountOpsShell } = window.CRUCIX_OPS_SHELL;
 const shell = mountOpsShell({
   activeSurface: 'source-ops',
@@ -96,6 +97,7 @@ async function boot(){
   }
 }
 boot();
+}
 </script>
 </body>
 </html>

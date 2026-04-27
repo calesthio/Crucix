@@ -10,6 +10,7 @@
 <div id="app"></div>
 <script src="/ops-shell.js"></script>
 <script>
+{
 const { esc, row, tags, renderCard, mountOpsShell } = window.CRUCIX_OPS_SHELL;
 const shell = mountOpsShell({
   activeSurface: 'settings',
@@ -111,6 +112,7 @@ async function boot(){
   }
 }
 boot();
+}
 </script>
 </body>
 </html>
