@@ -266,6 +266,7 @@ test('admin settings contract exposes local-write controls separately from opera
   assert.equal(contract.access.diagnosticsSurface, '/diagnostics');
   assert.equal(contract.admin.boundaries.requiresLocalRequest, true);
   assert.equal(contract.admin.controls.writeEndpoint, '/api/settings/operator');
+  assert.equal(contract.admin.controls.runtimeHistoryDiagnosticsEndpoint, '/api/runtime-history/diagnostics');
 });
 
 test('llm operations contract exposes provider health, mode forcing, fallback chains, and recent failure reasons', () => {

@@ -874,7 +874,7 @@
       {
         "id": "epic-33",
         "title": "Deployment hardening, persistence, and external operations",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-33.1",
@@ -909,7 +909,7 @@
           {
             "id": "effort-33.7",
             "title": "Add a small admin diagnostics surface or export endpoint for the SQLite runtime-history store, including table sizes, last-write timestamps, and a bounded integrity check, so datastore health is visible without shell access",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },

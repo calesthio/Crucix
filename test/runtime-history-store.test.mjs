@@ -105,6 +105,17 @@ test('MemoryManager persists runtime history and signal state into sqlite-backed
     assert.equal(sourcePerformanceHistory.snapshots[0].topImpactSources[0].attentionScore, 9);
     assert.equal(sourcePerformanceHistory.snapshots[0].runtimeBucketDrift.totalDriftCount, 1);
     assert.equal(sourcePerformanceHistory.deltaViews[0].summaryDelta.runtimeBucketDrift.totalDriftCount, -1);
+
+    const diagnostics = reloaded.runtimeHistoryStore.getDiagnostics({ sampleLimit: 2 });
+    assert.equal(diagnostics.version, 'runtime-history-diagnostics-v1');
+    assert.equal(diagnostics.integrity.mode, 'quick_check(1)');
+    assert.equal(diagnostics.integrity.ok, true);
+    assert.equal(diagnostics.tables.runtimeRuns.rowCount, 2);
+    assert.equal(diagnostics.tables.runtimeSignalState.rowCount, 1);
+    assert.equal(diagnostics.tables.runtimeRuns.newestRunTimestamp, '2026-04-26T13:00:00.000Z');
+    assert.equal(diagnostics.tables.runtimeSignalState.sample[0].signalKey, 'cluster-review:pressure');
+    assert.equal(diagnostics.tables.runtimeRuns.sample.length, 2);
+    assert.equal(typeof diagnostics.storage.databaseSizeBytes, 'number');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

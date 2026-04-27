@@ -5152,6 +5152,7 @@ function buildAdminSettingsContract(snapshot = null) {
         writeEndpoint: '/api/settings/operator',
         auditEndpoint: '/api/settings/audit',
         runtimeControlEndpoint: '/api/runtime/control',
+        runtimeHistoryDiagnosticsEndpoint: '/api/runtime-history/diagnostics',
       },
       boundaries: {
         requiresLocalRequest: true,
@@ -5243,6 +5244,20 @@ app.get('/api/settings/audit', requireDebugAccess, (req, res) => {
     endpoint: '/api/settings/audit',
     totalEntries: settingsAdminAudit.length,
     entries: settingsAdminAuditSnapshot(limit),
+  });
+});
+
+app.get('/api/runtime-history/diagnostics', requireDebugAccess, (req, res) => {
+  const requestedSampleLimit = Number.parseInt(String(req.query?.sampleLimit || '3'), 10);
+  const sampleLimit = Number.isFinite(requestedSampleLimit) ? Math.max(0, Math.min(requestedSampleLimit, 10)) : 3;
+  const diagnostics = memory.runtimeHistoryStore.getDiagnostics({ sampleLimit });
+  res.json({
+    ...diagnostics,
+    endpoint: '/api/runtime-history/diagnostics',
+    notes: [
+      'This admin-only surface is bounded on purpose: quick_check(1) avoids a full blocking integrity sweep, and samples are capped to a small recent window.',
+      'Use this surface to confirm row growth, last-write freshness, and basic SQLite health without shell access.',
+    ],
   });
 });
 

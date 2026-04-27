@@ -216,6 +216,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(admin.access.role, 'admin');
     assert.equal(admin.admin.boundaries.requiresLocalRequest, true);
     assert.equal(admin.admin.controls.auditEndpoint, '/api/settings/audit');
+    assert.equal(admin.admin.controls.runtimeHistoryDiagnosticsEndpoint, '/api/runtime-history/diagnostics');
     assert.equal(admin.admin.backup.bundleVersion, 'settings-state-bundle-v1');
     assert.equal(Array.isArray(admin.admin.auditTrail), true);
     assert.equal(admin.runtimeControl.version, 'runtime-control-v1');
@@ -226,6 +227,13 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(Array.isArray(admin.runtimeControl.controls.allowedActions), true);
     assert.equal(admin.runtimeControl.controls.allowedActions.includes('restart-safe'), true);
     assert.equal(admin.runtimeControl.controls.allowedActions.includes('stop'), true);
+
+    const runtimeHistoryDiagnostics = await waitFor(`http://127.0.0.1:${BASE_PORT}/api/runtime-history/diagnostics`, payload => payload?.version === 'runtime-history-diagnostics-v1', 30000);
+    assert.equal(runtimeHistoryDiagnostics.endpoint, '/api/runtime-history/diagnostics');
+    assert.equal(runtimeHistoryDiagnostics.integrity.mode, 'quick_check(1)');
+    assert.equal(typeof runtimeHistoryDiagnostics.tables.runtimeRuns.rowCount, 'number');
+    assert.equal(typeof runtimeHistoryDiagnostics.tables.runtimeSignalState.rowCount, 'number');
+    assert.equal(Array.isArray(runtimeHistoryDiagnostics.notes), true);
 
     const badControl = await fetch(`http://127.0.0.1:${BASE_PORT}/api/runtime/control`, {
       method: 'POST',
