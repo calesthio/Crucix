@@ -936,7 +936,7 @@
           {
             "id": "effort-34.4",
             "title": "Add endpoint-level regression coverage for settings-driven agent-analysis publish behavior so horizon filtering, tipping-point thresholds, and deterministic-fallback suppression are validated against live `/api/analysis` output rather than only settings contracts",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-34.5",
@@ -1022,8 +1022,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 135,
+    "sequence": 136,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-135"
+    "lastCompletedCycleId": "2026-04-27-cycle-136"
   }
 }

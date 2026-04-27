@@ -23,6 +23,8 @@ function loadHarness({ llmConfigured = true, now = '2026-04-24T18:00:00.000Z' } 
     lastSweepTime: null,
     sweepInProgress: false,
     buildSourceOpsSurface: () => null,
+    loadOperatorSettings: () => ({ preferences: { agentAnalysis: { detailLevel: 'standard', publishPolicy: 'strict', deterministicFallbackMode: 'always', horizonBehavior: 'balanced', tippingPointMinProbability: 'HIGH', maxPublishedTippingPoints: 5 } } }),
+    operatorSettingsDefaults: () => ({ preferences: { agentAnalysis: { detailLevel: 'standard', publishPolicy: 'strict', deterministicFallbackMode: 'always', horizonBehavior: 'balanced', tippingPointMinProbability: 'HIGH', maxPublishedTippingPoints: 5 } } }),
     ROOT: '/tmp',
   };
   vm.createContext(context);
@@ -207,7 +209,7 @@ test('published outlook deduplicates repeated horizons and preserves stable hori
         { horizonId: 'short', text: 'Short high confidence', confidence: 'high', evidenceRefs: [{ type: 'trend', id: 'c', label: 'c' }] },
         { horizonId: 'extended', text: 'Extended medium confidence', confidence: 'medium', evidenceRefs: [] },
       ],
-    });
+    }, { publishPolicy: 'exploratory', horizonBehavior: 'extended', tippingPointMinProbability: 'HIGH', maxPublishedTippingPoints: 5 });
     assert.deepEqual(Array.from(published.outlook, item => item.horizonId), ['short', 'medium', 'extended']);
     assert.equal(published.outlook[0].text, 'Short high confidence');
     assert.equal(published.outlook.length, 3);
