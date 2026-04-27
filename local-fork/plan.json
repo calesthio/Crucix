@@ -941,7 +941,7 @@
           {
             "id": "effort-34.5",
             "title": "Add end-to-end regression coverage for `POST /api/review-workflow/action` and `GET /api/review-workflow/audit`, including action-specific payload validation and audit-entry assertions",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-34.6",
@@ -1022,8 +1022,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 136,
+    "sequence": 137,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-136"
+    "lastCompletedCycleId": "2026-04-27-cycle-137"
   }
 }
