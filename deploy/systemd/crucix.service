@@ -1,0 +1,22 @@
+[Unit]
+Description=Crucix local intelligence dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=crucix
+Group=crucix
+WorkingDirectory=/opt/crucix
+Environment=NODE_ENV=production
+Environment=CRUCIX_AUTO_OPEN_BROWSER=0
+Environment=PORT=3117
+ExecStartPre=/usr/bin/env node --check server.mjs
+ExecStart=/usr/bin/env node server.mjs
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

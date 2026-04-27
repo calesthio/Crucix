@@ -105,6 +105,21 @@ docker compose up -d
 
 Dashboard at `http://localhost:3117`. Sweep data persists in `./runs/` via volume mount. Includes a health check endpoint.
 
+### Service deployment examples
+
+If you want Crucix to survive reboots or run headlessly under a process manager, checked example service definitions are included for both macOS `launchd` and Linux `systemd`:
+
+- `deploy/launchd/com.crucix.local.plist`
+- `deploy/systemd/crucix.service`
+- `docs/deployment-service-examples.md`
+
+Those examples assume the startup hardening already built into Crucix:
+
+- graceful `SIGTERM` and `SIGINT` shutdown
+- `503` health responses during shutdown
+- `CRUCIX_AUTO_OPEN_BROWSER=0` for headless service mode
+- automatic restart guidance with a short cool-down window
+
 ---
 
 ## What You Get
