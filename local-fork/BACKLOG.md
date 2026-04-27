@@ -15,6 +15,7 @@ Recent promotions:
 - Endpoint-level contract coverage for reasoning metadata on `/api/analysis` and `/api/brief/news` was promoted into `local-fork/plan.json` as Epic 26, effort 26.4 on 2026-04-25.
 - Direct per-cluster source provenance or cluster-to-runtime-source attribution was promoted into `local-fork/plan.json` as Epic 26, effort 26.5 on 2026-04-25 and completed in cycle 086.
 - Remaining settings safety, preset lifecycle, dashboard performance, and map-event surfacing backlog items were promoted into `local-fork/plan.json` as Epic 36, efforts 36.1 through 36.6 on 2026-04-25.
+- Local runtime restart verification after `restart-safe` was promoted into `local-fork/plan.json` as Epic 37, effort 37.1 on 2026-04-27.
 - Shared navigation and page-shell work was promoted into `local-fork/plan.json` as Epic 32, effort 32.5 on 2026-04-26.
 - Deferred ideas-enrichment phase telemetry was promoted into `local-fork/plan.json` as Epic 31, effort 31.5 on 2026-04-26.
 - Source-control audit history and undo metadata was promoted into `local-fork/plan.json` as Epic 33, effort 33.5 on 2026-04-26.
@@ -36,3 +37,5 @@ Recent promotions:
 - Runtime-bucket drift history and delta trends were promoted into `local-fork/plan.json` as Epic 32, effort 32.9 on 2026-04-26.
 
 New items can be added here when they do not yet belong in the active roadmap.
+
+- `backlog-2026-04-27-critical-event-classifier-hardening` — strengthen urgent critical-event classification beyond regex-only matching by incorporating richer source/topic metadata so queue promotion is less vulnerable to aliasing and false negatives.

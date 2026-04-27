@@ -134,8 +134,11 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(settings.persistence.capabilities.export, false);
     assert.equal(settings.alerts.operational.version, 'operational-alert-routing-v1');
     assert.equal(settings.alerts.criticalEvents.version, 'critical-event-policy-v1');
+    assert.equal(settings.alerts.criticalEvents.queue.version, 'critical-event-queue-v1');
     assert.equal(Array.isArray(settings.alerts.operational.defaultRoute), true);
     assert.equal(Array.isArray(settings.alerts.criticalEvents.taxonomy), true);
+    assert.equal(Array.isArray(settings.alerts.criticalEvents.queue.candidates), true);
+    assert.equal(typeof settings.alerts.criticalEvents.queue.monitoringCount, 'number');
     assert.equal(settings.alerts.criticalEvents.taxonomy.some(item => item.id === 'radiationAnomaly' && item.severity === 'critical'), true);
     assert.equal(typeof settings.alerts.operational.policies.noiseSuppressionPressure.active, 'boolean');
     assert.equal(typeof settings.alerts.operational.policies.noiseSuppressionPressure.active, 'boolean');

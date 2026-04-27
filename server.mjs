@@ -90,6 +90,11 @@ const CLUSTER_REVIEW_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 const CLUSTER_REVIEW_DECAY_HALF_LIFE_MS = 3 * 24 * 60 * 60 * 1000;
 const CLUSTER_PRESSURE_STATE_KEY = 'cluster-review:pressure';
 const CLUSTER_PRESSURE_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+const CRITICAL_EVENT_QUEUE_STATE_KEY = 'critical-events:queue';
+const CRITICAL_EVENT_QUEUE_RETENTION_MS = Math.max(1, Number(config.review?.criticalEventQueueRetentionHours || 24)) * 60 * 60 * 1000;
+const CRITICAL_EVENT_QUEUE_RETRY_INTERVAL_MS = Math.max(1, Number(config.review?.criticalEventQueueRetryMinutes || 5)) * 60 * 1000;
+const CRITICAL_EVENT_QUEUE_MAX_RETRIES = Math.max(1, Number(config.review?.criticalEventQueueMaxRetries || 6));
+const CRITICAL_EVENT_QUEUE_MAX_ITEMS = Math.max(10, Number(config.review?.criticalEventQueueMaxEntries || 80));
 const CLUSTER_REPAIR_ARTIFACTS_STATE_KEY = 'cluster-review:repair-artifacts';
 const CLUSTER_REPAIR_ARTIFACT_RETENTION_MS = Math.max(1, Number(config.review?.repairArtifactRetentionDays || 14)) * 24 * 60 * 60 * 1000;
 const CLUSTER_REPAIR_ARTIFACT_MAX_ENTRIES = Math.max(1, Number(config.review?.repairArtifactMaxEntries || 50));
@@ -4309,7 +4314,229 @@ function summarizeNoiseSuppressionPressure(snapshot = null, prefs = {}) {
   };
 }
 
-function buildCriticalEventPolicyContract() {
+function getCriticalEventQueueState() {
+  const stateKey = typeof CRITICAL_EVENT_QUEUE_STATE_KEY === 'string' ? CRITICAL_EVENT_QUEUE_STATE_KEY : 'critical-events:queue';
+  const state = typeof memory?.getSignalState === 'function' ? memory.getSignalState(stateKey) : null;
+  return state && typeof state === 'object'
+    ? state
+    : { version: 'critical-event-queue-state-v1', updatedAt: null, candidates: {} };
+}
+
+function slugCriticalEventValue(value = '') {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120) || 'unknown';
+}
+
+function classifyCriticalEventSignal(signal = {}) {
+  const text = [signal.signal, signal.reason, signal.label, signal.region].filter(Boolean).join(' ').toLowerCase();
+  if (!text) return null;
+  if (/(radiation|radioactive|nuclear|reactor|meltdown|cpm|npp|safecast|chernobyl|fukushima|zaporizhzhia|bushehr|dimona|yongbyon)/.test(text)) return 'radiationAnomaly';
+  if (/(aircraft|airliner|airliner|airplane|plane|flight|airport|helicopter|jet|aviation)/.test(text) && /(crash|collision|downed|shot down|missing|fire|explosion|destroyed|incident)/.test(text)) return 'aviationIncident';
+  if (/(white house|capitol|congress|parliament|embassy|consulate|ministry|government|president(?:ial)? palace|kremlin|state department)/.test(text) && /(shoot|shot|attack|assault|explosion|breach|storm|violence|gunfire|drone|strike)/.test(text)) return 'governmentSiteViolence';
+  if (/(strait of hormuz|suez|malacca|bab el-mandeb|gibraltar|bosphorus|panama canal|chokepoint|shipping lane|canal)/.test(text) && /(blockade|closed|closure|mine|mines|disruption|strike|attack|collision|grounded|halt)/.test(text)) return 'chokepointDisruption';
+  return null;
+}
+
+function inferCriticalEventTrustTier(signal = {}) {
+  const sourceHealth = String(signal.sourceHealth || '').toLowerCase();
+  const evidenceSource = String(signal.evidenceSource || '').toLowerCase();
+  const confidence = String(signal.confidence || '').toLowerCase();
+  if (sourceHealth === 'hard-data' || evidenceSource.includes('official') || evidenceSource.includes('curated') || evidenceSource.includes('satellite')) return 'high';
+  if (sourceHealth === 'clean' || evidenceSource.includes('sensor') || evidenceSource.includes('mixed') || confidence === 'high') return 'medium';
+  return 'low';
+}
+
+function detectCriticalEventOfficial(signal = {}) {
+  const evidenceSource = String(signal.evidenceSource || '').toLowerCase();
+  const text = [signal.signal, signal.reason].filter(Boolean).join(' ').toLowerCase();
+  return evidenceSource.includes('official') || /official|government confirmed|ministry confirmed|authority confirmed/.test(text);
+}
+
+function pruneCriticalEventQueueState(state = getCriticalEventQueueState(), referenceMs = Date.now()) {
+  const retentionMs = typeof CRITICAL_EVENT_QUEUE_RETENTION_MS === 'number' ? CRITICAL_EVENT_QUEUE_RETENTION_MS : 24 * 60 * 60 * 1000;
+  const nextCandidates = {};
+  for (const [candidateId, entry] of Object.entries(state?.candidates || {})) {
+    const lastSeenMs = new Date(entry?.lastSeenAt || entry?.firstSeenAt || 0).getTime();
+    if (!lastSeenMs) continue;
+    if ((referenceMs - lastSeenMs) > retentionMs) continue;
+    if (entry?.status === 'discarded' && (referenceMs - lastSeenMs) > (2 * 60 * 60 * 1000)) continue;
+    nextCandidates[candidateId] = entry;
+  }
+  return {
+    version: 'critical-event-queue-state-v1',
+    updatedAt: state?.updatedAt || null,
+    candidates: nextCandidates,
+  };
+}
+
+function processCriticalEventQueue(snapshot = {}) {
+  const operatorSettings = loadOperatorSettings();
+  const prefs = operatorSettings.preferences.alerts?.criticalEvents || operatorSettingsDefaults().preferences.alerts.criticalEvents;
+  const retryIntervalMs = typeof CRITICAL_EVENT_QUEUE_RETRY_INTERVAL_MS === 'number' ? CRITICAL_EVENT_QUEUE_RETRY_INTERVAL_MS : 5 * 60 * 1000;
+  const maxRetries = typeof CRITICAL_EVENT_QUEUE_MAX_RETRIES === 'number' ? CRITICAL_EVENT_QUEUE_MAX_RETRIES : 6;
+  const maxItems = typeof CRITICAL_EVENT_QUEUE_MAX_ITEMS === 'number' ? CRITICAL_EVENT_QUEUE_MAX_ITEMS : 80;
+  const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+  const state = pruneCriticalEventQueueState(getCriticalEventQueueState(), nowMs);
+  const nextCandidates = { ...(state.candidates || {}) };
+  const normalizeSignals = (kind, items = []) => {
+    if (typeof attachSignalIds === 'function') return attachSignalIds(kind, items || []);
+    return (items || []).map((item, index) => ({ ...item, id: item?.id || `${kind}-${index}` }));
+  };
+  const signals = [
+    ...normalizeSignals('corroborated', snapshot.corroboratedSignals || []).map(item => ({ ...item, queueKind: 'corroborated' })),
+    ...normalizeSignals('suspect', snapshot.suspectSignals || []).map(item => ({ ...item, queueKind: 'suspect' })),
+  ];
+
+  for (const signal of signals) {
+    const classId = classifyCriticalEventSignal(signal);
+    if (!classId) continue;
+    const classPolicy = prefs.classes?.[classId];
+    if (!prefs.enabled || !classPolicy?.enabled) continue;
+    const freshnessMinutes = Number(classPolicy.freshnessMinutes || 30);
+    const freshestMs = new Date(signal.freshestTs || signal.timestamp || nowIso).getTime();
+    if (freshestMs && (nowMs - freshestMs) > (freshnessMinutes * 60 * 1000)) continue;
+    const candidateId = `${classId}:${slugCriticalEventValue(signal.signal || signal.reason || signal.id || 'event')}`;
+    const trustTier = inferCriticalEventTrustTier(signal);
+    const official = detectCriticalEventOfficial(signal);
+    const existing = nextCandidates[candidateId] && typeof nextCandidates[candidateId] === 'object'
+      ? { ...nextCandidates[candidateId] }
+      : {
+          candidateId,
+          classId,
+          label: signal.signal || signal.reason || classId,
+          signalId: signal.id || null,
+          region: signal.region || null,
+          firstSeenAt: nowIso,
+          firstFreshestAt: freshestMs ? new Date(freshestMs).toISOString() : null,
+          lastSeenAt: null,
+          lastEvaluatedAt: null,
+          nextCheckAt: null,
+          retryCount: 0,
+          status: 'monitoring',
+          confidenceLabel: 'preliminary',
+          evidence: { highTrustCount: 0, mediumTrustCount: 0, lowTrustCount: 0, officialCount: 0, corroboratedHits: 0, suspectHits: 0, sources: [], reasons: [] },
+        };
+    const sources = new Set(Array.isArray(existing.evidence?.sources) ? existing.evidence.sources : []);
+    const reasons = new Set(Array.isArray(existing.evidence?.reasons) ? existing.evidence.reasons : []);
+    if (signal.evidenceSource) sources.add(String(signal.evidenceSource));
+    if (signal.reason) reasons.add(clampText(signal.reason, 220));
+    const evidence = {
+      highTrustCount: Number(existing.evidence?.highTrustCount || 0) + (trustTier === 'high' ? 1 : 0),
+      mediumTrustCount: Number(existing.evidence?.mediumTrustCount || 0) + (trustTier === 'medium' ? 1 : 0),
+      lowTrustCount: Number(existing.evidence?.lowTrustCount || 0) + (trustTier === 'low' ? 1 : 0),
+      officialCount: Number(existing.evidence?.officialCount || 0) + (official ? 1 : 0),
+      corroboratedHits: Number(existing.evidence?.corroboratedHits || 0) + (signal.queueKind === 'corroborated' ? 1 : 0),
+      suspectHits: Number(existing.evidence?.suspectHits || 0) + (signal.queueKind === 'suspect' ? 1 : 0),
+      sources: Array.from(sources).slice(0, 8),
+      reasons: Array.from(reasons).slice(0, 6),
+    };
+    const meetsHighTrust = evidence.highTrustCount >= Number(classPolicy.minHighTrustCorroboration || 1);
+    const meetsMediumTrust = evidence.mediumTrustCount >= Number(classPolicy.minMediumTrustCorroboration || 1);
+    const meetsOfficial = !classPolicy.officialConfirmationRequired || evidence.officialCount >= 1;
+    const promoted = meetsOfficial && (meetsHighTrust || meetsMediumTrust);
+    nextCandidates[candidateId] = {
+      ...existing,
+      classId,
+      label: signal.signal || existing.label,
+      signalId: signal.id || existing.signalId || null,
+      region: signal.region || existing.region || null,
+      lastSeenAt: nowIso,
+      freshestAt: freshestMs ? new Date(freshestMs).toISOString() : (existing.freshestAt || null),
+      lastEvaluatedAt: nowIso,
+      nextCheckAt: promoted ? null : new Date(nowMs + retryIntervalMs).toISOString(),
+      retryCount: promoted ? Number(existing.retryCount || 0) : Number(existing.retryCount || 0) + 1,
+      status: promoted ? 'promoted' : 'monitoring',
+      confidenceLabel: promoted ? (classPolicy.officialConfirmationRequired ? 'official-confirmation' : 'corroborated') : 'preliminary',
+      severity: classPolicy.severity || 'high',
+      evidence,
+      thresholds: {
+        minHighTrustCorroboration: Number(classPolicy.minHighTrustCorroboration || 1),
+        minMediumTrustCorroboration: Number(classPolicy.minMediumTrustCorroboration || 1),
+        officialConfirmationRequired: Boolean(classPolicy.officialConfirmationRequired),
+        freshnessMinutes,
+      },
+    };
+  }
+
+  for (const [candidateId, entry] of Object.entries(nextCandidates)) {
+    if (entry.status !== 'monitoring') continue;
+    const lastSeenMs = new Date(entry.lastSeenAt || entry.firstSeenAt || 0).getTime();
+    const freshnessMs = Number(entry.thresholds?.freshnessMinutes || 30) * 60 * 1000;
+    if ((nowMs - lastSeenMs) > freshnessMs || Number(entry.retryCount || 0) >= maxRetries) {
+      nextCandidates[candidateId] = {
+        ...entry,
+        status: 'discarded',
+        confidenceLabel: 'discarded',
+        discardedAt: nowIso,
+        lastEvaluatedAt: nowIso,
+        nextCheckAt: null,
+      };
+    }
+  }
+
+  const bounded = Object.values(nextCandidates)
+    .sort((a, b) => new Date(b.lastSeenAt || 0).getTime() - new Date(a.lastSeenAt || 0).getTime())
+    .slice(0, maxItems);
+  const finalState = {
+    version: 'critical-event-queue-state-v1',
+    updatedAt: nowIso,
+    candidates: Object.fromEntries(bounded.map(entry => [entry.candidateId, entry])),
+  };
+  if (typeof memory?.setSignalState === 'function') {
+    memory.setSignalState(typeof CRITICAL_EVENT_QUEUE_STATE_KEY === 'string' ? CRITICAL_EVENT_QUEUE_STATE_KEY : 'critical-events:queue', finalState);
+  }
+  return finalState;
+}
+
+function buildCriticalEventQueueContract(snapshot = null) {
+  if (snapshot) processCriticalEventQueue(snapshot);
+  const state = pruneCriticalEventQueueState(getCriticalEventQueueState(), Date.now());
+  const candidates = Object.values(state.candidates || {})
+    .sort((a, b) => {
+      const statusRank = { promoted: 0, monitoring: 1, discarded: 2 };
+      return (statusRank[a.status] || 9) - (statusRank[b.status] || 9)
+        || new Date(b.lastSeenAt || 0).getTime() - new Date(a.lastSeenAt || 0).getTime();
+    })
+    .map(entry => ({
+      candidateId: entry.candidateId,
+      classId: entry.classId,
+      label: entry.label,
+      region: entry.region || null,
+      status: entry.status,
+      confidenceLabel: entry.confidenceLabel,
+      severity: entry.severity || null,
+      firstSeenAt: entry.firstSeenAt || null,
+      lastSeenAt: entry.lastSeenAt || null,
+      nextCheckAt: entry.nextCheckAt || null,
+      retryCount: Number(entry.retryCount || 0),
+      signalId: entry.signalId || null,
+      evidence: entry.evidence || {},
+      thresholds: entry.thresholds || {},
+    }));
+  const stateKey = typeof CRITICAL_EVENT_QUEUE_STATE_KEY === 'string' ? CRITICAL_EVENT_QUEUE_STATE_KEY : 'critical-events:queue';
+  const retryIntervalMs = typeof CRITICAL_EVENT_QUEUE_RETRY_INTERVAL_MS === 'number' ? CRITICAL_EVENT_QUEUE_RETRY_INTERVAL_MS : 5 * 60 * 1000;
+  const maxRetries = typeof CRITICAL_EVENT_QUEUE_MAX_RETRIES === 'number' ? CRITICAL_EVENT_QUEUE_MAX_RETRIES : 6;
+  const retentionMs = typeof CRITICAL_EVENT_QUEUE_RETENTION_MS === 'number' ? CRITICAL_EVENT_QUEUE_RETENTION_MS : 24 * 60 * 60 * 1000;
+  return {
+    version: 'critical-event-queue-v1',
+    stateKey,
+    updatedAt: state.updatedAt || null,
+    retryIntervalMinutes: Math.round(retryIntervalMs / 60000),
+    maxRetries,
+    retentionHours: Math.round(retentionMs / (60 * 60 * 1000)),
+    activeCount: candidates.filter(item => item.status !== 'discarded').length,
+    monitoringCount: candidates.filter(item => item.status === 'monitoring').length,
+    promotedCount: candidates.filter(item => item.status === 'promoted').length,
+    discardedCount: candidates.filter(item => item.status === 'discarded').length,
+    candidates: candidates.slice(0, 12),
+    notes: [
+      'Monitoring candidates are retained across sweeps so low-trust and medium-trust signals can wait for corroboration instead of paging immediately.',
+      'Promotion requires the configured high-trust or medium-trust corroboration threshold, plus official confirmation when the class policy demands it.',
+    ],
+  };
+}
+
+function buildCriticalEventPolicyContract(snapshot = null) {
   const operatorSettings = loadOperatorSettings();
   const prefs = operatorSettings.preferences.alerts?.criticalEvents || operatorSettingsDefaults().preferences.alerts.criticalEvents;
   const classes = Object.entries(prefs.classes || {}).map(([id, policy]) => ({
@@ -4328,9 +4555,10 @@ function buildCriticalEventPolicyContract() {
     escalationRoute: Array.isArray(prefs.escalationRoute) ? prefs.escalationRoute : [],
     taxonomy: classes,
     classMap: Object.fromEntries(classes.map(item => [item.id, item])),
+    queue: buildCriticalEventQueueContract(snapshot),
     notes: [
       'Critical-event policy defines fast-alert classes and the corroboration threshold required before an operator notification is eligible.',
-      'This contract is taxonomy and policy only for now; candidate ingestion, promotion, and proactive routing land in later roadmap slices.',
+      'The urgent candidate queue now retains monitoring candidates across sweeps, but proactive operator routing lands in a later roadmap slice.',
     ],
   };
 }
@@ -4722,7 +4950,7 @@ function buildOperatorSettingsContract(snapshot = null) {
       telegramEnabled: Boolean(config.telegram?.botToken && config.telegram?.chatId),
       discordEnabled: Boolean(config.discord?.botToken || config.discord?.webhookUrl),
       operational: operationalAlerts,
-      criticalEvents: buildCriticalEventPolicyContract(),
+      criticalEvents: buildCriticalEventPolicyContract(activeSnapshot),
       persistedPreferences: operatorSettings.preferences.alerts,
     },
     config: {
@@ -5287,11 +5515,13 @@ app.get('/api/data', async (req, res) => {
   const llmState = buildOperatorLlmStateContract(snapshot);
   const sourceOps = buildOperatorSourceOps(snapshot);
   const reviewQueue = buildOperatorReviewQueue(review, { quality: snapshot.newsClusterQuality || null });
+  const criticalEventQueue = buildCriticalEventQueueContract(snapshot);
   res.json({
     ...snapshot,
     llmState,
     runtimeLlm: llmState.runtimeLlm,
     reviewQueue,
+    criticalEventQueue,
     reviewWorkflow: buildReviewWorkflowContract(snapshot, { queue: reviewQueue, review }),
     sourceInventory: sourceOps.inventory,
     sourceOps,
@@ -5883,6 +6113,7 @@ app.get('/api/health', (req, res) => {
     : readOpenSkyRuntimeState();
   const sourceOps = buildOperatorSourceOps(currentData || null);
   const operationalAlerts = summarizeOperationalAlertState(currentData || null);
+  const criticalEventQueue = buildCriticalEventQueueContract(currentData || null);
   const responseStatus = shuttingDown ? 503 : 200;
   res.status(responseStatus).json({
     status: shuttingDown ? 'shutting-down' : 'ok',
@@ -5950,6 +6181,7 @@ app.get('/api/health', (req, res) => {
       llmTelemetry: currentData.agentAnalysisMeta?.llmTelemetry || null,
     } : null,
     operationalAlerts,
+    criticalEventQueue,
   });
 });
 
@@ -6015,6 +6247,7 @@ async function enrichIdeasAndPublish(synthesized, delta) {
   }
 
   if (runtimeJobState.phase === 'llm-ideas-refinement') completeRuntimePhase('llm-ideas-refinement');
+  processCriticalEventQueue(synthesized);
   currentData = synthesized;
   broadcast({ type: 'ideas_update', data: currentData });
   await processOperationalAlerts(currentData);
@@ -6043,6 +6276,7 @@ async function enrichAgentAnalysisAndPublish(synthesized) {
     refinementAttemptId: attemptId,
     refinementStartedAt: startedAt,
   });
+  processCriticalEventQueue(synthesized);
   currentData = synthesized;
   broadcast({ type: 'analysis_update', data: currentData });
 
@@ -6099,6 +6333,7 @@ async function enrichAgentAnalysisAndPublish(synthesized) {
     failRuntimePhase(timedOut ? 'llm-analysis-timeout' : (err.message || 'llm-analysis-error'), 'llm-analysis-refinement');
   }
 
+  processCriticalEventQueue(synthesized);
   currentData = synthesized;
   broadcast({ type: 'analysis_update', data: currentData });
   await processOperationalAlerts(currentData);
@@ -6181,6 +6416,7 @@ async function runSweepCycle() {
       synthesized.ideasSource = 'pending';
     }
 
+    processCriticalEventQueue(synthesized);
     currentData = synthesized;
     broadcast({ type: 'update', data: currentData });
     await processOperationalAlerts(currentData);
@@ -6302,6 +6538,7 @@ async function start() {
           refinementState: llmProvider?.isConfigured ? 'queued' : 'unavailable',
           refinementCompletion: llmProvider?.isConfigured ? 'deterministic-published-awaiting-refinement' : 'unavailable',
         });
+        processCriticalEventQueue(data);
         currentData = data;
         console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');
         broadcast({ type: 'update', data: currentData });

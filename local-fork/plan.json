@@ -968,7 +968,7 @@
           {
             "id": "effort-35.2",
             "title": "Build an urgent candidate queue that ingests tripwire signals from low-trust and medium-trust feeds, holds them in monitoring state, and retries corroboration on a short cadence before promotion or discard",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-35.3",
@@ -1018,21 +1018,33 @@
             "status": "pending"
           }
         ]
+      },
+      {
+        "id": "epic-37",
+        "title": "Local runtime restart verification and deploy-proofing",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-37.1",
+            "title": "Make local `restart-safe` prove PID rotation or report failure explicitly so contract deploy checks do not falsely succeed against a still-serving stale runtime",
+            "status": "pending"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 140,
+    "sequence": 141,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-140"
+    "lastCompletedCycleId": "2026-04-27-cycle-141"
   },
   "backlog": [
     {
-      "id": "backlog-2026-04-27-runtime-restart-verification",
-      "title": "Make local runtime restart-safe prove PID rotation or failure explicitly",
+      "id": "backlog-2026-04-27-critical-event-classifier-hardening",
+      "title": "Harden critical-event candidate classification beyond regex heuristics",
       "status": "pending",
-      "source": "cycle-140",
-      "reason": "The local restart-safe control path acknowledged the request but left PID 61357 serving the old settings contract, so deploy verification had to fall back to an explicit stop/start."
+      "source": "cycle-141",
+      "reason": "The first urgent candidate queue classifies signals from existing text fields and evidence labels, which is sufficient for the slice but still vulnerable to aliasing and false negatives until source/topic metadata participates in class detection."
     }
   ]
 }

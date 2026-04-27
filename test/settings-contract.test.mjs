@@ -188,6 +188,8 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.alerts.discordEnabled, true);
   assert.equal(contract.alerts.operational.version, 'operational-alert-routing-v1');
   assert.equal(contract.alerts.criticalEvents.version, 'critical-event-policy-v1');
+  assert.equal(contract.alerts.criticalEvents.queue.version, 'critical-event-queue-v1');
+  assert.equal(Array.isArray(contract.alerts.criticalEvents.queue.candidates), true);
   assert.equal(contract.alerts.criticalEvents.taxonomy.some(item => item.id === 'governmentSiteViolence' && item.severity === 'critical'), true);
   assert.equal(contract.alerts.persistedPreferences.operational.inferenceDegraded.heuristicFallbackCount, 3);
   assert.equal(contract.alerts.persistedPreferences.operational.noiseSuppressionPressure.minConsecutiveGrowthSweeps, 2);

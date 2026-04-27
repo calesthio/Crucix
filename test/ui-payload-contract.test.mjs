@@ -105,6 +105,8 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(typeof health.selectionMemory.activeContexts, 'number');
     assert.equal(typeof health.reviewAcks.active, 'number');
     assert.equal(health.operationalAlerts.version, 'operational-alert-routing-v1');
+    assert.equal(health.criticalEventQueue.version, 'critical-event-queue-v1');
+    assert.equal(typeof health.criticalEventQueue.promotedCount, 'number');
     assertOperatorLlmState(health);
 
     const data = await waitFor(dataUrl, payload => payload?.llmState?.version && payload?.reviewWorkflow?.version, 60000);
@@ -115,6 +117,9 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(data.sourceInventory.total, data.sourceOps.inventory.total);
     assert.equal(typeof data.reviewQueue.state, 'string');
     assert.equal(data.reviewWorkflow.version, 'review-workflow-v1');
+    assert.equal(data.criticalEventQueue.version, 'critical-event-queue-v1');
+    assert.equal(Array.isArray(data.criticalEventQueue.candidates), true);
+    assert.equal(typeof data.criticalEventQueue.activeCount, 'number');
     assert.equal(typeof data.reviewQueue.summary, 'string');
     assert.equal(typeof data.reviewWorkflow.noiseSuppression.pressureAlert.active, 'boolean');
     assertOperatorLlmState(data);
@@ -141,6 +146,7 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(settings.sourceConsole.version, 'source-console-v1');
     assert.equal(settings.config.contract.version, 'runtime-config-v1');
     assert.equal(settings.persistence.capabilities.writeApi, false);
+    assert.equal(settings.alerts.criticalEvents.queue.version, 'critical-event-queue-v1');
     assert.equal(settings.access.role, 'operator');
     assert.equal(settings.access.adminSurface, '/admin/settings');
     assert.equal(settings.access.localAdminRequired, true);
