@@ -1051,7 +1051,7 @@
           {
             "id": "effort-39.1",
             "title": "Harden critical-event candidate classification beyond regex heuristics by incorporating richer source and topic metadata into queue class detection",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-39.2",
@@ -1080,9 +1080,9 @@
     ]
   },
   "cycleState": {
-    "sequence": 145,
+    "sequence": 146,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-145"
+    "lastCompletedCycleId": "2026-04-27-cycle-146"
   },
   "backlog": [
     {
@@ -1091,6 +1091,13 @@
       "status": "pending",
       "source": "cycle-145",
       "reason": "The restart helper now classifies and proves listener rotation honestly, but operators still need a retained audit or last-outcome surface without relying on shell output or ad hoc command logs."
+    },
+    {
+      "id": "backlog-2026-04-27-critical-event-classifier-observability",
+      "title": "Expose critical-event classifier match basis and ambiguity flags for operator review",
+      "status": "pending",
+      "source": "cycle-146",
+      "reason": "The classifier now consumes richer metadata, but operators and future tuning work would benefit from seeing why a signal matched a class, which cues fired, and when a near-tie was intentionally discarded as ambiguous."
     }
   ]
 }

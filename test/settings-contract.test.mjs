@@ -112,10 +112,10 @@ const context = {
 vm.createContext(context);
 vm.runInContext(`
   ${extractChunk('function buildRuntimeConfigContract() {', '// API: current data')}
-  module.exports = { buildRuntimeConfigContract, summarizeNoiseSuppressionPressure, buildCriticalEventPolicyContract, summarizeOperationalAlertState, buildOperatorSettingsContract, buildAdminSettingsContract, buildLlmOperationsContract };
+  module.exports = { buildRuntimeConfigContract, buildCriticalEventClassificationText, classifyCriticalEventSignal, summarizeNoiseSuppressionPressure, buildCriticalEventPolicyContract, summarizeOperationalAlertState, buildOperatorSettingsContract, buildAdminSettingsContract, buildLlmOperationsContract };
 `, context);
 
-const { buildRuntimeConfigContract, summarizeNoiseSuppressionPressure, buildCriticalEventPolicyContract, summarizeOperationalAlertState, buildOperatorSettingsContract, buildAdminSettingsContract, buildLlmOperationsContract } = context.module.exports;
+const { buildRuntimeConfigContract, buildCriticalEventClassificationText, classifyCriticalEventSignal, summarizeNoiseSuppressionPressure, buildCriticalEventPolicyContract, summarizeOperationalAlertState, buildOperatorSettingsContract, buildAdminSettingsContract, buildLlmOperationsContract } = context.module.exports;
 
 test('runtime config contract exposes defaults, effective values, validation, and drift summary', () => {
   context.process.env = {
@@ -252,6 +252,31 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.access.llmOperationsSurface, '/llm-ops');
   assert.equal(contract.access.localAdminRequired, true);
   assert.match(contract.notes[0], /centralizes current operator-visible settings/i);
+});
+
+test('critical-event classification uses richer metadata and avoids weak ambiguous matches', () => {
+  const classified = classifyCriticalEventSignal({
+    signal: 'Protective perimeter incident under review',
+    reason: 'Gunfire reported near event perimeter with executive protection response.',
+    metadata: { topic: 'government security incident', tags: ['secret service', 'white house'] },
+    sourceName: 'Local security desk',
+  });
+  assert.equal(classified, 'governmentSiteViolence');
+
+  const aviation = classifyCriticalEventSignal({
+    signal: 'Regional disruption update',
+    reason: 'Diversion after emergency landing during active airspace restriction.',
+    topics: ['aviation operations'],
+    sourceId: 'opensky-network',
+  });
+  assert.equal(aviation, 'aviationIncident');
+
+  const ambiguous = classifyCriticalEventSignal({
+    signal: 'Government statement on airport funding and canal expansion',
+    reason: 'No incident reported.',
+  });
+  assert.equal(ambiguous, null);
+  assert.match(buildCriticalEventClassificationText({ metadata: { tags: ['secret service'] } }), /secret service/);
 });
 
 test('noise suppression pressure summaries escalate retained-growth and prune streaks into operator cues', () => {

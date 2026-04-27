@@ -4326,14 +4326,76 @@ function slugCriticalEventValue(value = '') {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120) || 'unknown';
 }
 
+function buildCriticalEventClassificationText(signal = {}) {
+  return [
+    signal.signal,
+    signal.reason,
+    signal.label,
+    signal.region,
+    signal.evidenceSource,
+    signal.sourceName,
+    signal.sourceId,
+    signal.category,
+    signal.type,
+    signal.kind,
+    signal.topic,
+    Array.isArray(signal.topics) ? signal.topics.join(' ') : null,
+    Array.isArray(signal.tags) ? signal.tags.join(' ') : null,
+    Array.isArray(signal.keywords) ? signal.keywords.join(' ') : null,
+    Array.isArray(signal.entities) ? signal.entities.map(item => item?.name || item).join(' ') : null,
+    signal.metadata && typeof signal.metadata === 'object'
+      ? [
+          signal.metadata.topic,
+          signal.metadata.category,
+          signal.metadata.type,
+          signal.metadata.kind,
+          signal.metadata.sourceName,
+          signal.metadata.sourceId,
+          Array.isArray(signal.metadata.tags) ? signal.metadata.tags.join(' ') : null,
+          Array.isArray(signal.metadata.topics) ? signal.metadata.topics.join(' ') : null,
+        ].filter(Boolean).join(' ')
+      : null,
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
 function classifyCriticalEventSignal(signal = {}) {
-  const text = [signal.signal, signal.reason, signal.label, signal.region].filter(Boolean).join(' ').toLowerCase();
+  const text = buildCriticalEventClassificationText(signal);
   if (!text) return null;
-  if (/(radiation|radioactive|nuclear|reactor|meltdown|cpm|npp|safecast|chernobyl|fukushima|zaporizhzhia|bushehr|dimona|yongbyon)/.test(text)) return 'radiationAnomaly';
-  if (/(aircraft|airliner|airliner|airplane|plane|flight|airport|helicopter|jet|aviation)/.test(text) && /(crash|collision|downed|shot down|missing|fire|explosion|destroyed|incident)/.test(text)) return 'aviationIncident';
-  if (/(white house|capitol|congress|parliament|embassy|consulate|ministry|government|president(?:ial)? palace|kremlin|state department)/.test(text) && /(shoot|shot|attack|assault|explosion|breach|storm|violence|gunfire|drone|strike)/.test(text)) return 'governmentSiteViolence';
-  if (/(strait of hormuz|suez|malacca|bab el-mandeb|gibraltar|bosphorus|panama canal|chokepoint|shipping lane|canal)/.test(text) && /(blockade|closed|closure|mine|mines|disruption|strike|attack|collision|grounded|halt)/.test(text)) return 'chokepointDisruption';
-  return null;
+  const score = {
+    radiationAnomaly: 0,
+    aviationIncident: 0,
+    governmentSiteViolence: 0,
+    chokepointDisruption: 0,
+  };
+  const add = (key, points) => { score[key] = Number(score[key] || 0) + Number(points || 0); };
+
+  if (/(radiation|radioactive|nuclear|reactor|meltdown|cpm|npp|safecast|chernobyl|fukushima|zaporizhzhia|bushehr|dimona|yongbyon|iaea|gamma)/.test(text)) add('radiationAnomaly', 3);
+  if (/(sensor network|radiation dashboard|dosimeter|monitoring station)/.test(text)) add('radiationAnomaly', 2);
+
+  if (/(aircraft|airliner|airplane|plane|flight|airport|helicopter|jet|aviation|ads-b|opensky|transponder|runway|airspace)/.test(text)) add('aviationIncident', 2);
+  if (/(crash|collision|downed|shot down|missing|fire|explosion|destroyed|incident|emergency landing|diversion)/.test(text)) add('aviationIncident', 2);
+  if (/(air crash|aviation incident|air disaster|flight incident)/.test(text)) add('aviationIncident', 3);
+
+  if (/(white house|capitol|congress|parliament|embassy|consulate|ministry|government|president(?:ial)? palace|kremlin|state department|supreme court|governor(?:'s)? mansion|city hall)/.test(text)) add('governmentSiteViolence', 2);
+  if (/(shoot|shot|attack|assault|explosion|breach|storm|violence|gunfire|drone|strike|riot|intrusion)/.test(text)) add('governmentSiteViolence', 2);
+  if (/(secret service|executive protection|government compound|state building)/.test(text)) add('governmentSiteViolence', 1);
+
+  if (/(strait of hormuz|suez|malacca|bab el-mandeb|gibraltar|bosphorus|panama canal|chokepoint|shipping lane|canal|red sea|taiwan strait|black sea corridor)/.test(text)) add('chokepointDisruption', 2);
+  if (/(blockade|closed|closure|mine|mines|disruption|strike|attack|collision|grounded|halt|diverted shipping|tanker|maritime security)/.test(text)) add('chokepointDisruption', 2);
+  if (/(shipping disruption|maritime chokepoint|port closure)/.test(text)) add('chokepointDisruption', 3);
+
+  if (/(no incident reported|exercise only|drill only|routine policy update|funding announcement)/.test(text)) {
+    score.aviationIncident = Math.max(0, score.aviationIncident - 2);
+    score.governmentSiteViolence = Math.max(0, score.governmentSiteViolence - 2);
+    score.chokepointDisruption = Math.max(0, score.chokepointDisruption - 2);
+  }
+
+  const ranked = Object.entries(score).sort((a, b) => b[1] - a[1]);
+  const [winner, winnerScore] = ranked[0] || [];
+  const secondScore = ranked[1]?.[1] || 0;
+  if (!winner || winnerScore < 3) return null;
+  if (winnerScore === secondScore && winnerScore < 4) return null;
+  return winner;
 }
 
 function inferCriticalEventTrustTier(signal = {}) {

@@ -45,3 +45,4 @@ Recent promotions:
 New items can be added here when they do not yet belong in the active roadmap.
 
 - `backlog-2026-04-27-runtime-control-restart-audit` — expose retained restart-safe outcome history and PID-rotation proof in operator-visible runtime diagnostics so restart evidence is reviewable without shell access.
+- `backlog-2026-04-27-critical-event-classifier-observability` — expose critical-event classifier match basis and ambiguity flags so operators can inspect why a signal matched a class or was intentionally discarded as ambiguous during queue evaluation.
