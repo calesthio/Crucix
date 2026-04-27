@@ -946,7 +946,7 @@
           {
             "id": "effort-34.6",
             "title": "Add endpoint-level regression coverage for cluster-repair workflow actions and suppressed-cluster state on `/api/brief/news/review` and `/api/data`, so bounded repair recommendations and persisted decisions do not drift from the live contracts",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-34.7",
@@ -1022,8 +1022,8 @@
     ]
   },
   "cycleState": {
-    "sequence": 137,
+    "sequence": 138,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-137"
+    "lastCompletedCycleId": "2026-04-27-cycle-138"
   }
 }
