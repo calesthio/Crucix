@@ -63,3 +63,36 @@ test('ollama probe succeeds from tags endpoint without synthetic completion', as
     globalThis.fetch = originalFetch;
   }
 });
+
+test('ollama probe falls back to OpenAI-compatible model catalog when /api/tags is missing', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith('/api/tags')) {
+      return {
+        ok: false,
+        status: 404,
+        async text() { return 'Not Found'; },
+      };
+    }
+    if (String(url).endsWith('/v1/models')) {
+      return {
+        ok: true,
+        async json() {
+          return { data: [{ id: 'llamacpp.gguf' }] };
+        },
+      };
+    }
+    throw new Error(`unexpected url: ${url}`);
+  };
+
+  try {
+    const provider = new OllamaProvider({ baseUrl: 'http://127.0.0.1:11434', model: 'llamacpp.gguf' });
+    const result = await provider.probe({ timeout: 10 });
+    assert.equal(result.ok, true);
+    assert.equal(result.probeType, 'openai-models');
+    assert.equal(result.classification, 'ready');
+    assert.match(result.text, /OpenAI-compatible model catalog/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
