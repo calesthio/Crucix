@@ -1022,12 +1022,12 @@
       {
         "id": "epic-37",
         "title": "Local runtime restart verification and deploy-proofing",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-37.1",
             "title": "Make local `restart-safe` prove PID rotation or report failure explicitly so contract deploy checks do not falsely succeed against a still-serving stale runtime",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -1042,42 +1042,55 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-39",
+        "title": "Critical event delivery integrity and queue accountability",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-39.1",
+            "title": "Harden critical-event candidate classification beyond regex heuristics by incorporating richer source and topic metadata into queue class detection",
+            "status": "pending"
+          },
+          {
+            "id": "effort-39.2",
+            "title": "Persist retained audit history for critical-event queue transitions so operators can inspect when candidates moved between monitoring, corroborated, official-confirmation, and discarded states",
+            "status": "pending"
+          },
+          {
+            "id": "effort-39.3",
+            "title": "Add delivery outcome audit and resend state for critical-event notifications before any automatic outbound send loop is enabled",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-40",
+        "title": "SDR receiver session automation and retained RF evidence",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-40.1",
+            "title": "Add bounded SDR session automation, capture artifacts, and retained RF-side evidence summaries so corroboration can advance from receiver selection into operator-reviewable observation support",
+            "status": "pending"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 144,
+    "sequence": 145,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-144"
+    "lastCompletedCycleId": "2026-04-27-cycle-145"
   },
   "backlog": [
     {
-      "id": "backlog-2026-04-27-critical-event-classifier-hardening",
-      "title": "Harden critical-event candidate classification beyond regex heuristics",
+      "id": "backlog-2026-04-27-runtime-control-restart-audit",
+      "title": "Expose retained restart-safe outcome history and PID-rotation proof in operator-visible runtime diagnostics",
       "status": "pending",
-      "source": "cycle-141",
-      "reason": "The first urgent candidate queue classifies signals from existing text fields and evidence labels, which is sufficient for the slice but still vulnerable to aliasing and false negatives until source/topic metadata participates in class detection."
-    },
-    {
-      "id": "backlog-2026-04-27-critical-event-transition-audit",
-      "title": "Add audit/history for critical-event queue state transitions",
-      "status": "pending",
-      "source": "cycle-142",
-      "reason": "The queue now exposes promotion state and evidence summaries, but there is no retained transition history yet for when a candidate moved from preliminary to corroborated, official-confirmation, or discarded."
-    },
-    {
-      "id": "backlog-2026-04-27-critical-event-delivery-audit",
-      "title": "Add delivery audit and resend state for critical-event notifications",
-      "status": "pending",
-      "source": "cycle-143",
-      "reason": "The routing contract now exposes who would be notified and through which routes, but retained delivery outcomes and resend state should be tracked before an automatic outbound send loop is enabled."
-    },
-    {
-      "id": "backlog-2026-04-27-sdr-session-automation",
-      "title": "Add bounded SDR session automation and capture evidence for high-priority corroboration checks",
-      "status": "pending",
-      "source": "cycle-144",
-      "reason": "The first SDR corroboration slice selects regions, watch profiles, and candidate receivers, but Crucix still needs bounded receiver-session automation, capture artifacts, and retained evidence summaries before it can claim direct RF-side observation support."
+      "source": "cycle-145",
+      "reason": "The restart helper now classifies and proves listener rotation honestly, but operators still need a retained audit or last-outcome surface without relying on shell output or ad hoc command logs."
     }
   ]
 }

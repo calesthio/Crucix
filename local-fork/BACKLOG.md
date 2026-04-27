@@ -38,7 +38,10 @@ Recent promotions:
 
 New items can be added here when they do not yet belong in the active roadmap.
 
-- `backlog-2026-04-27-critical-event-classifier-hardening` — strengthen urgent critical-event classification beyond regex-only matching by incorporating richer source/topic metadata so queue promotion is less vulnerable to aliasing and false negatives.
-- `backlog-2026-04-27-critical-event-transition-audit` — add retained audit/history for critical-event queue transitions so operators can see when a candidate moved between preliminary, corroborated, official-confirmation, and discarded states.
-- `backlog-2026-04-27-critical-event-delivery-audit` — add delivery outcome audit and resend state for critical-event notifications before any automatic outbound send loop is enabled.
-- `backlog-2026-04-27-sdr-session-automation` — add bounded SDR session automation, capture artifacts, and retained RF-side evidence summaries so the first corroboration contract can advance from receiver selection into operator-reviewable observation support.
+Recent promotions:
+- Critical-event classifier hardening, transition audit, and delivery audit work were promoted into `local-fork/plan.json` as Epic 39, efforts 39.1 through 39.3 on 2026-04-27.
+- SDR session automation and retained RF evidence work were promoted into `local-fork/plan.json` as Epic 40, effort 40.1 on 2026-04-27.
+
+New items can be added here when they do not yet belong in the active roadmap.
+
+- `backlog-2026-04-27-runtime-control-restart-audit` — expose retained restart-safe outcome history and PID-rotation proof in operator-visible runtime diagnostics so restart evidence is reviewable without shell access.

@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { classifyListenerOwnership, listPortListeners, waitForHealth } from '../lib/runtime-restart.mjs';
+import { classifyListenerOwnership, evaluateRestartTransition, listPortListeners, waitForHealth } from '../lib/runtime-restart.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const port = Number(process.env.PORT || 3117);
@@ -19,12 +19,12 @@ async function killOwnedListeners() {
   try {
     listeners = await listPortListeners(port);
   } catch (error) {
-    if (String(error.message || '').includes('status 1')) return [];
+    if (String(error.message || '').includes('status 1')) return { previousListeners: [], transition: { status: 'cleared', previousPids: [], livePids: [] } };
     throw error;
   }
   if (!listeners.length) {
     log(`No existing listener on port ${port}.`);
-    return [];
+    return { previousListeners: [], transition: { status: 'cleared', previousPids: [], livePids: [] } };
   }
   const owned = listeners.filter(item => classifyListenerOwnership(item, { repoRoot }).owned);
   const foreign = listeners.filter(item => !classifyListenerOwnership(item, { repoRoot }).owned);
@@ -39,9 +39,19 @@ async function killOwnedListeners() {
   while (Date.now() < deadline) {
     await sleep(500);
     const remaining = await listPortListeners(port).catch(() => []);
-    if (!remaining.length) return owned;
+    const transition = evaluateRestartTransition(owned, remaining, { repoRoot });
+    if (transition.status === 'cleared') return { previousListeners: owned, transition };
+    if (transition.status === 'replacement-detected') {
+      log(`Detected replacement listener PID ${transition.livePids.join(', ')} while original PID(s) were shutting down.`);
+      return { previousListeners: owned, transition };
+    }
+    if (transition.status === 'foreign-listener') {
+      fail(`Port ${port} became owned by a non-Crucix listener during restart: ${transition.foreign.map(item => `${item.command}:${item.pid}`).join(', ')}`);
+    }
   }
-  fail(`Port ${port} still has a listener after waiting for shutdown.`);
+  const remaining = await listPortListeners(port).catch(() => []);
+  const transition = evaluateRestartTransition(owned, remaining, { repoRoot });
+  fail(`Port ${port} still has original listener PID(s) after waiting for shutdown: ${(transition.retainedPids || []).join(', ') || 'unknown'}.`);
 }
 
 async function startCrucix() {
@@ -58,14 +68,25 @@ async function startCrucix() {
 
 async function main() {
   log(`Inspecting port ${port} ownership before restart.`);
-  await killOwnedListeners();
-  const pid = await startCrucix();
+  const restartState = await killOwnedListeners();
+  let pid = null;
+  let replacementMode = restartState.transition.status;
+  if (restartState.transition.status === 'replacement-detected') {
+    log('A new Crucix listener took ownership during shutdown, so no extra spawn was needed.');
+  } else {
+    pid = await startCrucix();
+    replacementMode = 'helper-started';
+  }
   const health = await waitForHealth({ url: healthUrl, timeoutMs: 45000, intervalMs: 1000 });
   const listeners = await listPortListeners(port).catch(() => []);
-  const match = listeners.find(item => item.pid === pid) || listeners[0] || null;
+  const previousPids = new Set((restartState.previousListeners || []).map(item => Number(item.pid)).filter(Boolean));
+  const match = pid ? (listeners.find(item => item.pid === pid) || listeners[0] || null) : (listeners[0] || null);
+  const livePid = Number(match?.pid) || null;
+  const rotationProved = livePid ? !previousPids.has(livePid) : previousPids.size === 0;
+  if (!rotationProved) fail(`Health check passed but PID rotation was not proved. Previous PID(s): ${[...previousPids].join(', ') || 'none'}, live PID: ${livePid || 'unknown'}.`);
   log(`Health check passed for ${healthUrl}.`);
-  log(`Live listener PID ${match?.pid || pid} on port ${port}.`);
-  console.log(JSON.stringify({ ok: true, port, startedPid: pid, livePid: match?.pid || null, healthStatus: health?.status || null, lastSweep: health?.lastSweep || null }, null, 2));
+  log(`Live listener PID ${livePid || pid} on port ${port}.`);
+  console.log(JSON.stringify({ ok: true, port, startedPid: pid, livePid, replacementMode, rotationProved, healthStatus: health?.status || null, lastSweep: health?.lastSweep || null }, null, 2));
 }
 
 main().catch(error => fail(error?.stack || error?.message || String(error)));
