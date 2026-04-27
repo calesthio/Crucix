@@ -33,7 +33,7 @@ const context = {
   sweepInProgress: false,
   sweepStartedAt: null,
   process: { env: {} },
-  operatorSettingsDefaults: () => ({ version: 'operator-settings-store-v1', updatedAt: null, preferences: { alerts: { operational: { enabled: true, defaultRoute: ['telegram'], escalationRoute: ['telegram', 'discord'], staleSweep: { enabled: true, cooldownMinutes: 30, escalationAfter: 2 }, sourceFailures: { enabled: true, minFailedSources: 3, minDegradedSources: 2, cooldownMinutes: 60, escalationAfter: 3 }, reviewPressure: { enabled: true, minChronicRegions: 2, minPressuredRegions: 2, minLowConfidenceCount: 4, cooldownMinutes: 60, escalationAfter: 2 }, inferenceDegraded: { enabled: true, heuristicFallbackCount: 3, cooldownMinutes: 45, escalationAfter: 2 }, noiseSuppressionPressure: { enabled: true, minRetainedEntries: 25, minRetainedDelta: 3, minConsecutiveGrowthSweeps: 2, minConsecutivePruneSweeps: 2, cooldownMinutes: 90, escalationAfter: 2 } } } } }),
+  operatorSettingsDefaults: () => ({ version: 'operator-settings-store-v1', updatedAt: null, preferences: { alerts: { operational: { enabled: true, defaultRoute: ['telegram'], escalationRoute: ['telegram', 'discord'], staleSweep: { enabled: true, cooldownMinutes: 30, escalationAfter: 2 }, sourceFailures: { enabled: true, minFailedSources: 3, minDegradedSources: 2, cooldownMinutes: 60, escalationAfter: 3 }, reviewPressure: { enabled: true, minChronicRegions: 2, minPressuredRegions: 2, minLowConfidenceCount: 4, cooldownMinutes: 60, escalationAfter: 2 }, inferenceDegraded: { enabled: true, heuristicFallbackCount: 3, cooldownMinutes: 45, escalationAfter: 2 }, noiseSuppressionPressure: { enabled: true, minRetainedEntries: 25, minRetainedDelta: 3, minConsecutiveGrowthSweeps: 2, minConsecutivePruneSweeps: 2, cooldownMinutes: 90, escalationAfter: 2 } }, criticalEvents: { enabled: true, defaultRoute: ['telegram'], escalationRoute: ['telegram', 'discord'], classes: { governmentSiteViolence: { enabled: true, severity: 'critical', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: false, freshnessMinutes: 20 }, aviationIncident: { enabled: true, severity: 'high', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: false, freshnessMinutes: 30 }, radiationAnomaly: { enabled: true, severity: 'critical', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 1, officialConfirmationRequired: false, freshnessMinutes: 30 }, chokepointDisruption: { enabled: true, severity: 'high', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: false, freshnessMinutes: 45 } } } } } }),
   memory: {
     getSignalState: () => ({ policies: {} }),
     getLlmFailureHistory: () => ({ snapshots: [{ summary: { heuristicFallbackCount: 2, weakClusterCount: 3 } }] }),
@@ -57,7 +57,7 @@ const context = {
         deterministicFallbackMode: 'llm-unavailable-only',
         horizonBehavior: 'extended',
       },
-      alerts: { operational: { enabled: true, defaultRoute: ['telegram'], escalationRoute: ['telegram', 'discord'], staleSweep: { enabled: true, cooldownMinutes: 30, escalationAfter: 2 }, sourceFailures: { enabled: true, minFailedSources: 3, minDegradedSources: 2, cooldownMinutes: 60, escalationAfter: 3 }, reviewPressure: { enabled: true, minChronicRegions: 2, minPressuredRegions: 2, minLowConfidenceCount: 4, cooldownMinutes: 60, escalationAfter: 2 }, inferenceDegraded: { enabled: true, heuristicFallbackCount: 3, cooldownMinutes: 45, escalationAfter: 2 }, noiseSuppressionPressure: { enabled: true, minRetainedEntries: 25, minRetainedDelta: 3, minConsecutiveGrowthSweeps: 2, minConsecutivePruneSweeps: 2, cooldownMinutes: 90, escalationAfter: 2 } } },
+      alerts: { operational: { enabled: true, defaultRoute: ['telegram'], escalationRoute: ['telegram', 'discord'], staleSweep: { enabled: true, cooldownMinutes: 30, escalationAfter: 2 }, sourceFailures: { enabled: true, minFailedSources: 3, minDegradedSources: 2, cooldownMinutes: 60, escalationAfter: 3 }, reviewPressure: { enabled: true, minChronicRegions: 2, minPressuredRegions: 2, minLowConfidenceCount: 4, cooldownMinutes: 60, escalationAfter: 2 }, inferenceDegraded: { enabled: true, heuristicFallbackCount: 3, cooldownMinutes: 45, escalationAfter: 2 }, noiseSuppressionPressure: { enabled: true, minRetainedEntries: 25, minRetainedDelta: 3, minConsecutiveGrowthSweeps: 2, minConsecutivePruneSweeps: 2, cooldownMinutes: 90, escalationAfter: 2 } }, criticalEvents: { enabled: true, defaultRoute: ['telegram'], escalationRoute: ['telegram', 'discord'], classes: { governmentSiteViolence: { enabled: true, severity: 'critical', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: false, freshnessMinutes: 20 }, aviationIncident: { enabled: true, severity: 'high', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: false, freshnessMinutes: 30 }, radiationAnomaly: { enabled: true, severity: 'critical', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 1, officialConfirmationRequired: false, freshnessMinutes: 30 }, chokepointDisruption: { enabled: true, severity: 'high', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: false, freshnessMinutes: 45 } } } },
     },
   }),
   buildNewsClusterSummary: snapshot => ({ sourceReasoning: snapshot?.newsSourceReasoning || null }),
@@ -110,10 +110,10 @@ const context = {
 vm.createContext(context);
 vm.runInContext(`
   ${extractChunk('function buildRuntimeConfigContract() {', '// API: current data')}
-  module.exports = { buildRuntimeConfigContract, summarizeNoiseSuppressionPressure, summarizeOperationalAlertState, buildOperatorSettingsContract, buildAdminSettingsContract, buildLlmOperationsContract };
+  module.exports = { buildRuntimeConfigContract, summarizeNoiseSuppressionPressure, buildCriticalEventPolicyContract, summarizeOperationalAlertState, buildOperatorSettingsContract, buildAdminSettingsContract, buildLlmOperationsContract };
 `, context);
 
-const { buildRuntimeConfigContract, summarizeNoiseSuppressionPressure, summarizeOperationalAlertState, buildOperatorSettingsContract, buildAdminSettingsContract, buildLlmOperationsContract } = context.module.exports;
+const { buildRuntimeConfigContract, summarizeNoiseSuppressionPressure, buildCriticalEventPolicyContract, summarizeOperationalAlertState, buildOperatorSettingsContract, buildAdminSettingsContract, buildLlmOperationsContract } = context.module.exports;
 
 test('runtime config contract exposes defaults, effective values, validation, and drift summary', () => {
   context.process.env = {
@@ -187,8 +187,11 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.alerts.telegramEnabled, true);
   assert.equal(contract.alerts.discordEnabled, true);
   assert.equal(contract.alerts.operational.version, 'operational-alert-routing-v1');
+  assert.equal(contract.alerts.criticalEvents.version, 'critical-event-policy-v1');
+  assert.equal(contract.alerts.criticalEvents.taxonomy.some(item => item.id === 'governmentSiteViolence' && item.severity === 'critical'), true);
   assert.equal(contract.alerts.persistedPreferences.operational.inferenceDegraded.heuristicFallbackCount, 3);
   assert.equal(contract.alerts.persistedPreferences.operational.noiseSuppressionPressure.minConsecutiveGrowthSweeps, 2);
+  assert.equal(contract.alerts.persistedPreferences.criticalEvents.classes.radiationAnomaly.minMediumTrustCorroboration, 1);
   assert.equal(contract.alerts.operational.policies.noiseSuppressionPressure.active, false);
   assert.equal(contract.config.contract.version, 'runtime-config-v1');
   assert.equal(typeof contract.config.driftSummary.driftedEntries, 'number');

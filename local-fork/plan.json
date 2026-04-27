@@ -963,7 +963,7 @@
           {
             "id": "effort-35.1",
             "title": "Define a critical-event taxonomy and policy contract for fast alert classes such as government-site violence, aviation incidents, radiation anomalies, and major chokepoint disruptions, including per-class severity and corroboration thresholds",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-35.2",
@@ -1022,8 +1022,17 @@
     ]
   },
   "cycleState": {
-    "sequence": 139,
+    "sequence": 140,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-139"
-  }
+    "lastCompletedCycleId": "2026-04-27-cycle-140"
+  },
+  "backlog": [
+    {
+      "id": "backlog-2026-04-27-runtime-restart-verification",
+      "title": "Make local runtime restart-safe prove PID rotation or failure explicitly",
+      "status": "pending",
+      "source": "cycle-140",
+      "reason": "The local restart-safe control path acknowledged the request but left PID 61357 serving the old settings contract, so deploy verification had to fall back to an explicit stop/start."
+    }
+  ]
 }

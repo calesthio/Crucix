@@ -371,6 +371,17 @@ function operatorSettingsDefaults() {
           inferenceDegraded: { enabled: true, heuristicFallbackCount: 3, cooldownMinutes: 45, escalationAfter: 2 },
           noiseSuppressionPressure: { enabled: true, minRetainedEntries: 25, minRetainedDelta: 3, minConsecutiveGrowthSweeps: 2, minConsecutivePruneSweeps: 2, cooldownMinutes: 90, escalationAfter: 2 },
         },
+        criticalEvents: {
+          enabled: true,
+          defaultRoute: ['telegram'],
+          escalationRoute: ['telegram', 'discord'],
+          classes: {
+            governmentSiteViolence: { enabled: true, severity: 'critical', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: false, freshnessMinutes: 20 },
+            aviationIncident: { enabled: true, severity: 'high', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: false, freshnessMinutes: 30 },
+            radiationAnomaly: { enabled: true, severity: 'critical', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 1, officialConfirmationRequired: false, freshnessMinutes: 30 },
+            chokepointDisruption: { enabled: true, severity: 'high', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: false, freshnessMinutes: 45 },
+          },
+        },
       },
     },
   };
@@ -384,6 +395,7 @@ function normalizeOperatorSettings(input = {}) {
   const agentAnalysis = input?.preferences?.agentAnalysis || {};
   const alertPrefs = input?.preferences?.alerts || {};
   const operationalAlerts = alertPrefs.operational && typeof alertPrefs.operational === 'object' ? alertPrefs.operational : {};
+  const criticalEvents = alertPrefs.criticalEvents && typeof alertPrefs.criticalEvents === 'object' ? alertPrefs.criticalEvents : {};
   const allowedRegions = ['world', 'americas', 'europe', 'middleEast', 'asiaPacific', 'africa'];
   const allowedLayers = ['air', 'thermal', 'sdr', 'maritime', 'nuke', 'conflict', 'health', 'news', 'osint', 'space'];
   const allowedMapModes = ['auto', 'flat', 'globe'];
@@ -499,6 +511,45 @@ function normalizeOperatorSettings(input = {}) {
             minConsecutivePruneSweeps: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.noiseSuppressionPressure?.minConsecutivePruneSweeps)) ? Number(operationalAlerts.noiseSuppressionPressure.minConsecutivePruneSweeps) : defaults.preferences.alerts.operational.noiseSuppressionPressure.minConsecutivePruneSweeps)),
             cooldownMinutes: Math.max(5, Math.min(360, Number.isFinite(Number(operationalAlerts.noiseSuppressionPressure?.cooldownMinutes)) ? Number(operationalAlerts.noiseSuppressionPressure.cooldownMinutes) : defaults.preferences.alerts.operational.noiseSuppressionPressure.cooldownMinutes)),
             escalationAfter: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.noiseSuppressionPressure?.escalationAfter)) ? Number(operationalAlerts.noiseSuppressionPressure.escalationAfter) : defaults.preferences.alerts.operational.noiseSuppressionPressure.escalationAfter)),
+          },
+        },
+        criticalEvents: {
+          enabled: criticalEvents.enabled !== undefined ? Boolean(criticalEvents.enabled) : defaults.preferences.alerts.criticalEvents.enabled,
+          defaultRoute: normalizeAlertRoute(criticalEvents.defaultRoute).length ? normalizeAlertRoute(criticalEvents.defaultRoute) : defaults.preferences.alerts.criticalEvents.defaultRoute,
+          escalationRoute: normalizeAlertRoute(criticalEvents.escalationRoute).length ? normalizeAlertRoute(criticalEvents.escalationRoute) : defaults.preferences.alerts.criticalEvents.escalationRoute,
+          classes: {
+            governmentSiteViolence: {
+              enabled: criticalEvents.classes?.governmentSiteViolence?.enabled !== undefined ? Boolean(criticalEvents.classes.governmentSiteViolence.enabled) : defaults.preferences.alerts.criticalEvents.classes.governmentSiteViolence.enabled,
+              severity: ['high', 'critical'].includes(criticalEvents.classes?.governmentSiteViolence?.severity) ? criticalEvents.classes.governmentSiteViolence.severity : defaults.preferences.alerts.criticalEvents.classes.governmentSiteViolence.severity,
+              minHighTrustCorroboration: Math.max(1, Math.min(5, Number.isFinite(Number(criticalEvents.classes?.governmentSiteViolence?.minHighTrustCorroboration)) ? Number(criticalEvents.classes.governmentSiteViolence.minHighTrustCorroboration) : defaults.preferences.alerts.criticalEvents.classes.governmentSiteViolence.minHighTrustCorroboration)),
+              minMediumTrustCorroboration: Math.max(1, Math.min(5, Number.isFinite(Number(criticalEvents.classes?.governmentSiteViolence?.minMediumTrustCorroboration)) ? Number(criticalEvents.classes.governmentSiteViolence.minMediumTrustCorroboration) : defaults.preferences.alerts.criticalEvents.classes.governmentSiteViolence.minMediumTrustCorroboration)),
+              officialConfirmationRequired: criticalEvents.classes?.governmentSiteViolence?.officialConfirmationRequired !== undefined ? Boolean(criticalEvents.classes.governmentSiteViolence.officialConfirmationRequired) : defaults.preferences.alerts.criticalEvents.classes.governmentSiteViolence.officialConfirmationRequired,
+              freshnessMinutes: Math.max(5, Math.min(180, Number.isFinite(Number(criticalEvents.classes?.governmentSiteViolence?.freshnessMinutes)) ? Number(criticalEvents.classes.governmentSiteViolence.freshnessMinutes) : defaults.preferences.alerts.criticalEvents.classes.governmentSiteViolence.freshnessMinutes)),
+            },
+            aviationIncident: {
+              enabled: criticalEvents.classes?.aviationIncident?.enabled !== undefined ? Boolean(criticalEvents.classes.aviationIncident.enabled) : defaults.preferences.alerts.criticalEvents.classes.aviationIncident.enabled,
+              severity: ['medium', 'high', 'critical'].includes(criticalEvents.classes?.aviationIncident?.severity) ? criticalEvents.classes.aviationIncident.severity : defaults.preferences.alerts.criticalEvents.classes.aviationIncident.severity,
+              minHighTrustCorroboration: Math.max(1, Math.min(5, Number.isFinite(Number(criticalEvents.classes?.aviationIncident?.minHighTrustCorroboration)) ? Number(criticalEvents.classes.aviationIncident.minHighTrustCorroboration) : defaults.preferences.alerts.criticalEvents.classes.aviationIncident.minHighTrustCorroboration)),
+              minMediumTrustCorroboration: Math.max(1, Math.min(5, Number.isFinite(Number(criticalEvents.classes?.aviationIncident?.minMediumTrustCorroboration)) ? Number(criticalEvents.classes.aviationIncident.minMediumTrustCorroboration) : defaults.preferences.alerts.criticalEvents.classes.aviationIncident.minMediumTrustCorroboration)),
+              officialConfirmationRequired: criticalEvents.classes?.aviationIncident?.officialConfirmationRequired !== undefined ? Boolean(criticalEvents.classes.aviationIncident.officialConfirmationRequired) : defaults.preferences.alerts.criticalEvents.classes.aviationIncident.officialConfirmationRequired,
+              freshnessMinutes: Math.max(5, Math.min(180, Number.isFinite(Number(criticalEvents.classes?.aviationIncident?.freshnessMinutes)) ? Number(criticalEvents.classes.aviationIncident.freshnessMinutes) : defaults.preferences.alerts.criticalEvents.classes.aviationIncident.freshnessMinutes)),
+            },
+            radiationAnomaly: {
+              enabled: criticalEvents.classes?.radiationAnomaly?.enabled !== undefined ? Boolean(criticalEvents.classes.radiationAnomaly.enabled) : defaults.preferences.alerts.criticalEvents.classes.radiationAnomaly.enabled,
+              severity: ['high', 'critical'].includes(criticalEvents.classes?.radiationAnomaly?.severity) ? criticalEvents.classes.radiationAnomaly.severity : defaults.preferences.alerts.criticalEvents.classes.radiationAnomaly.severity,
+              minHighTrustCorroboration: Math.max(1, Math.min(5, Number.isFinite(Number(criticalEvents.classes?.radiationAnomaly?.minHighTrustCorroboration)) ? Number(criticalEvents.classes.radiationAnomaly.minHighTrustCorroboration) : defaults.preferences.alerts.criticalEvents.classes.radiationAnomaly.minHighTrustCorroboration)),
+              minMediumTrustCorroboration: Math.max(1, Math.min(5, Number.isFinite(Number(criticalEvents.classes?.radiationAnomaly?.minMediumTrustCorroboration)) ? Number(criticalEvents.classes.radiationAnomaly.minMediumTrustCorroboration) : defaults.preferences.alerts.criticalEvents.classes.radiationAnomaly.minMediumTrustCorroboration)),
+              officialConfirmationRequired: criticalEvents.classes?.radiationAnomaly?.officialConfirmationRequired !== undefined ? Boolean(criticalEvents.classes.radiationAnomaly.officialConfirmationRequired) : defaults.preferences.alerts.criticalEvents.classes.radiationAnomaly.officialConfirmationRequired,
+              freshnessMinutes: Math.max(5, Math.min(180, Number.isFinite(Number(criticalEvents.classes?.radiationAnomaly?.freshnessMinutes)) ? Number(criticalEvents.classes.radiationAnomaly.freshnessMinutes) : defaults.preferences.alerts.criticalEvents.classes.radiationAnomaly.freshnessMinutes)),
+            },
+            chokepointDisruption: {
+              enabled: criticalEvents.classes?.chokepointDisruption?.enabled !== undefined ? Boolean(criticalEvents.classes.chokepointDisruption.enabled) : defaults.preferences.alerts.criticalEvents.classes.chokepointDisruption.enabled,
+              severity: ['medium', 'high', 'critical'].includes(criticalEvents.classes?.chokepointDisruption?.severity) ? criticalEvents.classes.chokepointDisruption.severity : defaults.preferences.alerts.criticalEvents.classes.chokepointDisruption.severity,
+              minHighTrustCorroboration: Math.max(1, Math.min(5, Number.isFinite(Number(criticalEvents.classes?.chokepointDisruption?.minHighTrustCorroboration)) ? Number(criticalEvents.classes.chokepointDisruption.minHighTrustCorroboration) : defaults.preferences.alerts.criticalEvents.classes.chokepointDisruption.minHighTrustCorroboration)),
+              minMediumTrustCorroboration: Math.max(1, Math.min(5, Number.isFinite(Number(criticalEvents.classes?.chokepointDisruption?.minMediumTrustCorroboration)) ? Number(criticalEvents.classes.chokepointDisruption.minMediumTrustCorroboration) : defaults.preferences.alerts.criticalEvents.classes.chokepointDisruption.minMediumTrustCorroboration)),
+              officialConfirmationRequired: criticalEvents.classes?.chokepointDisruption?.officialConfirmationRequired !== undefined ? Boolean(criticalEvents.classes.chokepointDisruption.officialConfirmationRequired) : defaults.preferences.alerts.criticalEvents.classes.chokepointDisruption.officialConfirmationRequired,
+              freshnessMinutes: Math.max(5, Math.min(180, Number.isFinite(Number(criticalEvents.classes?.chokepointDisruption?.freshnessMinutes)) ? Number(criticalEvents.classes.chokepointDisruption.freshnessMinutes) : defaults.preferences.alerts.criticalEvents.classes.chokepointDisruption.freshnessMinutes)),
+            },
           },
         },
       },
@@ -774,6 +825,32 @@ function pruneReviewAcks() {
     changed = true;
   }
   if (changed) saveReviewAcks();
+}
+
+function normalizeReviewAckEntry(entry = {}) {
+  if (!entry || typeof entry !== 'object') return null;
+  const region = String(entry.region || '').trim();
+  const reason = String(entry.reason || '').trim();
+  if (!region || !reason) return null;
+  const createdAt = entry.createdAt ? new Date(entry.createdAt).getTime() : Date.now();
+  const firstAckedAt = entry.firstAckedAt ? new Date(entry.firstAckedAt).getTime() : createdAt;
+  const lastAckedAt = entry.lastAckedAt ? new Date(entry.lastAckedAt).getTime() : firstAckedAt;
+  const durationMs = Math.max(1, Number(entry.durationMs) || REVIEW_ACK_TTL_MS);
+  const expiresAt = entry.expiresAt ? new Date(entry.expiresAt).getTime() : (lastAckedAt + durationMs);
+  return {
+    key: reviewAckKey({ region, reason }),
+    region,
+    reason,
+    note: String(entry.note || '').trim() || null,
+    createdAt,
+    firstAckedAt,
+    lastAckedAt,
+    ackCount: Math.max(1, Number(entry.ackCount) || 1),
+    expiresAt,
+    durationMs,
+    action: String(entry.action || '').trim() || 'ack',
+    lastClearedAt: entry.lastClearedAt ? new Date(entry.lastClearedAt).getTime() : null,
+  };
 }
 
 function formatReviewAckEntry(entry = {}) {
@@ -4232,6 +4309,32 @@ function summarizeNoiseSuppressionPressure(snapshot = null, prefs = {}) {
   };
 }
 
+function buildCriticalEventPolicyContract() {
+  const operatorSettings = loadOperatorSettings();
+  const prefs = operatorSettings.preferences.alerts?.criticalEvents || operatorSettingsDefaults().preferences.alerts.criticalEvents;
+  const classes = Object.entries(prefs.classes || {}).map(([id, policy]) => ({
+    id,
+    enabled: Boolean(policy?.enabled),
+    severity: policy?.severity || 'high',
+    minHighTrustCorroboration: policy?.minHighTrustCorroboration || 1,
+    minMediumTrustCorroboration: policy?.minMediumTrustCorroboration || 1,
+    officialConfirmationRequired: Boolean(policy?.officialConfirmationRequired),
+    freshnessMinutes: policy?.freshnessMinutes || 30,
+  }));
+  return {
+    version: 'critical-event-policy-v1',
+    enabled: Boolean(prefs.enabled),
+    defaultRoute: Array.isArray(prefs.defaultRoute) ? prefs.defaultRoute : [],
+    escalationRoute: Array.isArray(prefs.escalationRoute) ? prefs.escalationRoute : [],
+    taxonomy: classes,
+    classMap: Object.fromEntries(classes.map(item => [item.id, item])),
+    notes: [
+      'Critical-event policy defines fast-alert classes and the corroboration threshold required before an operator notification is eligible.',
+      'This contract is taxonomy and policy only for now; candidate ingestion, promotion, and proactive routing land in later roadmap slices.',
+    ],
+  };
+}
+
 function summarizeOperationalAlertState(snapshot = null) {
   const operatorSettings = loadOperatorSettings();
   const prefs = operatorSettings.preferences.alerts?.operational || operatorSettingsDefaults().preferences.alerts.operational;
@@ -4619,6 +4722,7 @@ function buildOperatorSettingsContract(snapshot = null) {
       telegramEnabled: Boolean(config.telegram?.botToken && config.telegram?.chatId),
       discordEnabled: Boolean(config.discord?.botToken || config.discord?.webhookUrl),
       operational: operationalAlerts,
+      criticalEvents: buildCriticalEventPolicyContract(),
       persistedPreferences: operatorSettings.preferences.alerts,
     },
     config: {
@@ -4653,7 +4757,7 @@ function buildOperatorSettingsContract(snapshot = null) {
       'This surface centralizes current operator-visible settings and runtime posture.',
       'Operator settings is intentionally a read-only operator surface; diagnostics live under /diagnostics and local-only admin controls live under /admin/settings so runtime review and sensitive writes are separated from normal viewing.',
       'Runtime configuration is exposed as a versioned contract with defaults, effective values, validation, and drift summary.',
-      'Operator preference persistence applies layout posture, source selection, default LLM mode, and agent-analysis tuning controls directly through the runtime contract.',
+      'Operator preference persistence applies layout posture, source selection, default LLM mode, agent-analysis tuning controls, and critical-event alert policy defaults directly through the runtime contract.',
       'Source lifecycle actions expose policy blockers, recommended next states, and human-approval boundaries before any production-affecting mutation is allowed.',
     ],
   };

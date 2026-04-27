@@ -5,7 +5,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const BASE_PORT = 3240;
+const BASE_PORT = 3241;
 
 async function sleep(ms) {
   await new Promise(resolve => setTimeout(resolve, ms));
@@ -93,6 +93,17 @@ test('operator settings persist, export, and influence runtime bootstrap state',
               inferenceDegraded: { enabled: true, heuristicFallbackCount: 4, cooldownMinutes: 55, escalationAfter: 2 },
               noiseSuppressionPressure: { enabled: true, minRetainedEntries: 30, minRetainedDelta: 4, minConsecutiveGrowthSweeps: 3, minConsecutivePruneSweeps: 2, cooldownMinutes: 95, escalationAfter: 2 },
             },
+            criticalEvents: {
+              enabled: true,
+              defaultRoute: ['telegram'],
+              escalationRoute: ['telegram', 'discord'],
+              classes: {
+                governmentSiteViolence: { enabled: true, severity: 'critical', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: true, freshnessMinutes: 15 },
+                aviationIncident: { enabled: true, severity: 'critical', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: false, freshnessMinutes: 25 },
+                radiationAnomaly: { enabled: true, severity: 'critical', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 1, officialConfirmationRequired: false, freshnessMinutes: 20 },
+                chokepointDisruption: { enabled: false, severity: 'high', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 3, officialConfirmationRequired: false, freshnessMinutes: 45 },
+              },
+            },
           },
         },
       }),
@@ -108,6 +119,8 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(updated.settings.preferences.agentAnalysis.maxPublishedTippingPoints, 2);
     assert.deepEqual(updated.settings.preferences.alerts.operational.defaultRoute, ['telegram']);
     assert.deepEqual(updated.settings.preferences.alerts.operational.escalationRoute, ['telegram', 'discord']);
+    assert.equal(updated.settings.preferences.alerts.criticalEvents.classes.governmentSiteViolence.officialConfirmationRequired, true);
+    assert.equal(updated.settings.preferences.alerts.criticalEvents.classes.chokepointDisruption.enabled, false);
     assert.equal(updated.audit.action, 'write');
     assert.equal(updated.audit.mode, 'settings');
 
@@ -135,8 +148,12 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(settings.persistence.persistedPreferences.layout.visualsMode, 'lite');
     assert.equal(settings.persistence.persistedPreferences.sources.noiseSuppression.sourceRules[0].sourceId, 'gdelt-global');
     assert.equal(settings.alerts.operational.version, 'operational-alert-routing-v1');
+    assert.equal(settings.alerts.criticalEvents.version, 'critical-event-policy-v1');
+    assert.equal(settings.alerts.criticalEvents.classMap.governmentSiteViolence.officialConfirmationRequired, true);
+    assert.equal(settings.alerts.criticalEvents.classMap.aviationIncident.freshnessMinutes, 25);
     assert.equal(settings.alerts.persistedPreferences.operational.staleSweep.cooldownMinutes, 25);
     assert.equal(settings.alerts.persistedPreferences.operational.noiseSuppressionPressure.minRetainedEntries, 30);
+    assert.equal(settings.alerts.persistedPreferences.criticalEvents.classes.radiationAnomaly.minMediumTrustCorroboration, 1);
     assert.equal(settings.alerts.operational.defaultRoute[0], 'telegram');
 
     const exported = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/settings/export`);
@@ -151,6 +168,8 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(exported.preferences.agentAnalysis.deterministicFallbackMode, 'disabled');
     assert.equal(exported.preferences.alerts.operational.sourceFailures.minFailedSources, 4);
     assert.equal(exported.preferences.alerts.operational.noiseSuppressionPressure.minRetainedDelta, 4);
+    assert.equal(exported.preferences.alerts.criticalEvents.classes.governmentSiteViolence.officialConfirmationRequired, true);
+    assert.equal(exported.preferences.alerts.criticalEvents.classes.chokepointDisruption.enabled, false);
 
     const bundle = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/settings/export?mode=bundle`);
     assert.equal(bundle.version, 'settings-state-bundle-v1');
