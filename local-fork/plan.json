@@ -1073,16 +1073,16 @@
           {
             "id": "effort-40.1",
             "title": "Add bounded SDR session automation, capture artifacts, and retained RF-side evidence summaries so corroboration can advance from receiver selection into operator-reviewable observation support",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 148,
+    "sequence": 149,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-148"
+    "lastCompletedCycleId": "2026-04-27-cycle-149"
   },
   "backlog": [
     {
@@ -1112,6 +1112,13 @@
       "status": "pending",
       "source": "cycle-148",
       "reason": "Delivery audit and resend posture now exist in contract state, but operators still need a clearer diagnostics and UI surface to review preview-only outcomes, blocked routes, and future resend eligibility over time."
+    },
+    {
+      "id": "backlog-2026-04-27-sdr-session-operator-workflow",
+      "title": "Expose SDR session plans, observation capture, and evidence-review workflow on operator-facing surfaces",
+      "status": "pending",
+      "source": "cycle-149",
+      "reason": "Bounded SDR session plans and retained evidence placeholders now exist in contract state, but operators still need a first-class workflow to open a session, capture observations, attach artifacts, and close out RF-side corroboration without editing raw state."
     }
   ]
 }

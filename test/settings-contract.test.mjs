@@ -252,8 +252,10 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(Array.isArray(contract.sourceConsole.noiseSuppression.sourceRules.activeRules), true);
   assert.equal(contract.sdrCorroboration.version, 'sdr-corroboration-v1');
   assert.equal(typeof contract.sdrCorroboration.capability.remoteCheckReady, 'boolean');
+  assert.equal(contract.sdrCorroboration.sessionAutomation.version, 'sdr-session-audit-v1');
   assert.equal(Array.isArray(contract.sdrCorroboration.watchProfiles), true);
   assert.equal(Array.isArray(contract.sdrCorroboration.priorityChecks), true);
+  assert.equal(Array.isArray(contract.sdrCorroboration.sessionAutomation.recentSessions), true);
   assert.equal(contract.persistence.capabilities.export, false);
   assert.equal(contract.persistence.capabilities.writeApi, false);
   assert.equal(contract.access.role, 'operator');
@@ -305,6 +307,36 @@ test('critical-event queue retains transition audit entries when status changes 
   assert.equal(contract.queue.audit.totalEntries >= 1, true);
   assert.equal(contract.queue.audit.recentTransitions[0].candidateId.startsWith('radiationAnomaly:'), true);
   assert.match(contract.queue.audit.recentTransitions[0].transition, /new->promoted|new->monitoring/);
+});
+
+test('sdr corroboration exposes bounded session plans and retained evidence placeholders', () => {
+  const contract = buildOperatorSettingsContract({
+    sdr: {
+      total: 4,
+      online: 4,
+      zones: [{
+        region: 'Iran',
+        count: 2,
+        receivers: [
+          { name: 'Doha HF Kiwi', lat: 25.2854, lon: 51.531 },
+          { name: 'Baghdad HF Kiwi', lat: 33.3355, lon: 44.387736 },
+        ],
+      }],
+    },
+    suspectSignals: [{
+      signal: 'Mine-laying reports near Strait of Hormuz',
+      reason: 'Regional shipping alerts and OSINT claims point to chokepoint disruption risk.',
+      region: 'Iran',
+      confidence: 'high',
+      category: 'maritime',
+    }],
+  });
+  assert.equal(contract.sdrCorroboration.sessionAutomation.version, 'sdr-session-audit-v1');
+  assert.equal(contract.sdrCorroboration.sessionAutomation.sessionCount >= 1, true);
+  assert.equal(contract.sdrCorroboration.sessionAutomation.recentSessions[0].status, 'planned');
+  assert.equal(contract.sdrCorroboration.sessionAutomation.recentSessions[0].evidenceSummary.effectOnClaim, 'not-yet-observed');
+  assert.equal(Array.isArray(contract.sdrCorroboration.sessionAutomation.recentSessions[0].observationChecklist), true);
+  assert.equal(contract.sdrCorroboration.capability.automationMode, 'bounded-session-plan-and-evidence-retention');
 });
 
 test('critical-event routing exposes delivery audit and resend posture without sending notifications', () => {

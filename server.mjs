@@ -93,6 +93,7 @@ const CLUSTER_PRESSURE_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 const CRITICAL_EVENT_QUEUE_STATE_KEY = 'critical-events:queue';
 const CRITICAL_EVENT_QUEUE_AUDIT_STATE_KEY = 'critical-events:queue-audit';
 const CRITICAL_EVENT_DELIVERY_STATE_KEY = 'critical-events:delivery';
+const SDR_SESSION_STATE_KEY = 'sdr:session-audit';
 const CRITICAL_EVENT_QUEUE_RETENTION_MS = Math.max(1, Number(config.review?.criticalEventQueueRetentionHours || 24)) * 60 * 60 * 1000;
 const CRITICAL_EVENT_QUEUE_RETRY_INTERVAL_MS = Math.max(1, Number(config.review?.criticalEventQueueRetryMinutes || 5)) * 60 * 1000;
 const CRITICAL_EVENT_QUEUE_MAX_RETRIES = Math.max(1, Number(config.review?.criticalEventQueueMaxRetries || 6));
@@ -4915,6 +4916,84 @@ function buildCriticalEventPolicyContract(snapshot = null) {
   };
 }
 
+function getSdrSessionState() {
+  const stateKey = typeof SDR_SESSION_STATE_KEY === 'string' ? SDR_SESSION_STATE_KEY : 'sdr:session-audit';
+  const state = typeof memory?.getSignalState === 'function' ? memory.getSignalState(stateKey) : null;
+  return state && typeof state === 'object'
+    ? state
+    : { version: 'sdr-session-audit-v1', updatedAt: null, sessions: {} };
+}
+
+function saveSdrSessionState(state = null) {
+  if (!state || typeof memory?.setSignalState !== 'function') return state;
+  memory.setSignalState(typeof SDR_SESSION_STATE_KEY === 'string' ? SDR_SESSION_STATE_KEY : 'sdr:session-audit', state);
+  return state;
+}
+
+function buildSdrObservationChecklist(profile = null) {
+  if (!profile) return [];
+  return (profile.lookFor || []).map((item, index) => ({
+    id: `${profile.id || 'watch'}-check-${index + 1}`,
+    prompt: item,
+    evidenceTypes: ['audio-observation-note', 'spectrum-observation-note', 'receiver-health-check'],
+  }));
+}
+
+function buildSdrSessionArtifacts(sessionId) {
+  return {
+    sessionId,
+    expectedArtifacts: [
+      { type: 'session-note', required: true, description: 'Operator or agent note describing what was monitored and why.' },
+      { type: 'receiver-snapshot', required: false, description: 'Optional screenshot or waterfall snapshot from the selected public receiver.' },
+      { type: 'observation-summary', required: true, description: 'Bounded summary of whether RF-side observations strengthened, weakened, or did not affect the originating claim.' },
+    ],
+  };
+}
+
+function reconcileSdrSessionAudit(priorityChecks = [], nowIso = new Date().toISOString()) {
+  const current = getSdrSessionState();
+  const nextSessions = { ...(current.sessions || {}) };
+  for (const check of priorityChecks) {
+    const sessionSlug = `${check.source || 'source'}-${check.region || 'region'}-${check.watchProfile?.id || 'watch'}-${check.label || 'signal'}`
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || 'session';
+    const sessionId = `sdr-${sessionSlug}`;
+    const existing = nextSessions[sessionId] && typeof nextSessions[sessionId] === 'object' ? nextSessions[sessionId] : null;
+    nextSessions[sessionId] = {
+      sessionId,
+      source: check.source,
+      label: check.label,
+      region: check.region,
+      trigger: check.trigger,
+      priority: check.priority,
+      confidenceLabel: check.confidenceLabel,
+      status: existing?.status || 'planned',
+      automationMode: 'bounded-session-plan',
+      watchProfile: check.watchProfile,
+      suggestedReceivers: Array.isArray(check.suggestedReceivers) ? check.suggestedReceivers.slice(0, 3) : [],
+      receiverCount: Number(check.receiverCount || 0),
+      rationale: check.rationale || null,
+      observationChecklist: buildSdrObservationChecklist(check.watchProfile),
+      evidenceSummary: existing?.evidenceSummary || {
+        summary: 'No RF-side observation captured yet. Session remains a bounded monitoring plan only.',
+        effectOnClaim: 'not-yet-observed',
+        confidenceImpact: 'none',
+      },
+      artifacts: buildSdrSessionArtifacts(sessionId),
+      openedAt: existing?.openedAt || nowIso,
+      lastReviewedAt: existing?.lastReviewedAt || null,
+      updatedAt: nowIso,
+    };
+  }
+  const bounded = Object.fromEntries(Object.values(nextSessions)
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+    .slice(0, 50)
+    .map(item => [item.sessionId, item]));
+  return saveSdrSessionState({ version: 'sdr-session-audit-v1', updatedAt: nowIso, sessions: bounded });
+}
+
 function buildSdrCorroborationContract(snapshot = null) {
   const sdr = snapshot?.sdr || {};
   const zones = Array.isArray(sdr.zones) ? sdr.zones : [];
@@ -5025,6 +5104,7 @@ function buildSdrCorroborationContract(snapshot = null) {
     dedupedChecks.push(item);
   }
   const blindZones = zones.filter(zone => Number(zone.count || 0) === 0).map(zone => zone.region || 'Unknown');
+  const sessionAudit = reconcileSdrSessionAudit(dedupedChecks);
   const coveredZones = zones.filter(zone => Number(zone.count || 0) > 0).map(zone => ({
     region: zone.region || 'Unknown',
     receiverCount: Number(zone.count || 0),
@@ -5037,7 +5117,9 @@ function buildSdrCorroborationContract(snapshot = null) {
     capability: {
       remoteCheckReady: coveredZones.length > 0,
       requiresHumanTuning: true,
-      automationMode: 'receiver-selection-and-watch-profile',
+      automationMode: 'bounded-session-plan-and-evidence-retention',
+      artifactsRetained: true,
+      supportsObservationSummaries: true,
     },
     network: {
       totalReceivers: Number(sdr.total || allReceivers.length || 0),
@@ -5049,8 +5131,18 @@ function buildSdrCorroborationContract(snapshot = null) {
     coveredZones,
     blindZones,
     priorityChecks: dedupedChecks.slice(0, 8),
+    sessionAutomation: {
+      version: 'sdr-session-audit-v1',
+      stateKey: typeof SDR_SESSION_STATE_KEY === 'string' ? SDR_SESSION_STATE_KEY : 'sdr:session-audit',
+      updatedAt: sessionAudit.updatedAt || null,
+      sessionCount: Object.keys(sessionAudit.sessions || {}).length,
+      recentSessions: Object.values(sessionAudit.sessions || {}).slice(0, 8),
+      statuses: ['planned', 'observing', 'captured', 'closed'],
+      artifactTypes: ['session-note', 'receiver-snapshot', 'observation-summary'],
+    },
     notes: [
       'This surface does not claim that Crucix is decoding or attributing radio traffic automatically. It identifies where public SDR coverage exists and what an analyst should check next.',
+      'Bounded SDR session automation here means session planning, receiver selection, observation checklisting, and retained evidence summaries, not unattended RF attribution or fake capture claims.',
       'Confidence should only improve when RF-side observations materially support or weaken a claim alongside other evidence, not from receiver presence alone.',
     ],
   };
