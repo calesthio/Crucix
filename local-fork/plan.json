@@ -921,7 +921,7 @@
           {
             "id": "effort-34.1",
             "title": "Add schema-level validation helpers for source-ops artifacts so example task packets, scorecards, overlap assessments, pruning outputs, lifecycle envelopes, and related artifacts are checked against their JSON schemas instead of only spot-checking fields in tests",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-34.2",

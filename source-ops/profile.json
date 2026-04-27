@@ -10,6 +10,8 @@
   "overlapRubricPath": "source-ops/overlap-rubric.json",
   "pruningSchemaPath": "source-ops/schemas/pruning-assessment.schema.json",
   "pruningRubricPath": "source-ops/pruning-rubric.json",
+  "lifecycleEvaluationSchemaPath": "source-ops/schemas/lifecycle-evaluation.schema.json",
+  "lifecycleBatchSchemaPath": "source-ops/schemas/lifecycle-batch.schema.json",
   "actionTaxonomyPath": "source-ops/action-taxonomy.json",
   "lifecycleTransitionPolicyPath": "source-ops/lifecycle-transition-policy.json",
   "approvalPolicy": {

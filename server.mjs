@@ -4481,6 +4481,7 @@ function buildOperatorSettingsContract(snapshot = null) {
         quarantinedSourceIds: operatorSettings.preferences.sources.quarantinedSourceIds,
         noiseSuppression: operatorSettings.preferences.sources.noiseSuppression,
       },
+      contract: sourceOps?.contract || null,
       lifecycleActions: {
         version: 'source-lifecycle-actions-v1',
         humanApprovalBoundary: {

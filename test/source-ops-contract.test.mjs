@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
+import { assertValidAgainstSchema } from '../lib/schema-validator.mjs';
+import { validateSourceOpsArtifact } from '../lib/source-ops-schemas.mjs';
 
 const profile = JSON.parse(readFileSync(new URL('../source-ops/profile.json', import.meta.url), 'utf8'));
 const registry = JSON.parse(readFileSync(new URL('../source-ops/source-registry.seed.json', import.meta.url), 'utf8'));
@@ -9,6 +11,8 @@ const resultSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/resu
 const scorecardSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/scorecard.schema.json', import.meta.url), 'utf8'));
 const overlapSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/overlap-assessment.schema.json', import.meta.url), 'utf8'));
 const pruningSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/pruning-assessment.schema.json', import.meta.url), 'utf8'));
+const lifecycleEvaluationSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/lifecycle-evaluation.schema.json', import.meta.url), 'utf8'));
+const lifecycleBatchSchema = JSON.parse(readFileSync(new URL('../source-ops/schemas/lifecycle-batch.schema.json', import.meta.url), 'utf8'));
 const gradingRubric = JSON.parse(readFileSync(new URL('../source-ops/grading-rubric.json', import.meta.url), 'utf8'));
 const overlapRubric = JSON.parse(readFileSync(new URL('../source-ops/overlap-rubric.json', import.meta.url), 'utf8'));
 const pruningRubric = JSON.parse(readFileSync(new URL('../source-ops/pruning-rubric.json', import.meta.url), 'utf8'));
@@ -47,6 +51,17 @@ function hasRequiredKeys(obj, required) {
   for (const key of required) assert.ok(key in obj, `missing required key ${key}`);
 }
 
+const rootDir = new URL('..', import.meta.url).pathname;
+
+function expectSchemaValid(label, value, schema) {
+  assert.doesNotThrow(() => assertValidAgainstSchema(value, schema, label));
+}
+
+function expectProfileSchemaPathValid(label, value, schemaPath) {
+  const result = validateSourceOpsArtifact({ rootDir, schemaPath, artifact: value, label });
+  assert.equal(result.ok, true, result.errors.join('\n'));
+}
+
 test('source ops profile aligns with the chosen file-first and human-gated promotion policy', () => {
   assert.equal(profile.version, 'source-ops-profile-v1');
   assert.equal(profile.approvalPolicy.contractMode, 'file-first');
@@ -66,7 +81,7 @@ test('source ops profile aligns with the chosen file-first and human-gated promo
 
 test('example source ops task packet matches the workspace contract', () => {
   assert.equal(exampleTask.version, 'source-ops-task-v1');
-  hasRequiredKeys(exampleTask, taskSchema.required);
+  expectSchemaValid('example discovery task', exampleTask, taskSchema);
   assert.ok(profile.allowedRoles.includes(exampleTask.role));
   assert.equal(exampleTask.policy.contractMode, 'file-first');
   assert.equal(exampleTask.policy.productionMutationsAllowed, false);
@@ -85,6 +100,9 @@ test('grading contract includes shared rubric and scorecard artifacts', () => {
   assert.equal(gradingRubric.version, 'source-grading-rubric-v1');
   assert.equal(gradingRubric.dimensions.length, 6);
   assert.equal(Number(gradingRubric.dimensions.reduce((sum, item) => sum + item.weight, 0).toFixed(4)), 1);
+  expectSchemaValid('example grading task', exampleGradingTask, taskSchema);
+  expectProfileSchemaPathValid('example grading scorecard', exampleGradingScorecard, profile.scorecardSchemaPath);
+  expectSchemaValid('example grading scorecard direct schema', exampleGradingScorecard, scorecardSchema);
   assert.equal(exampleGradingScorecard.version, 'source-scorecard-v1');
   assert.equal(exampleGradingScorecard.dimensionScores.length, gradingRubric.dimensions.length);
   assert.equal(exampleGradingScorecard.recommendation, 'shadow');
@@ -99,6 +117,9 @@ test('overlap contract includes structured assessment artifacts and explainable 
   assert.equal(overlapRubric.version, 'source-overlap-rubric-v1');
   assert.equal(overlapRubric.dimensions.length, 4);
   assert.equal(Number(overlapRubric.dimensions.reduce((sum, item) => sum + item.weight, 0).toFixed(4)), 1);
+  expectSchemaValid('example overlap task', exampleOverlapTask, taskSchema);
+  expectProfileSchemaPathValid('example overlap assessment', exampleOverlapAssessment, profile.overlapSchemaPath);
+  expectSchemaValid('example overlap assessment direct schema', exampleOverlapAssessment, overlapSchema);
   assert.equal(exampleOverlapAssessment.version, 'source-overlap-v1');
   assert.equal(exampleOverlapAssessment.dimensionScores.length, overlapRubric.dimensions.length);
   assert.equal(exampleOverlapAssessment.overlap.incrementalCoverage, 'high');
@@ -114,6 +135,9 @@ test('pruning contract includes structured assessment artifacts and active-sourc
   assert.equal(pruningRubric.version, 'source-pruning-rubric-v1');
   assert.equal(pruningRubric.dimensions.length, 5);
   assert.equal(Number(pruningRubric.dimensions.reduce((sum, item) => sum + item.weight, 0).toFixed(4)), 1);
+  expectSchemaValid('example pruning task', examplePruningTask, taskSchema);
+  expectProfileSchemaPathValid('example pruning assessment', examplePruningAssessment, profile.pruningSchemaPath);
+  expectSchemaValid('example pruning assessment direct schema', examplePruningAssessment, pruningSchema);
   assert.equal(examplePruningAssessment.version, 'source-pruning-v1');
   assert.equal(examplePruningAssessment.dimensionScores.length, pruningRubric.dimensions.length);
   assert.equal(examplePruningAssessment.recommendation, 'human-review');
@@ -167,7 +191,7 @@ test('every allowed role has a bounded role definition and task template', () =>
     assert.match(roleDoc, /## Must not do/);
     assert.equal(task.version, 'source-ops-task-v1');
     assert.equal(task.role, role);
-    hasRequiredKeys(task, taskSchema.required);
+    expectSchemaValid(`task template ${role}`, task, taskSchema);
     assert.equal(task.io.registryPath, profile.registryPath);
     assert.equal(task.policy.contractMode, 'file-first');
     assert.equal(task.policy.productionMutationsAllowed, false);
@@ -192,11 +216,18 @@ test('registry lifecycle policy and profile lifecycle policy agree on human appr
   assert.equal(transitionPolicy.states.shadow.agentMayAdvance, false);
   assert.deepEqual(transitionPolicy.states.graded.allowedNextStates, ['shadow', 'rejected', 'deprecated']);
   assert.deepEqual(transitionPolicy.promotionReadinessGuards.active, ['human-review-required']);
+  assert.equal(profile.lifecycleEvaluationSchemaPath, 'source-ops/schemas/lifecycle-evaluation.schema.json');
+  assert.equal(profile.lifecycleBatchSchemaPath, 'source-ops/schemas/lifecycle-batch.schema.json');
+  expectSchemaValid('example onboarding prep task', JSON.parse(readFileSync(new URL('../source-ops/tasks/example-onboarding-prep-task.json', import.meta.url), 'utf8')), taskSchema);
+  expectProfileSchemaPathValid('example lifecycle evaluation', exampleLifecycleEvaluation, profile.lifecycleEvaluationSchemaPath);
+  expectSchemaValid('example lifecycle evaluation direct schema', exampleLifecycleEvaluation, lifecycleEvaluationSchema);
   assert.equal(exampleLifecycleEvaluation.version, 'source-lifecycle-evaluation-v1');
   assert.equal(exampleLifecycleEvaluation.currentState, 'shadow');
   assert.equal(exampleLifecycleEvaluation.nextAllowedState, 'approved');
   assert.equal(exampleLifecycleEvaluation.recommendedAction, 'human-review');
   assert.equal(exampleLifecycleEvaluation.blocked, true);
+  expectProfileSchemaPathValid('example lifecycle batch', exampleLifecycleBatch, profile.lifecycleBatchSchemaPath);
+  expectSchemaValid('example lifecycle batch direct schema', exampleLifecycleBatch, lifecycleBatchSchema);
   assert.equal(exampleLifecycleBatch.version, 'source-lifecycle-batch-v1');
   assert.equal(exampleLifecycleBatch.candidateCount, 1);
   assert.equal(exampleLifecycleBatch.blockedCount, 1);

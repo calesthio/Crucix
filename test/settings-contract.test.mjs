@@ -63,6 +63,11 @@ const context = {
   buildNewsClusterSummary: snapshot => ({ sourceReasoning: snapshot?.newsSourceReasoning || null }),
   summarizeClusterRepairArtifacts: artifacts => ({ totalArtifacts: Array.isArray(artifacts) ? artifacts.length : 0, topReasons: [], topRegions: [], items: Array.isArray(artifacts) ? artifacts : [] }),
   buildOperatorSourceOps: snapshot => ({
+    contract: {
+      version: 'source-ops-profile-v1',
+      lifecycleEvaluationSchemaPath: 'source-ops/schemas/lifecycle-evaluation.schema.json',
+      lifecycleBatchSchemaPath: 'source-ops/schemas/lifecycle-batch.schema.json',
+    },
     history: { version: 'source-health-history-v1', windows: [] },
     performance: {
       version: 'source-performance-workflow-v1',
@@ -196,6 +201,8 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.sourceConsole.surface, '/source-ops');
   assert.equal(contract.sourceConsole.roleGrouping.enabled, true);
   assert.equal(contract.sourceConsole.lifecycleActions.version, 'source-lifecycle-actions-v1');
+  assert.equal(contract.sourceConsole.contract.lifecycleEvaluationSchemaPath, 'source-ops/schemas/lifecycle-evaluation.schema.json');
+  assert.equal(contract.sourceConsole.contract.lifecycleBatchSchemaPath, 'source-ops/schemas/lifecycle-batch.schema.json');
   assert.equal(Array.isArray(contract.sourceConsole.lifecycleActions.humanApprovalBoundary.humanApprovalBoundaryStates), true);
   assert.equal(Array.isArray(contract.sourceConsole.lifecycleActions.queue.evaluations), true);
   assert.equal(Array.isArray(contract.sourceConsole.inventory), true);

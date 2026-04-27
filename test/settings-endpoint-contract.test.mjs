@@ -192,6 +192,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(settings.sourceConsole.surface, '/source-ops');
     assert.equal(settings.sourceConsole.roleGrouping.enabled, true);
     assert.equal(settings.sourceConsole.lifecycleActions.version, 'source-lifecycle-actions-v1');
+    assert.equal(settings.sourceConsole.contract.lifecycleEvaluationSchemaPath, 'source-ops/schemas/lifecycle-evaluation.schema.json');
+    assert.equal(settings.sourceConsole.contract.lifecycleBatchSchemaPath, 'source-ops/schemas/lifecycle-batch.schema.json');
     assert.equal(Array.isArray(settings.sourceConsole.lifecycleActions.queue.evaluations), true);
     assert.equal(typeof settings.sourceConsole.lifecycleActions.humanApprovalBoundary.activePromotionRequiresHumanApproval, 'boolean');
     assert.equal(settings.sourceConsole.performanceWorkflow.version, 'source-performance-workflow-v1');

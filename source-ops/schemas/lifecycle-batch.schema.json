@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "crucix/source-ops/lifecycle-batch.schema.json",
+  "title": "Crucix Source Lifecycle Batch Evaluation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "generatedAt",
+    "candidateCount",
+    "queueTaskCount",
+    "blockedCount",
+    "advanceableCount",
+    "evaluations"
+  ],
+  "properties": {
+    "version": { "type": "string", "const": "source-lifecycle-batch-v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "candidateCount": { "type": "integer", "minimum": 0 },
+    "queueTaskCount": { "type": "integer", "minimum": 0 },
+    "blockedCount": { "type": "integer", "minimum": 0 },
+    "advanceableCount": { "type": "integer", "minimum": 0 },
+    "evaluations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["candidateId", "name", "lifecycle", "queueReferenced", "evaluation"],
+        "properties": {
+          "candidateId": { "type": "string", "minLength": 1 },
+          "name": { "type": ["string", "null"] },
+          "lifecycle": { "type": ["string", "null"] },
+          "queueReferenced": { "type": "boolean" },
+          "evaluation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "currentState",
+              "promotionReadiness",
+              "allowedNextStates",
+              "agentMayAdvanceCurrentState",
+              "unmetRequirements",
+              "nextAllowedState",
+              "recommendedAction",
+              "blocked",
+              "blockedReasons"
+            ],
+            "properties": {
+              "currentState": { "type": "string", "minLength": 1 },
+              "promotionReadiness": { "type": ["string", "null"] },
+              "allowedNextStates": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+              "agentMayAdvanceCurrentState": { "type": "boolean" },
+              "unmetRequirements": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+              "nextAllowedState": { "type": ["string", "null"] },
+              "recommendedAction": { "type": "string", "enum": ["human-review", "approve", "deprecate", "reject", "shadow", "grade", "research", "block"] },
+              "blocked": { "type": "boolean" },
+              "blockedReasons": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

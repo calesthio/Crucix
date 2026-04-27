@@ -11,6 +11,8 @@ test('source ops surface summarizes contract, inventory, and needs from workspac
   assert.equal(surface.contract.preProductionAutoAdvanceMax, 'shadow');
   assert.equal(surface.contract.activePromotionRequiresHumanApproval, true);
   assert.equal(surface.contract.lifecycleTransitionPolicyPath, 'source-ops/lifecycle-transition-policy.json');
+  assert.equal(surface.contract.lifecycleEvaluationSchemaPath, 'source-ops/schemas/lifecycle-evaluation.schema.json');
+  assert.equal(surface.contract.lifecycleBatchSchemaPath, 'source-ops/schemas/lifecycle-batch.schema.json');
   assert.deepEqual(surface.contract.transitionPolicy.agentMayAutoAdvanceTo, ['researched', 'graded', 'shadow']);
   assert.ok(surface.contract.allowedRoles.includes('discovery'));
   assert.equal(surface.inventory.version, 'source-registry-v1');
