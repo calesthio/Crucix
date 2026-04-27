@@ -43,6 +43,10 @@ import { briefing as space } from './sources/space.mjs';
 // === Tier 5: Live Market Data ===
 import { briefing as yfinance } from './sources/yfinance.mjs';
 
+// === Tier 6: Cyber & Infrastructure ===
+import { briefing as cisaKev } from './sources/cisa-kev.mjs';
+import { briefing as cloudflareRadar } from './sources/cloudflare-radar.mjs';
+
 const SOURCE_TIMEOUT_MS = 30_000; // 30s max per individual source
 
 export async function runSource(name, fn, ...args) {
@@ -63,7 +67,7 @@ export async function runSource(name, fn, ...args) {
 }
 
 export async function fullBriefing() {
-  console.error('[Crucix] Starting intelligence sweep — 27 sources...');
+  console.error('[Crucix] Starting intelligence sweep — 29 sources...');
   const start = Date.now();
 
   const allPromises = [
@@ -103,6 +107,10 @@ export async function fullBriefing() {
 
     // Tier 5: Live Market Data
     runSource('YFinance', yfinance),
+
+    // Tier 6: Cyber & Infrastructure
+    runSource('CISA-KEV', cisaKev),
+    runSource('Cloudflare-Radar', cloudflareRadar),
   ];
 
   // Each runSource has its own 30s timeout, so allSettled will resolve

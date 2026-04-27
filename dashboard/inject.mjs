@@ -571,6 +571,19 @@ export async function synthesize(data) {
     timestamp: yfData.summary?.timestamp || null,
   };
 
+  const yfGold = yfQuotes['GC=F'];
+  const yfSilver = yfQuotes['SI=F'];
+  const metals = {
+    gold: yfGold?.price,
+    goldChange: yfGold?.change,
+    goldChangePct: yfGold?.changePct,
+    goldRecent: yfGold?.history?.map(h => h.close) || [],
+    silver: yfSilver?.price,
+    silverChange: yfSilver?.change,
+    silverChangePct: yfSilver?.changePct,
+    silverRecent: yfSilver?.history?.map(h => h.close) || [],
+  };
+
   // Override stale EIA prices with live Yahoo Finance data if available
   const yfWti = yfQuotes['CL=F'];
   const yfBrent = yfQuotes['BZ=F'];
@@ -595,7 +608,7 @@ export async function synthesize(data) {
     },
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
     tg: { posts: tgData.totalPosts || 0, urgent: tgUrgent, topPosts: tgTop },
-    who, fred, energy, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, news,
+    who, fred, energy, metals, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, news,
     markets, // Live Yahoo Finance market data
     ideas: [], ideasSource: 'disabled',
     // newsFeed for ticker (merged RSS + GDELT + Telegram)
