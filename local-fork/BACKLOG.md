@@ -39,3 +39,4 @@ Recent promotions:
 New items can be added here when they do not yet belong in the active roadmap.
 
 - `backlog-2026-04-27-critical-event-classifier-hardening` — strengthen urgent critical-event classification beyond regex-only matching by incorporating richer source/topic metadata so queue promotion is less vulnerable to aliasing and false negatives.
+- `backlog-2026-04-27-critical-event-transition-audit` — add retained audit/history for critical-event queue transitions so operators can see when a candidate moved between preliminary, corroborated, official-confirmation, and discarded states.

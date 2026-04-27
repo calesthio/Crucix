@@ -4351,6 +4351,72 @@ function detectCriticalEventOfficial(signal = {}) {
   return evidenceSource.includes('official') || /official|government confirmed|ministry confirmed|authority confirmed/.test(text);
 }
 
+function buildCriticalEventPromotion(entry = {}) {
+  const thresholds = entry.thresholds || {};
+  const evidence = entry.evidence || {};
+  const highNeeded = Number(thresholds.minHighTrustCorroboration || 1);
+  const mediumNeeded = Number(thresholds.minMediumTrustCorroboration || 1);
+  const highCount = Number(evidence.highTrustCount || 0);
+  const mediumCount = Number(evidence.mediumTrustCount || 0);
+  const officialCount = Number(evidence.officialCount || 0);
+  const officialRequired = Boolean(thresholds.officialConfirmationRequired);
+  const highMet = highCount >= highNeeded;
+  const mediumMet = mediumCount >= mediumNeeded;
+  const officialMet = !officialRequired || officialCount >= 1;
+  const crossedThreshold = officialMet && (highMet || mediumMet);
+  const unresolved = [];
+  if (!highMet && !mediumMet) {
+    unresolved.push(`needs ${highNeeded} high-trust or ${mediumNeeded} medium-trust corroboration`);
+  }
+  if (officialRequired && !officialMet) unresolved.push('awaiting official confirmation');
+  if (entry.status === 'discarded') unresolved.push('candidate expired before meeting promotion threshold');
+  const basis = [];
+  if (highMet) basis.push(`${highCount} high-trust corroboration hit${highCount === 1 ? '' : 's'}`);
+  if (mediumMet) basis.push(`${mediumCount} medium-trust corroboration hit${mediumCount === 1 ? '' : 's'}`);
+  if (officialMet && officialRequired) basis.push('official confirmation present');
+  if (!basis.length && highCount > 0) basis.push(`${highCount} high-trust corroboration observed so far`);
+  if (!basis.length && mediumCount > 0) basis.push(`${mediumCount} medium-trust corroboration observed so far`);
+  if (!basis.length && Number(evidence.lowTrustCount || 0) > 0) basis.push(`${Number(evidence.lowTrustCount || 0)} low-trust tripwire hit${Number(evidence.lowTrustCount || 0) === 1 ? '' : 's'}`);
+  const state = entry.status === 'discarded'
+    ? 'discarded'
+    : (crossedThreshold ? (officialRequired ? 'official-confirmation' : 'corroborated') : 'preliminary');
+  const summary = crossedThreshold
+    ? `${entry.label || 'Candidate'} crossed the paging threshold via ${basis.join(' and ')}.`
+    : entry.status === 'discarded'
+      ? `${entry.label || 'Candidate'} was discarded because ${unresolved.join(' and ')}.`
+      : `${entry.label || 'Candidate'} remains preliminary because ${unresolved.join(' and ')}.`;
+  return {
+    state,
+    crossedThreshold,
+    crossedAt: crossedThreshold ? (entry.promotedAt || entry.lastEvaluatedAt || entry.lastSeenAt || null) : null,
+    basis,
+    unresolved,
+    summary,
+  };
+}
+
+function buildCriticalEventEvidenceSummary(entry = {}) {
+  const evidence = entry.evidence || {};
+  const promotion = buildCriticalEventPromotion(entry);
+  const reasons = Array.isArray(evidence.reasons) ? evidence.reasons.slice(0, 3) : [];
+  const sources = Array.isArray(evidence.sources) ? evidence.sources.slice(0, 4) : [];
+  return {
+    summary: promotion.summary,
+    basis: promotion.basis,
+    unresolved: promotion.unresolved,
+    reasons,
+    sources,
+    counts: {
+      highTrust: Number(evidence.highTrustCount || 0),
+      mediumTrust: Number(evidence.mediumTrustCount || 0),
+      lowTrust: Number(evidence.lowTrustCount || 0),
+      official: Number(evidence.officialCount || 0),
+      corroboratedHits: Number(evidence.corroboratedHits || 0),
+      suspectHits: Number(evidence.suspectHits || 0),
+    },
+  };
+}
+
 function pruneCriticalEventQueueState(state = getCriticalEventQueueState(), referenceMs = Date.now()) {
   const retentionMs = typeof CRITICAL_EVENT_QUEUE_RETENTION_MS === 'number' ? CRITICAL_EVENT_QUEUE_RETENTION_MS : 24 * 60 * 60 * 1000;
   const nextCandidates = {};
@@ -4419,7 +4485,12 @@ function processCriticalEventQueue(snapshot = {}) {
     const sources = new Set(Array.isArray(existing.evidence?.sources) ? existing.evidence.sources : []);
     const reasons = new Set(Array.isArray(existing.evidence?.reasons) ? existing.evidence.reasons : []);
     if (signal.evidenceSource) sources.add(String(signal.evidenceSource));
-    if (signal.reason) reasons.add(clampText(signal.reason, 220));
+    if (signal.reason) {
+      const summarizedReason = typeof clampText === 'function'
+        ? clampText(signal.reason, 220)
+        : String(signal.reason).slice(0, 220);
+      reasons.add(summarizedReason);
+    }
     const evidence = {
       highTrustCount: Number(existing.evidence?.highTrustCount || 0) + (trustTier === 'high' ? 1 : 0),
       mediumTrustCount: Number(existing.evidence?.mediumTrustCount || 0) + (trustTier === 'medium' ? 1 : 0),
@@ -4434,7 +4505,7 @@ function processCriticalEventQueue(snapshot = {}) {
     const meetsMediumTrust = evidence.mediumTrustCount >= Number(classPolicy.minMediumTrustCorroboration || 1);
     const meetsOfficial = !classPolicy.officialConfirmationRequired || evidence.officialCount >= 1;
     const promoted = meetsOfficial && (meetsHighTrust || meetsMediumTrust);
-    nextCandidates[candidateId] = {
+    const nextEntry = {
       ...existing,
       classId,
       label: signal.signal || existing.label,
@@ -4448,6 +4519,7 @@ function processCriticalEventQueue(snapshot = {}) {
       status: promoted ? 'promoted' : 'monitoring',
       confidenceLabel: promoted ? (classPolicy.officialConfirmationRequired ? 'official-confirmation' : 'corroborated') : 'preliminary',
       severity: classPolicy.severity || 'high',
+      promotedAt: promoted ? (existing.promotedAt || nowIso) : null,
       evidence,
       thresholds: {
         minHighTrustCorroboration: Number(classPolicy.minHighTrustCorroboration || 1),
@@ -4456,6 +4528,12 @@ function processCriticalEventQueue(snapshot = {}) {
         freshnessMinutes,
       },
     };
+    const promotion = buildCriticalEventPromotion(nextEntry);
+    nextCandidates[candidateId] = {
+      ...nextEntry,
+      promotion,
+      evidenceSummary: buildCriticalEventEvidenceSummary({ ...nextEntry, promotion }),
+    };
   }
 
   for (const [candidateId, entry] of Object.entries(nextCandidates)) {
@@ -4463,13 +4541,19 @@ function processCriticalEventQueue(snapshot = {}) {
     const lastSeenMs = new Date(entry.lastSeenAt || entry.firstSeenAt || 0).getTime();
     const freshnessMs = Number(entry.thresholds?.freshnessMinutes || 30) * 60 * 1000;
     if ((nowMs - lastSeenMs) > freshnessMs || Number(entry.retryCount || 0) >= maxRetries) {
-      nextCandidates[candidateId] = {
+      const discardedEntry = {
         ...entry,
         status: 'discarded',
         confidenceLabel: 'discarded',
         discardedAt: nowIso,
         lastEvaluatedAt: nowIso,
         nextCheckAt: null,
+      };
+      const promotion = buildCriticalEventPromotion(discardedEntry);
+      nextCandidates[candidateId] = {
+        ...discardedEntry,
+        promotion,
+        evidenceSummary: buildCriticalEventEvidenceSummary({ ...discardedEntry, promotion }),
       };
     }
   }
@@ -4507,11 +4591,14 @@ function buildCriticalEventQueueContract(snapshot = null) {
       severity: entry.severity || null,
       firstSeenAt: entry.firstSeenAt || null,
       lastSeenAt: entry.lastSeenAt || null,
+      promotedAt: entry.promotedAt || null,
       nextCheckAt: entry.nextCheckAt || null,
       retryCount: Number(entry.retryCount || 0),
       signalId: entry.signalId || null,
       evidence: entry.evidence || {},
       thresholds: entry.thresholds || {},
+      promotion: entry.promotion || buildCriticalEventPromotion(entry),
+      evidenceSummary: entry.evidenceSummary || buildCriticalEventEvidenceSummary(entry),
     }));
   const stateKey = typeof CRITICAL_EVENT_QUEUE_STATE_KEY === 'string' ? CRITICAL_EVENT_QUEUE_STATE_KEY : 'critical-events:queue';
   const retryIntervalMs = typeof CRITICAL_EVENT_QUEUE_RETRY_INTERVAL_MS === 'number' ? CRITICAL_EVENT_QUEUE_RETRY_INTERVAL_MS : 5 * 60 * 1000;
@@ -4529,9 +4616,11 @@ function buildCriticalEventQueueContract(snapshot = null) {
     promotedCount: candidates.filter(item => item.status === 'promoted').length,
     discardedCount: candidates.filter(item => item.status === 'discarded').length,
     candidates: candidates.slice(0, 12),
+    confidenceStates: ['preliminary', 'corroborated', 'official-confirmation', 'discarded'],
     notes: [
       'Monitoring candidates are retained across sweeps so low-trust and medium-trust signals can wait for corroboration instead of paging immediately.',
       'Promotion requires the configured high-trust or medium-trust corroboration threshold, plus official confirmation when the class policy demands it.',
+      'Each candidate now exposes promotion state and an explicit evidence summary explaining why it crossed, missed, or aged out before the paging threshold.',
     ],
   };
 }

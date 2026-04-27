@@ -34,8 +34,10 @@ const context = {
   sweepStartedAt: null,
   process: { env: {} },
   operatorSettingsDefaults: () => ({ version: 'operator-settings-store-v1', updatedAt: null, preferences: { alerts: { operational: { enabled: true, defaultRoute: ['telegram'], escalationRoute: ['telegram', 'discord'], staleSweep: { enabled: true, cooldownMinutes: 30, escalationAfter: 2 }, sourceFailures: { enabled: true, minFailedSources: 3, minDegradedSources: 2, cooldownMinutes: 60, escalationAfter: 3 }, reviewPressure: { enabled: true, minChronicRegions: 2, minPressuredRegions: 2, minLowConfidenceCount: 4, cooldownMinutes: 60, escalationAfter: 2 }, inferenceDegraded: { enabled: true, heuristicFallbackCount: 3, cooldownMinutes: 45, escalationAfter: 2 }, noiseSuppressionPressure: { enabled: true, minRetainedEntries: 25, minRetainedDelta: 3, minConsecutiveGrowthSweeps: 2, minConsecutivePruneSweeps: 2, cooldownMinutes: 90, escalationAfter: 2 } }, criticalEvents: { enabled: true, defaultRoute: ['telegram'], escalationRoute: ['telegram', 'discord'], classes: { governmentSiteViolence: { enabled: true, severity: 'critical', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: false, freshnessMinutes: 20 }, aviationIncident: { enabled: true, severity: 'high', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: false, freshnessMinutes: 30 }, radiationAnomaly: { enabled: true, severity: 'critical', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 1, officialConfirmationRequired: false, freshnessMinutes: 30 }, chokepointDisruption: { enabled: true, severity: 'high', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: false, freshnessMinutes: 45 } } } } } }),
+  __signalState: { policies: {} },
   memory: {
-    getSignalState: () => ({ policies: {} }),
+    getSignalState: () => globalThis.__signalState || { policies: {} },
+    setSignalState: next => { globalThis.__signalState = next; },
     getLlmFailureHistory: () => ({ snapshots: [{ summary: { heuristicFallbackCount: 2, weakClusterCount: 3 } }] }),
     getNoiseSuppressionTelemetryHistory: () => ({ snapshots: [], deltaViews: [], summary: { snapshotCount: 0 } }),
   },
@@ -154,6 +156,15 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
       review: { topReasons: [{ reason: 'no-json-match', count: 1 }] },
     },
     ideasSource: 'llm-failed',
+    corroboratedSignals: [{
+      signal: 'Radiation anomaly detected at Chernobyl',
+      reason: 'Official radiation dashboard and sensor network both show elevated CPM readings.',
+      region: 'Ukraine',
+      evidenceSource: 'official sensor network',
+      sourceHealth: 'hard-data',
+      confidence: 'high',
+      freshestTs: '2099-04-25T20:05:00.000Z',
+    }],
   });
 
   assert.equal(contract.version, 'operator-settings-v1');
@@ -190,6 +201,7 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.alerts.criticalEvents.version, 'critical-event-policy-v1');
   assert.equal(contract.alerts.criticalEvents.queue.version, 'critical-event-queue-v1');
   assert.equal(Array.isArray(contract.alerts.criticalEvents.queue.candidates), true);
+  assert.equal(contract.alerts.criticalEvents.queue.confidenceStates.includes('official-confirmation'), true);
   assert.equal(contract.alerts.criticalEvents.taxonomy.some(item => item.id === 'governmentSiteViolence' && item.severity === 'critical'), true);
   assert.equal(contract.alerts.persistedPreferences.operational.inferenceDegraded.heuristicFallbackCount, 3);
   assert.equal(contract.alerts.persistedPreferences.operational.noiseSuppressionPressure.minConsecutiveGrowthSweeps, 2);

@@ -135,6 +135,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(settings.alerts.operational.version, 'operational-alert-routing-v1');
     assert.equal(settings.alerts.criticalEvents.version, 'critical-event-policy-v1');
     assert.equal(settings.alerts.criticalEvents.queue.version, 'critical-event-queue-v1');
+    assert.equal(Array.isArray(settings.alerts.criticalEvents.queue.confidenceStates), true);
+    assert.equal(settings.alerts.criticalEvents.queue.confidenceStates.includes('official-confirmation'), true);
     assert.equal(Array.isArray(settings.alerts.operational.defaultRoute), true);
     assert.equal(Array.isArray(settings.alerts.criticalEvents.taxonomy), true);
     assert.equal(Array.isArray(settings.alerts.criticalEvents.queue.candidates), true);

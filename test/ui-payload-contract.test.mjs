@@ -106,6 +106,7 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(typeof health.reviewAcks.active, 'number');
     assert.equal(health.operationalAlerts.version, 'operational-alert-routing-v1');
     assert.equal(health.criticalEventQueue.version, 'critical-event-queue-v1');
+    assert.equal(Array.isArray(health.criticalEventQueue.confidenceStates), true);
     assert.equal(typeof health.criticalEventQueue.promotedCount, 'number');
     assertOperatorLlmState(health);
 

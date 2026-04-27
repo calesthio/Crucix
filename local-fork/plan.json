@@ -973,7 +973,7 @@
           {
             "id": "effort-35.3",
             "title": "Add alert-state promotion rules and confidence labels such as preliminary, corroborated, and official-confirmation, with explicit evidence summaries explaining why a candidate crossed the paging threshold",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-35.4",
@@ -1034,9 +1034,9 @@
     ]
   },
   "cycleState": {
-    "sequence": 141,
+    "sequence": 142,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-141"
+    "lastCompletedCycleId": "2026-04-27-cycle-142"
   },
   "backlog": [
     {
@@ -1045,6 +1045,13 @@
       "status": "pending",
       "source": "cycle-141",
       "reason": "The first urgent candidate queue classifies signals from existing text fields and evidence labels, which is sufficient for the slice but still vulnerable to aliasing and false negatives until source/topic metadata participates in class detection."
+    },
+    {
+      "id": "backlog-2026-04-27-critical-event-transition-audit",
+      "title": "Add audit/history for critical-event queue state transitions",
+      "status": "pending",
+      "source": "cycle-142",
+      "reason": "The queue now exposes promotion state and evidence summaries, but there is no retained transition history yet for when a candidate moved from preliminary to corroborated, official-confirmation, or discarded."
     }
   ]
 }
