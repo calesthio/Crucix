@@ -4625,6 +4625,63 @@ function buildCriticalEventQueueContract(snapshot = null) {
   };
 }
 
+function buildCriticalEventRoutingContract(snapshot = null) {
+  const operatorSettings = loadOperatorSettings();
+  const prefs = operatorSettings.preferences.alerts?.criticalEvents || operatorSettingsDefaults().preferences.alerts.criticalEvents;
+  const queue = buildCriticalEventQueueContract(snapshot);
+  const activeRoutes = [
+    config.telegram?.botToken && config.telegram?.chatId ? 'telegram' : null,
+    config.discord?.botToken || config.discord?.webhookUrl ? 'discord' : null,
+  ].filter(Boolean);
+  const eligibleCandidates = (queue.candidates || [])
+    .filter(candidate => candidate?.promotion?.crossedThreshold && candidate?.status === 'promoted')
+    .map(candidate => {
+      const preview = [
+        `CRUCIX CRITICAL EVENT: ${candidate.label}`,
+        `Class: ${candidate.classId}`,
+        `Confidence: ${candidate.confidenceLabel}`,
+        candidate.region ? `Region: ${candidate.region}` : null,
+        `Severity: ${candidate.severity || 'high'}`,
+        candidate.evidenceSummary?.summary ? `Why now: ${candidate.evidenceSummary.summary}` : null,
+        candidate.evidenceSummary?.basis?.length ? `Basis: ${candidate.evidenceSummary.basis.join('; ')}` : null,
+        candidate.evidenceSummary?.unresolved?.length ? `Caveats: ${candidate.evidenceSummary.unresolved.join('; ')}` : null,
+      ].filter(Boolean).join('\n');
+      return {
+        candidateId: candidate.candidateId,
+        classId: candidate.classId,
+        label: candidate.label,
+        confidenceLabel: candidate.confidenceLabel,
+        severity: candidate.severity || 'high',
+        promotedAt: candidate.promotedAt || candidate.promotion?.crossedAt || null,
+        region: candidate.region || null,
+        freshnessMinutes: candidate.thresholds?.freshnessMinutes || null,
+        routePlan: {
+          defaultRoute: Array.isArray(prefs.defaultRoute) ? prefs.defaultRoute : [],
+          escalationRoute: Array.isArray(prefs.escalationRoute) ? prefs.escalationRoute : [],
+          activeRoutes,
+        },
+        corroborationBasis: candidate.promotion?.basis || [],
+        unresolvedCaveats: candidate.evidenceSummary?.unresolved || [],
+        shouldNotify: activeRoutes.length > 0,
+        messagePreview: preview,
+      };
+    });
+  return {
+    version: 'critical-event-routing-v1',
+    enabled: Boolean(config.alerting?.enabled) && Boolean(prefs.enabled),
+    dispatchMode: 'contract-only',
+    activeRoutes,
+    defaultRoute: Array.isArray(prefs.defaultRoute) ? prefs.defaultRoute : [],
+    escalationRoute: Array.isArray(prefs.escalationRoute) ? prefs.escalationRoute : [],
+    eligibleCount: eligibleCandidates.length,
+    eligibleCandidates: eligibleCandidates.slice(0, 8),
+    notes: [
+      'Critical-event routing exposes who would be notified, with what confidence, corroboration basis, and unresolved caveats.',
+      'This contract is route-ready and previewable without silently emitting outbound operator notifications during validation.',
+    ],
+  };
+}
+
 function buildCriticalEventPolicyContract(snapshot = null) {
   const operatorSettings = loadOperatorSettings();
   const prefs = operatorSettings.preferences.alerts?.criticalEvents || operatorSettingsDefaults().preferences.alerts.criticalEvents;
@@ -4645,9 +4702,10 @@ function buildCriticalEventPolicyContract(snapshot = null) {
     taxonomy: classes,
     classMap: Object.fromEntries(classes.map(item => [item.id, item])),
     queue: buildCriticalEventQueueContract(snapshot),
+    routing: buildCriticalEventRoutingContract(snapshot),
     notes: [
       'Critical-event policy defines fast-alert classes and the corroboration threshold required before an operator notification is eligible.',
-      'The urgent candidate queue now retains monitoring candidates across sweeps, but proactive operator routing lands in a later roadmap slice.',
+      'The critical-event routing contract now exposes vetted candidate previews, routes, corroboration basis, and unresolved caveats before any future automatic send loop is enabled.',
     ],
   };
 }
@@ -5605,12 +5663,14 @@ app.get('/api/data', async (req, res) => {
   const sourceOps = buildOperatorSourceOps(snapshot);
   const reviewQueue = buildOperatorReviewQueue(review, { quality: snapshot.newsClusterQuality || null });
   const criticalEventQueue = buildCriticalEventQueueContract(snapshot);
+  const criticalEventRouting = buildCriticalEventRoutingContract(snapshot);
   res.json({
     ...snapshot,
     llmState,
     runtimeLlm: llmState.runtimeLlm,
     reviewQueue,
     criticalEventQueue,
+    criticalEventRouting,
     reviewWorkflow: buildReviewWorkflowContract(snapshot, { queue: reviewQueue, review }),
     sourceInventory: sourceOps.inventory,
     sourceOps,
@@ -6203,6 +6263,7 @@ app.get('/api/health', (req, res) => {
   const sourceOps = buildOperatorSourceOps(currentData || null);
   const operationalAlerts = summarizeOperationalAlertState(currentData || null);
   const criticalEventQueue = buildCriticalEventQueueContract(currentData || null);
+  const criticalEventRouting = buildCriticalEventRoutingContract(currentData || null);
   const responseStatus = shuttingDown ? 503 : 200;
   res.status(responseStatus).json({
     status: shuttingDown ? 'shutting-down' : 'ok',
@@ -6271,6 +6332,7 @@ app.get('/api/health', (req, res) => {
     } : null,
     operationalAlerts,
     criticalEventQueue,
+    criticalEventRouting,
   });
 });
 

@@ -106,7 +106,9 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(typeof health.reviewAcks.active, 'number');
     assert.equal(health.operationalAlerts.version, 'operational-alert-routing-v1');
     assert.equal(health.criticalEventQueue.version, 'critical-event-queue-v1');
+    assert.equal(health.criticalEventRouting.version, 'critical-event-routing-v1');
     assert.equal(Array.isArray(health.criticalEventQueue.confidenceStates), true);
+    assert.equal(Array.isArray(health.criticalEventRouting.eligibleCandidates), true);
     assert.equal(typeof health.criticalEventQueue.promotedCount, 'number');
     assertOperatorLlmState(health);
 
@@ -119,7 +121,9 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(typeof data.reviewQueue.state, 'string');
     assert.equal(data.reviewWorkflow.version, 'review-workflow-v1');
     assert.equal(data.criticalEventQueue.version, 'critical-event-queue-v1');
+    assert.equal(data.criticalEventRouting.version, 'critical-event-routing-v1');
     assert.equal(Array.isArray(data.criticalEventQueue.candidates), true);
+    assert.equal(Array.isArray(data.criticalEventRouting.eligibleCandidates), true);
     assert.equal(typeof data.criticalEventQueue.activeCount, 'number');
     assert.equal(typeof data.reviewQueue.summary, 'string');
     assert.equal(typeof data.reviewWorkflow.noiseSuppression.pressureAlert.active, 'boolean');
@@ -148,6 +152,7 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(settings.config.contract.version, 'runtime-config-v1');
     assert.equal(settings.persistence.capabilities.writeApi, false);
     assert.equal(settings.alerts.criticalEvents.queue.version, 'critical-event-queue-v1');
+    assert.equal(settings.alerts.criticalEvents.routing.version, 'critical-event-routing-v1');
     assert.equal(settings.access.role, 'operator');
     assert.equal(settings.access.adminSurface, '/admin/settings');
     assert.equal(settings.access.localAdminRequired, true);

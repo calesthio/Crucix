@@ -150,6 +150,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(settings.alerts.operational.version, 'operational-alert-routing-v1');
     assert.equal(settings.alerts.criticalEvents.version, 'critical-event-policy-v1');
     assert.equal(settings.alerts.criticalEvents.queue.version, 'critical-event-queue-v1');
+    assert.equal(settings.alerts.criticalEvents.routing.version, 'critical-event-routing-v1');
     assert.equal(settings.alerts.criticalEvents.classMap.governmentSiteViolence.officialConfirmationRequired, true);
     assert.equal(settings.alerts.criticalEvents.classMap.aviationIncident.freshnessMinutes, 25);
     assert.equal(settings.alerts.persistedPreferences.operational.staleSweep.cooldownMinutes, 25);

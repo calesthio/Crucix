@@ -978,7 +978,7 @@
           {
             "id": "effort-35.4",
             "title": "Expose proactive alert routing for narrowly scoped critical events so Crucix can send immediate vetted operator notifications with freshness, confidence, corroboration basis, and unresolved caveats",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -1034,9 +1034,9 @@
     ]
   },
   "cycleState": {
-    "sequence": 142,
+    "sequence": 143,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-142"
+    "lastCompletedCycleId": "2026-04-27-cycle-143"
   },
   "backlog": [
     {
@@ -1052,6 +1052,13 @@
       "status": "pending",
       "source": "cycle-142",
       "reason": "The queue now exposes promotion state and evidence summaries, but there is no retained transition history yet for when a candidate moved from preliminary to corroborated, official-confirmation, or discarded."
+    },
+    {
+      "id": "backlog-2026-04-27-critical-event-delivery-audit",
+      "title": "Add delivery audit and resend state for critical-event notifications",
+      "status": "pending",
+      "source": "cycle-143",
+      "reason": "The routing contract now exposes who would be notified and through which routes, but retained delivery outcomes and resend state should be tracked before an automatic outbound send loop is enabled."
     }
   ]
 }
