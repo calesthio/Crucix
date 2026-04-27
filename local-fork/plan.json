@@ -1112,21 +1112,33 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-44",
+        "title": "Shared runtime restart audit feedback helpers",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-44.1",
+            "title": "Centralize restart-audit polling and completion messaging in the shared ops shell so admin and diagnostics runtime feedback stop drifting",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 152,
+    "sequence": 153,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-152"
+    "lastCompletedCycleId": "2026-04-27-cycle-153"
   },
   "backlog": [
     {
-      "id": "backlog-2026-04-27-runtime-restart-audit-shared-poller",
-      "title": "Centralize restart-audit polling and completion messaging in the shared ops shell instead of per-page inline logic",
+      "id": "backlog-2026-04-27-runtime-action-feedback-contract",
+      "title": "Generalize shared runtime-action feedback helpers beyond restart-safe so stop or future bounded actions can report queued, completed, and failed states consistently",
       "status": "pending",
-      "source": "cycle-152",
-      "reason": "Admin and diagnostics pages now each implement small restart-audit poll loops inline. A shared shell helper would reduce drift, simplify future runtime action feedback, and keep operator messaging consistent across surfaces."
+      "source": "cycle-153",
+      "reason": "The restart-audit helper is now centralized in the shared ops shell, but runtime-action feedback is still restart-specific. A small shared contract for runtime actions would make stop and future bounded actions reuse the same queued/completed/failed operator messaging path."
     },
     {
       "id": "backlog-2026-04-27-critical-event-classifier-observability",

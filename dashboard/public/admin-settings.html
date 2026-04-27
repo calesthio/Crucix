@@ -11,7 +11,7 @@
 <script src="/ops-shell.js"></script>
 <script>
 {
-const { esc, row, tags, renderCard, mountOpsShell } = window.CRUCIX_OPS_SHELL;
+const { esc, row, tags, renderCard, mountOpsShell, createRestartAuditMonitor } = window.CRUCIX_OPS_SHELL;
 const shell = mountOpsShell({
   activeSurface: 'admin-settings',
   kicker: 'Crucix admin settings',
@@ -40,9 +40,7 @@ async function downloadJson(url, filename){ const res = await fetch(url); if(!re
 async function exportPreferences(){ return downloadJson('/api/settings/export', 'crucix-operator-settings.json'); }
 async function exportBundle(){ return downloadJson('/api/settings/export?mode=bundle', 'crucix-settings-state-bundle.json'); }
 async function importBundle(){ const input = document.createElement('input'); input.type='file'; input.accept='application/json,.json'; const file = await new Promise(resolve => { input.addEventListener('change', () => resolve(input.files?.[0] || null), { once:true }); input.click(); }); if(!file) return null; const text = await file.text(); const payload = JSON.parse(text); const res = await fetch('/api/settings/import', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }); if(!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); }
-let restartAuditPollHandle = null;
-function clearRestartAuditPoll(){ if(restartAuditPollHandle){ clearTimeout(restartAuditPollHandle); restartAuditPollHandle = null; } }
-function scheduleRestartAuditPoll(message='Waiting for restart-safe outcome…'){ clearRestartAuditPoll(); restartAuditPollHandle = setTimeout(() => { shell.status.textContent = message; boot({ preserveStatus: message }); }, 2000); }
+const restartAuditMonitor = createRestartAuditMonitor(shell, { onRefresh: (message) => boot({ preserveStatus: message }) });
 async function runtimeControl(action){ const res = await fetch('/api/runtime/control', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action }) }); if(!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); }
 async function boot(options = {}){
   try {
@@ -73,17 +71,11 @@ async function boot(options = {}){
     document.getElementById('exportBtn')?.addEventListener('click', async () => { try { await exportPreferences(); shell.status.textContent = `Exported settings at ${new Date().toLocaleTimeString()}`; } catch (err) { shell.status.textContent = `Failed to export settings: ${err.message}`; } });
     document.getElementById('exportBundleBtn')?.addEventListener('click', async () => { try { await exportBundle(); shell.status.textContent = `Exported backup bundle at ${new Date().toLocaleTimeString()}`; } catch (err) { shell.status.textContent = `Failed to export backup bundle: ${err.message}`; } });
     document.getElementById('importBtn')?.addEventListener('click', async () => { try { const result = await importBundle(); if(result) shell.status.textContent = `Imported ${result.mode || 'settings'} backup at ${new Date().toLocaleTimeString()}`; } catch (err) { shell.status.textContent = `Failed to import backup bundle: ${err.message}`; } });
-    if (latestRestartAudit?.phase === 'queued') {
-      scheduleRestartAuditPoll('Restart-safe is queued, polling for completion…');
-    } else {
-      clearRestartAuditPoll();
-      if (preserveStatus && latestRestartAudit?.phase) {
-        shell.status.textContent = `Latest restart-safe outcome: ${latestRestartAudit.phase} (${latestRestartAudit.status || 'unknown'})`;
-      }
-    }
-    document.getElementById('restartBtn')?.addEventListener('click', async () => { try { await runtimeControl('restart-safe'); shell.status.textContent = 'Queued safe runtime restart, polling for completion…'; scheduleRestartAuditPoll('Restart-safe is queued, polling for completion…'); } catch (err) { shell.status.textContent = `Failed to queue restart: ${err.message}`; } });
+    restartAuditMonitor.update(latestRestartAudit, { preserveStatus, queuedMessage: 'Restart-safe is queued, polling for completion…' });
+    document.getElementById('restartBtn')?.addEventListener('click', async () => { try { await runtimeControl('restart-safe'); const message = 'Queued safe runtime restart, polling for completion…'; shell.status.textContent = message; restartAuditMonitor.schedule('Restart-safe is queued, polling for completion…'); } catch (err) { shell.status.textContent = `Failed to queue restart: ${err.message}`; } });
     document.getElementById('stopBtn')?.addEventListener('click', async () => { try { await runtimeControl('stop'); shell.status.textContent = 'Queued local runtime stop.'; } catch (err) { shell.status.textContent = `Failed to queue stop: ${err.message}`; } });
   } catch (err) {
+    restartAuditMonitor.clear();
     shell.status.textContent = `Failed to load settings: ${err.message}`;
   }
 }

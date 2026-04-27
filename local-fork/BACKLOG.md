@@ -44,10 +44,11 @@ Recent promotions:
 - Runtime restart audit visibility work was promoted into `local-fork/plan.json` as Epic 41, effort 41.1 on 2026-04-27.
 - Runtime restart audit UI/workflow surfacing was promoted into `local-fork/plan.json` as Epic 42, effort 42.1 on 2026-04-27.
 - Runtime restart audit live-refresh feedback was promoted into `local-fork/plan.json` as Epic 43, effort 43.1 on 2026-04-27.
+- Shared runtime restart-audit polling helpers were promoted into `local-fork/plan.json` as Epic 44, effort 44.1 on 2026-04-27.
 
 New items can be added here when they do not yet belong in the active roadmap.
 
-- `backlog-2026-04-27-runtime-restart-audit-shared-poller` — centralize restart-audit polling and completion messaging in the shared ops shell instead of duplicating small poll loops per page.
+- `backlog-2026-04-27-runtime-action-feedback-contract` — generalize the shared runtime-action feedback helper beyond restart-safe so stop and future bounded runtime actions can report queued, completed, and failed states consistently.
 - `backlog-2026-04-27-critical-event-classifier-observability` — expose critical-event classifier match basis and ambiguity flags so operators can inspect why a signal matched a class or was intentionally discarded as ambiguous during queue evaluation.
 - `backlog-2026-04-27-critical-event-audit-operator-surface` — expose critical-event queue transition audit on operator-facing diagnostics surfaces so retained history is easier to review than raw contract JSON alone.
 - `backlog-2026-04-27-critical-event-delivery-operator-surface` — expose critical-event delivery audit and resend posture on operator-facing diagnostics surfaces so preview-only outcomes, blocked routes, and resend eligibility are visible without reading raw contract JSON.
