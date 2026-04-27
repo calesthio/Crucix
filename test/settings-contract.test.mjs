@@ -95,6 +95,8 @@ const context = {
   }),
   buildOperatorLlmStateContract: () => ({ status: 'applied', label: 'LLM APPLIED', summary: 'LLM participated', surfaces: { analysis: { label: 'LLM APPLIED' }, ideas: { label: 'STATIC BY DESIGN' } } }),
   buildNoiseSuppressionContract: () => ({ version: 'noise-suppression-v1', summary: { activeSourceRuleCount: 1 }, sourceRules: { activeRules: [{ sourceId: 'gdelt-global' }], suggestedRules: [] } }),
+  sourceControlAuditSnapshot: () => [],
+  settingsAdminAuditSnapshot: () => [],
   getSweepWatchdogSnapshot: () => ({ timeoutMinutes: 45, timeoutMs: 2700000, pollMs: 30000, overdue: false, overdueMs: 0, phase: 'idle', recoveryClassification: null }),
   getLlmProviderReadinessSnapshot: () => ({ status: 'unknown', lastSuccess: null, lastFailure: null, lastProbeType: null }),
   module: { exports: {} },
@@ -201,8 +203,10 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.sourceConsole.performanceWorkflow.attributionDiagnostics.version, 'source-attribution-diagnostics-v1');
   assert.equal(Array.isArray(contract.sourceConsole.performanceWorkflow.attributionHeadlines), true);
   assert.equal(Array.isArray(contract.sourceConsole.performanceWorkflow.confidenceCaveats), true);
-  assert.equal(contract.sourceConsole.sourceControls.version, 'source-ops-control-v1');
+  assert.equal(contract.sourceConsole.sourceControls.version, 'source-ops-control-v2');
   assert.equal(contract.sourceConsole.sourceControls.endpoint, '/api/source-ops/control');
+  assert.equal(contract.sourceConsole.sourceControls.auditEndpoint, '/api/source-ops/audit');
+  assert.equal(Array.isArray(contract.sourceConsole.sourceControls.recentAudit), true);
   assert.deepEqual(contract.sources.selection.enabledCategories, ['news']);
   assert.deepEqual(contract.sources.selection.enabledSourceIds, ['gdelt-global']);
   assert.deepEqual(contract.sources.selection.suppressedSourceIds, []);

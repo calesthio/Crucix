@@ -67,6 +67,7 @@ async function withBootedServer({ port, env }, fn) {
       reviewWorkflowUrl: `http://127.0.0.1:${port}/api/brief/news/review`,
       reviewWorkflowActionUrl: `http://127.0.0.1:${port}/api/review-workflow/action`,
       reviewWorkflowAuditUrl: `http://127.0.0.1:${port}/api/review-workflow/audit`,
+      sourceControlAuditUrl: `http://127.0.0.1:${port}/api/source-ops/audit`,
       settingsAuditUrl: `http://127.0.0.1:${port}/api/settings/audit`,
       pageUrl: `http://127.0.0.1:${port}/settings`,
       adminPageUrl: `http://127.0.0.1:${port}/admin/settings`,
@@ -86,7 +87,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
       OLLAMA_BASE_URL: 'http://127.0.0.1:11434',
       DEBUG_ENDPOINT_EXPOSURE: 'local-only',
     },
-  }, async ({ settingsUrl, adminSettingsUrl, llmOperationsUrl, reviewWorkflowUrl, reviewWorkflowActionUrl, reviewWorkflowAuditUrl, settingsAuditUrl, pageUrl, adminPageUrl, llmOpsPageUrl }) => {
+  }, async ({ settingsUrl, adminSettingsUrl, llmOperationsUrl, reviewWorkflowUrl, reviewWorkflowActionUrl, reviewWorkflowAuditUrl, sourceControlAuditUrl, settingsAuditUrl, pageUrl, adminPageUrl, llmOpsPageUrl }) => {
     const health = await waitFor(`http://127.0.0.1:${BASE_PORT}/api/health`, payload => payload?.runtimeIdentity?.pid && payload?.sweepWatchdog?.phase, 30000);
     assert.equal(typeof health.runtimeIdentity.pid, 'number');
     assert.equal(health.runtimeControl.version, 'runtime-control-v1');
@@ -161,6 +162,31 @@ test('booted operator and admin settings surfaces stay role-separated with local
     const audit = await waitFor(reviewWorkflowAuditUrl, payload => Array.isArray(payload?.entries), 30000);
     assert.equal(audit.entries.some(item => item.policyKey === 'noiseSuppressionPressure' && item.targetType === 'operational-alert'), true);
 
+    const suppressSource = await fetch(reviewWorkflowActionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'suppress-source', sourceId: 'gdelt-global', note: 'triage test suppression' }),
+    }).then(r => r.json().then(body => ({ status: r.status, body })));
+    assert.equal(suppressSource.status, 200);
+    assert.equal(suppressSource.body.ok, true);
+    assert.equal(suppressSource.body.after.suppressed, true);
+    assert.equal(suppressSource.body.undo.action, 'unsuppress-source');
+    assert.equal(suppressSource.body.reviewWorkflowAudit.status, 'applied');
+
+    const undoSuppress = await fetch(reviewWorkflowActionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'unsuppress-source', sourceId: 'gdelt-global', note: 'triage test undo' }),
+    }).then(r => r.json().then(body => ({ status: r.status, body })));
+    assert.equal(undoSuppress.status, 200);
+    assert.equal(undoSuppress.body.ok, true);
+    assert.equal(undoSuppress.body.after.suppressed, false);
+
+    const sourceControlAudit = await waitFor(sourceControlAuditUrl, payload => Array.isArray(payload?.entries) && payload.entries.length >= 2, 30000);
+    assert.equal(sourceControlAudit.version, 'source-control-audit-v1');
+    assert.equal(sourceControlAudit.entries.some(item => item.action === 'suppress-source' && item.sourceId === 'gdelt-global' && item.undo?.action === 'unsuppress-source'), true);
+    assert.equal(sourceControlAudit.entries.some(item => item.action === 'unsuppress-source' && item.sourceId === 'gdelt-global'), true);
+
     assert.equal(settings.persistence.capabilities.writeApi, false);
     assert.equal(settings.sourceConsole.version, 'source-console-v1');
     assert.equal(settings.sourceConsole.surface, '/source-ops');
@@ -173,6 +199,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(Array.isArray(settings.sourceConsole.performanceWorkflow.attributionHeadlines), true);
     assert.equal(Array.isArray(settings.sourceConsole.performanceWorkflow.confidenceCaveats), true);
     assert.equal(settings.sourceConsole.sourceControls.endpoint, '/api/source-ops/control');
+    assert.equal(settings.sourceConsole.sourceControls.auditEndpoint, '/api/source-ops/audit');
+    assert.equal(Array.isArray(settings.sourceConsole.sourceControls.recentAudit), true);
     assert.equal(settings.access.role, 'operator');
     assert.equal(settings.access.diagnosticsSurface, '/diagnostics');
     assert.equal(settings.access.sourceConsoleSurface, '/source-ops');
@@ -186,11 +214,11 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(admin.persistence.capabilities.auditHistory, true);
     assert.equal(admin.persistence.capabilities.writeApi, true);
     assert.equal(admin.access.role, 'admin');
-     assert.equal(admin.admin.boundaries.requiresLocalRequest, true);
-+    assert.equal(admin.admin.controls.auditEndpoint, '/api/settings/audit');
-+    assert.equal(admin.admin.backup.bundleVersion, 'settings-state-bundle-v1');
-+    assert.equal(Array.isArray(admin.admin.auditTrail), true);
-     assert.equal(admin.runtimeControl.version, 'runtime-control-v1');
+    assert.equal(admin.admin.boundaries.requiresLocalRequest, true);
+    assert.equal(admin.admin.controls.auditEndpoint, '/api/settings/audit');
+    assert.equal(admin.admin.backup.bundleVersion, 'settings-state-bundle-v1');
+    assert.equal(Array.isArray(admin.admin.auditTrail), true);
+    assert.equal(admin.runtimeControl.version, 'runtime-control-v1');
     assert.equal(admin.admin.boundaries.requiresLocalRequest, true);
     assert.equal(admin.runtimeControl.version, 'runtime-control-v1');
     assert.equal(typeof admin.runtimeControl.jobs.synthesis.attemptCount, 'number');

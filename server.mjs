@@ -30,6 +30,7 @@ const REVIEW_WORKFLOW_AUDIT_PATH = join(RUNS_DIR, 'review-workflow-audit.json');
 const CLUSTER_REPAIR_ACTIONS_PATH = join(RUNS_DIR, 'cluster-repair-actions.json');
 const NOISE_SUPPRESSION_HISTORY_PATH = join(RUNS_DIR, 'noise-suppression-history.json');
 const SETTINGS_ADMIN_AUDIT_PATH = join(RUNS_DIR, 'settings-admin-audit.json');
+const SOURCE_CONTROL_AUDIT_PATH = join(RUNS_DIR, 'source-control-audit.json');
 const AGENT_ANALYSIS_VALIDATION_SCRIPT = join(ROOT, 'scripts/agent-analysis-validation-summary.mjs');
 const OPENSKY_STATE_PATH = join(ROOT, 'runs', 'cache', 'opensky-state.json');
 const OPERATOR_SETTINGS_PATH = process.env.OPERATOR_SETTINGS_PATH || join(ROOT, 'runs', 'operator-settings.json');
@@ -94,6 +95,7 @@ const CLUSTER_REPAIR_ARTIFACT_RETENTION_MS = Math.max(1, Number(config.review?.r
 const CLUSTER_REPAIR_ARTIFACT_MAX_ENTRIES = Math.max(1, Number(config.review?.repairArtifactMaxEntries || 50));
 const CLUSTER_REPAIR_ACTION_MAX_HISTORY = Math.max(20, Number(config.review?.clusterRepairActionMaxEntries || 200));
 const REVIEW_WORKFLOW_AUDIT_MAX_ENTRIES = Math.max(20, Number(config.review?.workflowAuditMaxEntries || 200));
+const SOURCE_CONTROL_AUDIT_MAX_ENTRIES = Math.max(20, Number(config.review?.sourceControlAuditMaxEntries || 250));
 const NOISE_SUPPRESSION_HISTORY_RETENTION_MS = Math.max(1, Number(config.review?.noiseSuppressionHistoryRetentionDays || 14)) * 24 * 60 * 60 * 1000;
 const NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS = Math.max(1, Number(config.review?.noiseSuppressionHistoryHalfLifeDays || 5)) * 24 * 60 * 60 * 1000;
 const NOISE_SUPPRESSION_HISTORY_MAX_DUPLICATE_BURSTS = Math.max(20, Number(config.review?.noiseSuppressionHistoryMaxDuplicateBursts || 200));
@@ -101,6 +103,7 @@ const NOISE_SUPPRESSION_HISTORY_MAX_LOW_VALUE_EVENTS = Math.max(20, Number(confi
 const NOISE_SUPPRESSION_HISTORY_MAX_SOURCE_RULE_HITS = Math.max(20, Number(config.review?.noiseSuppressionHistoryMaxSourceRuleHits || 200));
 const reviewAcks = loadReviewAcks();
 const reviewWorkflowAudit = loadReviewWorkflowAudit();
+const sourceControlAudit = loadSourceControlAudit();
 const clusterRepairActions = loadClusterRepairActions();
 const noiseSuppressionHistory = loadNoiseSuppressionHistory();
 const sweepWatchdogTelemetry = {
@@ -881,6 +884,111 @@ function reviewWorkflowAuditSnapshot(limit = 25) {
   return reviewWorkflowAudit.slice(-Math.max(1, limit)).reverse();
 }
 
+function loadSourceControlAudit() {
+  return Array.isArray(loadJsonFile(SOURCE_CONTROL_AUDIT_PATH, [])) ? loadJsonFile(SOURCE_CONTROL_AUDIT_PATH, []) : [];
+}
+
+function saveSourceControlAudit() {
+  saveJsonFile(SOURCE_CONTROL_AUDIT_PATH, sourceControlAudit.slice(-SOURCE_CONTROL_AUDIT_MAX_ENTRIES));
+}
+
+function sourceControlAuditSnapshot(limit = 25) {
+  return sourceControlAudit.slice(-Math.max(1, limit)).reverse();
+}
+
+function buildSourceControlUndo(action = '', sourceId = '', before = {}) {
+  if (!sourceId) return null;
+  if (action === 'suppress-source' && !before?.suppressed) {
+    return {
+      action: 'unsuppress-source',
+      sourceId,
+      endpoint: '/api/source-ops/control',
+      note: 'Removes this source from the suppression list.',
+    };
+  }
+  if (action === 'quarantine-source' && !before?.quarantined) {
+    return {
+      action: 'clear-quarantine',
+      sourceId,
+      endpoint: '/api/source-ops/control',
+      note: 'Removes this source from the quarantine list.',
+    };
+  }
+  return null;
+}
+
+function recordSourceControlAudit(entry = {}) {
+  sourceControlAudit.push({
+    id: `source-control-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    recordedAt: new Date().toISOString(),
+    ...entry,
+  });
+  while (sourceControlAudit.length > SOURCE_CONTROL_AUDIT_MAX_ENTRIES) sourceControlAudit.shift();
+  saveSourceControlAudit();
+  return sourceControlAudit[sourceControlAudit.length - 1];
+}
+
+function applySourceControlAction(action = '', sourceId = '', options = {}) {
+  const trimmedAction = String(action || '').trim();
+  const trimmedSourceId = String(sourceId || '').trim();
+  if (!trimmedSourceId) throw new Error('sourceId is required');
+  const allowedActions = ['suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine'];
+  if (!allowedActions.includes(trimmedAction)) throw new Error('unsupported-source-op-action');
+
+  const current = loadOperatorSettings();
+  const suppressed = new Set(current.preferences.sources.suppressedSourceIds || []);
+  const quarantined = new Set(current.preferences.sources.quarantinedSourceIds || []);
+  const before = {
+    suppressed: suppressed.has(trimmedSourceId),
+    quarantined: quarantined.has(trimmedSourceId),
+  };
+
+  if (trimmedAction === 'suppress-source') suppressed.add(trimmedSourceId);
+  if (trimmedAction === 'unsuppress-source') suppressed.delete(trimmedSourceId);
+  if (trimmedAction === 'quarantine-source') quarantined.add(trimmedSourceId);
+  if (trimmedAction === 'clear-quarantine') quarantined.delete(trimmedSourceId);
+
+  const saved = mergeOperatorSettingsPatch({
+    preferences: {
+      sources: {
+        suppressedSourceIds: Array.from(suppressed).sort((a, b) => a.localeCompare(b)),
+        quarantinedSourceIds: Array.from(quarantined).sort((a, b) => a.localeCompare(b)),
+      },
+    },
+  });
+
+  const after = {
+    suppressed: saved.preferences.sources.suppressedSourceIds.includes(trimmedSourceId),
+    quarantined: saved.preferences.sources.quarantinedSourceIds.includes(trimmedSourceId),
+  };
+  const changed = before.suppressed !== after.suppressed || before.quarantined !== after.quarantined;
+  const undo = buildSourceControlUndo(trimmedAction, trimmedSourceId, before);
+  const audit = recordSourceControlAudit({
+    action: trimmedAction,
+    sourceId: trimmedSourceId,
+    changed,
+    status: changed ? 'applied' : 'noop',
+    before,
+    after,
+    undo,
+    note: options.note || null,
+    actorSurface: options.actorSurface || null,
+    actorEndpoint: options.actorEndpoint || null,
+    workflowAction: options.workflowAction || false,
+  });
+
+  return {
+    action: trimmedAction,
+    sourceId: trimmedSourceId,
+    changed,
+    before,
+    after,
+    undo,
+    controls: saved.preferences.sources,
+    audit,
+  };
+}
+
 function normalizeOperationalPolicyState(state = {}) {
   return {
     active: Boolean(state?.active),
@@ -1650,7 +1758,7 @@ function buildReviewWorkflowContract(snapshot = currentData || null, review = nu
     endpoint: '/api/review-workflow/action',
     auditEndpoint: '/api/review-workflow/audit',
     requiresLocalAdmin: true,
-    supportedActions: ['ack', 'snooze', 'ack-noise-suppression-pressure', 'snooze-noise-suppression-pressure', 'suppress-source', 'quarantine-source', 'promote-shadow', 'merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'],
+    supportedActions: ['ack', 'snooze', 'ack-noise-suppression-pressure', 'snooze-noise-suppression-pressure', 'suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine', 'promote-shadow', 'merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'],
     queueSummary: queue ? {
       state: queue.state || null,
       totalItems: queue.totalItems || 0,
@@ -4444,10 +4552,12 @@ function buildOperatorSettingsContract(snapshot = null) {
       performanceHistory: sourceOps?.performanceHistory || null,
       healthHistory: sourceOps?.history || null,
       sourceControls: {
-        version: 'source-ops-control-v1',
+        version: 'source-ops-control-v2',
         endpoint: '/api/source-ops/control',
+        auditEndpoint: '/api/source-ops/audit',
         requiresLocalAdmin: true,
         supportedActions: ['suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine'],
+        recentAudit: sourceControlAuditSnapshot(12),
       },
       noiseSuppression: {
         ...buildNoiseSuppressionContract(activeSnapshot),
@@ -5157,29 +5267,25 @@ app.post('/api/source-ops/control', requireDebugAccess, (req, res) => {
   if (!sourceId) {
     return res.status(400).json({ ok: false, error: 'sourceId is required' });
   }
-  const current = loadOperatorSettings();
-  const suppressed = new Set(current.preferences.sources.suppressedSourceIds || []);
-  const quarantined = new Set(current.preferences.sources.quarantinedSourceIds || []);
-  if (action === 'suppress-source') suppressed.add(sourceId);
-  if (action === 'unsuppress-source') suppressed.delete(sourceId);
-  if (action === 'quarantine-source') quarantined.add(sourceId);
-  if (action === 'clear-quarantine') quarantined.delete(sourceId);
-  const saved = mergeOperatorSettingsPatch({
-    preferences: {
-      sources: {
-        suppressedSourceIds: Array.from(suppressed).sort((a, b) => a.localeCompare(b)),
-        quarantinedSourceIds: Array.from(quarantined).sort((a, b) => a.localeCompare(b)),
-      },
-    },
-  });
+  try {
+    const result = applySourceControlAction(action, sourceId, {
+      note: String(req.body?.note || '').trim() || null,
+      actorSurface: 'source-ops',
+      actorEndpoint: '/api/source-ops/control',
+      workflowAction: false,
+    });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message || 'source-control-action-failed', allowedActions });
+  }
+});
+
+app.get('/api/source-ops/audit', requireDebugAccess, (req, res) => {
+  const limit = Math.max(1, Math.min(Number.parseInt(req.query.limit, 10) || 25, 100));
   res.json({
-    ok: true,
-    action,
-    sourceId,
-    controls: {
-      suppressedSourceIds: saved.preferences.sources.suppressedSourceIds,
-      quarantinedSourceIds: saved.preferences.sources.quarantinedSourceIds,
-    },
+    version: 'source-control-audit-v1',
+    total: sourceControlAudit.length,
+    entries: sourceControlAuditSnapshot(limit),
   });
 });
 
@@ -5195,7 +5301,7 @@ app.get('/api/review-workflow/audit', requireDebugAccess, (req, res) => {
 app.post('/api/review-workflow/action', requireDebugAccess, (req, res) => {
   const action = String(req.body?.action || '').trim();
   const note = String(req.body?.note || '').trim();
-  const allowedActions = ['ack', 'snooze', 'ack-noise-suppression-pressure', 'snooze-noise-suppression-pressure', 'suppress-source', 'quarantine-source', 'promote-shadow', 'merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'];
+  const allowedActions = ['ack', 'snooze', 'ack-noise-suppression-pressure', 'snooze-noise-suppression-pressure', 'suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine', 'promote-shadow', 'merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'];
   if (!allowedActions.includes(action)) {
     return res.status(400).json({ ok: false, error: 'unsupported-review-workflow-action', allowedActions });
   }
@@ -5231,24 +5337,23 @@ app.post('/api/review-workflow/action', requireDebugAccess, (req, res) => {
       return res.json({ ok: true, action, policyKey, disposition, audit });
     }
 
-    if (action === 'suppress-source' || action === 'quarantine-source') {
+    if (['suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine'].includes(action)) {
       const sourceId = String(req.body?.sourceId || '').trim();
       if (!sourceId) return res.status(400).json({ ok: false, error: 'sourceId is required' });
-      const current = loadOperatorSettings();
-      const suppressed = new Set(current.preferences.sources.suppressedSourceIds || []);
-      const quarantined = new Set(current.preferences.sources.quarantinedSourceIds || []);
-      if (action === 'suppress-source') suppressed.add(sourceId);
-      if (action === 'quarantine-source') quarantined.add(sourceId);
-      const saved = mergeOperatorSettingsPatch({
-        preferences: {
-          sources: {
-            suppressedSourceIds: Array.from(suppressed).sort((a, b) => a.localeCompare(b)),
-            quarantinedSourceIds: Array.from(quarantined).sort((a, b) => a.localeCompare(b)),
-          },
-        },
+      const result = applySourceControlAction(action, sourceId, {
+        note: note || null,
+        actorSurface: 'review-workflow',
+        actorEndpoint: '/api/review-workflow/action',
+        workflowAction: true,
       });
-      const audit = recordReviewWorkflowAudit({ action, sourceId, note: note || null, status: 'applied' });
-      return res.json({ ok: true, action, sourceId, controls: saved.preferences.sources, audit });
+      const audit = recordReviewWorkflowAudit({
+        action,
+        sourceId,
+        note: note || null,
+        status: result.changed ? 'applied' : 'noop',
+        undo: result.undo,
+      });
+      return res.json({ ok: true, ...result, reviewWorkflowAudit: audit });
     }
 
     if (action === 'promote-shadow') {

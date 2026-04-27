@@ -213,6 +213,20 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.match(adminPage, /importBtn/i);
     assert.match(adminPage, /activeSurface: 'admin-settings'/i);
 
+    const sourceControl = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/source-ops/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'quarantine-source', sourceId: 'gdelt-global', note: 'persistence test quarantine' }),
+    });
+    assert.equal(sourceControl.ok, true);
+    assert.equal(sourceControl.after.quarantined, true);
+    assert.equal(sourceControl.undo.action, 'clear-quarantine');
+    assert.equal(sourceControl.audit.actorEndpoint, '/api/source-ops/control');
+
+    const sourceAudit = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/source-ops/audit`);
+    assert.equal(sourceAudit.version, 'source-control-audit-v1');
+    assert.equal(sourceAudit.entries.some(entry => entry.action === 'quarantine-source' && entry.sourceId === 'gdelt-global'), true);
+
     const operatorContract = await fetchJson(settingsUrl);
     assert.equal(operatorContract.persistence.capabilities.writeApi, false);
     assert.equal(operatorContract.access.role, 'operator');
@@ -223,6 +237,8 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(adminContract.persistence.capabilities.auditHistory, true);
     assert.equal(adminContract.access.role, 'admin');
     assert.equal(adminContract.admin.controls.auditEndpoint, '/api/settings/audit');
+    assert.equal(adminContract.sourceConsole.sourceControls.version, 'source-ops-control-v2');
+    assert.equal(adminContract.sourceConsole.sourceControls.auditEndpoint, '/api/source-ops/audit');
 
     const dashboard = await fetch(`http://127.0.0.1:${BASE_PORT}/`).then(r => r.text());
     assert.match(dashboard, /operatorSettings/);
