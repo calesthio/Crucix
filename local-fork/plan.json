@@ -1124,15 +1124,34 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-45",
+        "title": "Dashboard map proportional sizing",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-45.1",
+            "title": "Clamp map panel height by layout mode so the dashboard map stays proportionate to the visible window instead of expanding taller than the viewport",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 153,
+    "sequence": 154,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-153"
+    "lastCompletedCycleId": "2026-04-27-cycle-154"
   },
   "backlog": [
+    {
+      "id": "backlog-2026-04-27-dashboard-map-height-tokens",
+      "title": "Move dashboard map height clamps into explicit layout tokens or a shared sizing helper so map, topbar, and lower-panel vertical budgets can be tuned without scattering viewport math through CSS",
+      "status": "pending",
+      "source": "cycle-154",
+      "reason": "The immediate oversized-map fix is shipped, but the height clamps are now encoded inline per layout mode. A shared token or helper would make future dashboard-density tuning less brittle as topbar chrome, presets, or lower-panel mixes evolve."
+    },
     {
       "id": "backlog-2026-04-27-runtime-action-feedback-contract",
       "title": "Generalize shared runtime-action feedback helpers beyond restart-safe so stop or future bounded actions can report queued, completed, and failed states consistently",
