@@ -71,9 +71,11 @@ async function boot(options = {}){
       if (btn.dataset.targetCluster) payload.targetClusterId = btn.dataset.targetCluster;
       try {
         const concurrency = settings?.persistence?.concurrency || {};
+        const writeAuth = settings?.admin?.writeAuth || {};
         payload.expectedRevision = concurrency.revision;
         payload.expectedEtag = concurrency.etag;
-        const res = await fetch('/api/review-workflow/action', { method: 'POST', headers: { 'Content-Type': 'application/json', 'If-Match': concurrency.etag || '' }, body: JSON.stringify(payload) });
+        payload.localAdminNonce = writeAuth.token || '';
+        const res = await fetch('/api/review-workflow/action', { method: 'POST', headers: { 'Content-Type': 'application/json', 'If-Match': concurrency.etag || '', 'X-Crucix-Local-Admin-Nonce': writeAuth.token || '' }, body: JSON.stringify(payload) });
         if (!res.ok) { let body = null; try { body = await res.json(); } catch {} throw new Error(body?.detail || body?.error || `HTTP ${res.status}`); }
         shell.status.textContent = `Applied ${payload.action}. Reloading diagnostics.`;
         boot();

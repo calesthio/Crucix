@@ -69,6 +69,7 @@ async function withBootedServer({ port, env }, fn) {
       dataUrl: `${baseUrl}/api/data`,
       actionUrl: `${baseUrl}/api/review-workflow/action`,
       auditUrl: `${baseUrl}/api/review-workflow/audit`,
+      adminUrl: `${baseUrl}/api/settings/admin`,
     });
   } finally {
     await stopChild(child);
@@ -84,9 +85,11 @@ test('cluster-repair endpoints keep review and data contracts aligned after live
       LLM_MODEL: 'llamacpp.gguf',
       OLLAMA_BASE_URL: 'http://127.0.0.1:11434',
     },
-  }, async ({ reviewUrl, dataUrl, actionUrl, auditUrl }) => {
+  }, async ({ reviewUrl, dataUrl, actionUrl, auditUrl, adminUrl }) => {
     const reviewBefore = await waitFor(reviewUrl, payload => payload?.workflow?.clusterRepair?.version === 'cluster-repair-workflow-v1', 60000);
     const dataBefore = await waitFor(dataUrl, payload => payload?.reviewWorkflow?.clusterRepair?.version === 'cluster-repair-workflow-v1', 60000);
+    const admin = await waitFor(adminUrl, payload => payload?.admin?.writeAuth?.token, 30000);
+    const adminWriteToken = admin.admin.writeAuth.token;
 
     assert.equal(reviewBefore.workflow.clusterRepair.version, 'cluster-repair-workflow-v1');
     assert.equal(dataBefore.reviewWorkflow.clusterRepair.version, 'cluster-repair-workflow-v1');
@@ -106,12 +109,13 @@ test('cluster-repair endpoints keep review and data contracts aligned after live
     if (boundedAction) {
       const boundedResult = await fetchJson(actionUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Crucix-Local-Admin-Nonce': adminWriteToken },
         body: JSON.stringify({
           action: boundedAction.id,
           clusterId: weakCluster.clusterId,
           targetClusterId: boundedAction.targetClusterId || undefined,
           note: 'cluster repair bounded regression action',
+          localAdminNonce: adminWriteToken,
         }),
       });
       assert.equal(boundedResult.status, 200);
@@ -124,11 +128,12 @@ test('cluster-repair endpoints keep review and data contracts aligned after live
 
     const suppressResult = await fetchJson(actionUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Crucix-Local-Admin-Nonce': adminWriteToken },
       body: JSON.stringify({
         action: 'suppress-cluster',
         clusterId: weakCluster.clusterId,
         note: 'cluster repair suppression regression action',
+        localAdminNonce: adminWriteToken,
       }),
     });
     assert.equal(suppressResult.status, 200);

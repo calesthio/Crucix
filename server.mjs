@@ -6523,6 +6523,11 @@ app.put('/api/settings/operator', requireDebugAccess, (req, res) => {
 app.post('/api/source-ops/control', requireDebugAccess, (req, res) => {
   const action = String(req.body?.action || '').trim();
   const sourceId = String(req.body?.sourceId || '').trim();
+  try {
+    assertLocalAdminWriteToken(req);
+  } catch (error) {
+    return res.status(Number(error?.statusCode) || 428).json(error?.payload || { ok: false, error: error.message || 'local-admin-write-token-required' });
+  }
   const expected = resolveExpectedSettingsRevision(req);
   const allowedActions = ['suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine'];
   if (!allowedActions.includes(action)) {
@@ -6567,6 +6572,12 @@ app.get('/api/review-workflow/audit', requireDebugAccess, (req, res) => {
 app.post('/api/review-workflow/action', requireDebugAccess, (req, res) => {
   const action = String(req.body?.action || '').trim();
   const note = String(req.body?.note || '').trim();
+  try {
+    assertLocalAdminWriteToken(req);
+  } catch (error) {
+    const audit = recordReviewWorkflowAudit({ action, note: note || null, status: 'failed', error: error?.payload?.error || error.message || 'local-admin-write-token-required' });
+    return res.status(Number(error?.statusCode) || 428).json({ ...(error?.payload || { ok: false, error: error.message || 'local-admin-write-token-required' }), audit });
+  }
   const allowedActions = ['ack', 'snooze', 'ack-noise-suppression-pressure', 'snooze-noise-suppression-pressure', 'suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine', 'promote-shadow', 'merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'];
   if (!allowedActions.includes(action)) {
     return res.status(400).json({ ok: false, error: 'unsupported-review-workflow-action', allowedActions });
@@ -6709,6 +6720,11 @@ app.post('/api/settings/import', requireDebugAccess, (req, res) => {
 });
 
 app.post('/api/runtime/control', requireDebugAccess, (req, res) => {
+  try {
+    assertLocalAdminWriteToken(req);
+  } catch (error) {
+    return res.status(Number(error?.statusCode) || 428).json(error?.payload || { ok: false, error: error.message || 'local-admin-write-token-required' });
+  }
   const action = String(req.body?.action || '').trim();
   const runtimeControl = buildRuntimeControlContract(currentData || null);
   if (!runtimeControl.controls.allowedActions.includes(action)) {

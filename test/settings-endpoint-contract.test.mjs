@@ -155,10 +155,13 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(typeof reviewWorkflow.workflow.noiseSuppression.pressureAlert.operatorDisposition.status, 'string');
     assert.equal(Array.isArray(reviewWorkflow.workflow.noiseSuppression.pressureAlert.operatorDisposition.actions), true);
 
+    const adminForWrites = await fetchJson(adminSettingsUrl);
+    const adminWriteToken = adminForWrites.admin.writeAuth.token;
+
     const ackAction = await fetch(reviewWorkflowActionUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'ack-noise-suppression-pressure', note: 'accepted during contract test' }),
+      headers: { 'Content-Type': 'application/json', 'X-Crucix-Local-Admin-Nonce': adminWriteToken },
+      body: JSON.stringify({ action: 'ack-noise-suppression-pressure', note: 'accepted during contract test', localAdminNonce: adminWriteToken }),
     }).then(r => r.json().then(body => ({ status: r.status, body })));
     assert.equal(ackAction.status, 200);
     assert.equal(ackAction.body.ok, true);
@@ -167,8 +170,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
 
     const snoozeAction = await fetch(reviewWorkflowActionUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'snooze-noise-suppression-pressure', hours: 6, note: 'quiet overnight' }),
+      headers: { 'Content-Type': 'application/json', 'X-Crucix-Local-Admin-Nonce': adminWriteToken },
+      body: JSON.stringify({ action: 'snooze-noise-suppression-pressure', hours: 6, note: 'quiet overnight', localAdminNonce: adminWriteToken }),
     }).then(r => r.json().then(body => ({ status: r.status, body })));
     assert.equal(snoozeAction.status, 200);
     assert.equal(snoozeAction.body.ok, true);
@@ -180,8 +183,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     const adminBeforeSuppress = await fetchJson(adminSettingsUrl);
     const suppressSource = await fetch(reviewWorkflowActionUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'If-Match': adminBeforeSuppress.persistence.etag },
-      body: JSON.stringify({ action: 'suppress-source', sourceId: 'gdelt-global', note: 'triage test suppression', expectedRevision: adminBeforeSuppress.persistence.revision, expectedEtag: adminBeforeSuppress.persistence.etag }),
+      headers: { 'Content-Type': 'application/json', 'If-Match': adminBeforeSuppress.persistence.etag, 'X-Crucix-Local-Admin-Nonce': adminBeforeSuppress.admin.writeAuth.token },
+      body: JSON.stringify({ action: 'suppress-source', sourceId: 'gdelt-global', note: 'triage test suppression', expectedRevision: adminBeforeSuppress.persistence.revision, expectedEtag: adminBeforeSuppress.persistence.etag, localAdminNonce: adminBeforeSuppress.admin.writeAuth.token }),
     }).then(r => r.json().then(body => ({ status: r.status, body })));
     assert.equal(suppressSource.status, 200);
     assert.equal(suppressSource.body.ok, true);
@@ -192,8 +195,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     const adminBeforeUndo = await fetchJson(adminSettingsUrl);
     const undoSuppress = await fetch(reviewWorkflowActionUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'If-Match': adminBeforeUndo.persistence.etag },
-      body: JSON.stringify({ action: 'unsuppress-source', sourceId: 'gdelt-global', note: 'triage test undo', expectedRevision: adminBeforeUndo.persistence.revision, expectedEtag: adminBeforeUndo.persistence.etag }),
+      headers: { 'Content-Type': 'application/json', 'If-Match': adminBeforeUndo.persistence.etag, 'X-Crucix-Local-Admin-Nonce': adminBeforeUndo.admin.writeAuth.token },
+      body: JSON.stringify({ action: 'unsuppress-source', sourceId: 'gdelt-global', note: 'triage test undo', expectedRevision: adminBeforeUndo.persistence.revision, expectedEtag: adminBeforeUndo.persistence.etag, localAdminNonce: adminBeforeUndo.admin.writeAuth.token }),
     }).then(r => r.json().then(body => ({ status: r.status, body })));
     assert.equal(undoSuppress.status, 200);
     assert.equal(undoSuppress.body.ok, true);
@@ -270,8 +273,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
 
     const badControl = await fetch(`http://127.0.0.1:${BASE_PORT}/api/runtime/control`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'explode' }),
+      headers: { 'Content-Type': 'application/json', 'X-Crucix-Local-Admin-Nonce': adminWriteToken },
+      body: JSON.stringify({ action: 'explode', localAdminNonce: adminWriteToken }),
     }).then(r => r.json().then(body => ({ status: r.status, body })));
     assert.equal(badControl.status, 400);
     assert.equal(badControl.body.ok, false);

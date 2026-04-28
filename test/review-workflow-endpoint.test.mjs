@@ -66,6 +66,7 @@ async function withBootedServer({ port, env }, fn) {
       dataUrl: `${baseUrl}/api/data`,
       actionUrl: `${baseUrl}/api/review-workflow/action`,
       auditUrl: `${baseUrl}/api/review-workflow/audit`,
+      adminUrl: `${baseUrl}/api/settings/admin`,
     });
   } finally {
     await stopChild(child);
@@ -81,8 +82,10 @@ test('review workflow endpoints apply bounded actions and record audit entries',
       LLM_MODEL: 'llamacpp.gguf',
       OLLAMA_BASE_URL: 'http://127.0.0.1:11434',
     },
-  }, async ({ dataUrl, actionUrl, auditUrl }) => {
+  }, async ({ dataUrl, actionUrl, auditUrl, adminUrl }) => {
     const data = await waitFor(dataUrl, payload => payload?.reviewWorkflow?.version === 'review-workflow-v1' && Array.isArray(payload?.reviewQueue?.items), 60000);
+    const admin = await waitFor(adminUrl, payload => payload?.admin?.writeAuth?.token, 30000);
+    const adminWriteToken = admin.admin.writeAuth.token;
     assert.equal(data.reviewWorkflow.endpoint, '/api/review-workflow/action');
     assert.equal(data.reviewWorkflow.auditEndpoint, '/api/review-workflow/audit');
     assert.equal(Array.isArray(data.reviewWorkflow.supportedActions), true);
@@ -90,8 +93,8 @@ test('review workflow endpoints apply bounded actions and record audit entries',
     const actionableItem = (data.reviewQueue.items || []).find(item => (item.actions || []).some(action => action.id === 'ack')) || { region: 'Regression Test Region', reason: 'endpoint-regression-reason' };
     const ackResult = await fetchJson(actionUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'ack', region: actionableItem.region, reason: actionableItem.reason, note: 'endpoint regression ack' }),
+      headers: { 'Content-Type': 'application/json', 'X-Crucix-Local-Admin-Nonce': adminWriteToken },
+      body: JSON.stringify({ action: 'ack', region: actionableItem.region, reason: actionableItem.reason, note: 'endpoint regression ack', localAdminNonce: adminWriteToken }),
     });
     assert.equal(ackResult.status, 200);
     assert.equal(ackResult.body.ok, true);
@@ -102,8 +105,8 @@ test('review workflow endpoints apply bounded actions and record audit entries',
 
     const snoozeResult = await fetchJson(actionUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'snooze', region: actionableItem.region, reason: actionableItem.reason, hours: 6, note: 'endpoint regression snooze' }),
+      headers: { 'Content-Type': 'application/json', 'X-Crucix-Local-Admin-Nonce': adminWriteToken },
+      body: JSON.stringify({ action: 'snooze', region: actionableItem.region, reason: actionableItem.reason, hours: 6, note: 'endpoint regression snooze', localAdminNonce: adminWriteToken }),
     });
     assert.equal(snoozeResult.status, 200);
     assert.equal(snoozeResult.body.ok, true);
@@ -113,8 +116,8 @@ test('review workflow endpoints apply bounded actions and record audit entries',
 
     const pressureAction = await fetchJson(actionUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'ack-noise-suppression-pressure', note: 'endpoint regression pressure ack' }),
+      headers: { 'Content-Type': 'application/json', 'X-Crucix-Local-Admin-Nonce': adminWriteToken },
+      body: JSON.stringify({ action: 'ack-noise-suppression-pressure', note: 'endpoint regression pressure ack', localAdminNonce: adminWriteToken }),
     });
     assert.equal(pressureAction.status, 200);
     assert.equal(pressureAction.body.ok, true);
@@ -126,8 +129,8 @@ test('review workflow endpoints apply bounded actions and record audit entries',
       const suppressAction = sourceActionItem.actions.find(action => action.id === 'suppress-source' && action.sourceId);
       const suppressResult = await fetchJson(actionUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'suppress-source', sourceId: suppressAction.sourceId, note: 'endpoint regression suppress' }),
+        headers: { 'Content-Type': 'application/json', 'X-Crucix-Local-Admin-Nonce': adminWriteToken },
+        body: JSON.stringify({ action: 'suppress-source', sourceId: suppressAction.sourceId, note: 'endpoint regression suppress', localAdminNonce: adminWriteToken }),
       });
       assert.equal(suppressResult.status, 200);
       assert.equal(suppressResult.body.ok, true);
@@ -142,12 +145,13 @@ test('review workflow endpoints apply bounded actions and record audit entries',
       const chosen = weakCluster.actions.find(action => action.id === 'suppress-cluster') || weakCluster.actions[0];
       const clusterResult = await fetchJson(actionUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Crucix-Local-Admin-Nonce': adminWriteToken },
         body: JSON.stringify({
           action: chosen.id,
           clusterId: weakCluster.clusterId,
           targetClusterId: chosen.targetClusterId || undefined,
           note: 'endpoint regression cluster action',
+          localAdminNonce: adminWriteToken,
         }),
       });
       assert.equal(clusterResult.status, 200);
@@ -161,8 +165,8 @@ test('review workflow endpoints apply bounded actions and record audit entries',
 
     const promoteResult = await fetchJson(actionUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'promote-shadow', candidateId: 'shadow-candidate-regression-001', note: 'endpoint regression promote shadow' }),
+      headers: { 'Content-Type': 'application/json', 'X-Crucix-Local-Admin-Nonce': adminWriteToken },
+      body: JSON.stringify({ action: 'promote-shadow', candidateId: 'shadow-candidate-regression-001', note: 'endpoint regression promote shadow', localAdminNonce: adminWriteToken }),
     });
     assert.equal(promoteResult.status, 200);
     assert.equal(promoteResult.body.ok, true);

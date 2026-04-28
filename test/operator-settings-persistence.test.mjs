@@ -275,8 +275,8 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     const sourceAdminBefore = await fetchJson(adminSettingsUrl);
     const sourceControl = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/source-ops/control`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'If-Match': sourceAdminBefore.persistence.etag },
-      body: JSON.stringify({ action: 'quarantine-source', sourceId: 'gdelt-global', note: 'persistence test quarantine', expectedRevision: sourceAdminBefore.persistence.revision, expectedEtag: sourceAdminBefore.persistence.etag }),
+      headers: { 'Content-Type': 'application/json', 'If-Match': sourceAdminBefore.persistence.etag, 'X-Crucix-Local-Admin-Nonce': sourceAdminBefore.admin.writeAuth.token },
+      body: JSON.stringify({ action: 'quarantine-source', sourceId: 'gdelt-global', note: 'persistence test quarantine', expectedRevision: sourceAdminBefore.persistence.revision, expectedEtag: sourceAdminBefore.persistence.etag, localAdminNonce: sourceAdminBefore.admin.writeAuth.token }),
     });
     assert.equal(sourceControl.ok, true);
     assert.equal(sourceControl.after.quarantined, true);
