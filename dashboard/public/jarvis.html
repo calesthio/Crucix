@@ -30,8 +30,23 @@ body[data-layout-mode="narrow"]{--map-min-height:320px;--map-height:clamp(320px,
 body[data-layout-mode="narrow"] .lower .lp-ticker,body[data-layout-mode="narrow"] .lower .lp-osint,body[data-layout-mode="narrow"] .lower .lp-macro,body[data-layout-mode="narrow"] .lower .lp-ideas,body[data-layout-mode="narrow"] .lower .lp-analysis{flex:1 1 100%;max-width:none}
 body[data-layout-mode="narrow"] .metrics-row{grid-template-columns:repeat(2,1fr)}
 body[data-layout-mode="narrow"] .src-grid{grid-template-columns:repeat(2,1fr)}
-body[data-layout-mode="desktop"] .grid{grid-template-columns:240px minmax(0,1fr) 340px}
+body[data-layout-mode="desktop"] .grid{grid-template-columns:220px minmax(0,1fr) 380px}
 body[data-layout-mode="desktop"]{--map-min-height:420px;--map-height:clamp(420px,58vh,680px)}
+body[data-layout-mode="desktop"] .topbar{display:grid;grid-template-columns:minmax(220px,1fr) auto;grid-template-areas:"left right" "center center";align-items:start;gap:8px 12px;padding:10px 14px}
+body[data-layout-mode="desktop"] .top-left{grid-area:left;flex-wrap:wrap;align-items:center;gap:10px}
+body[data-layout-mode="desktop"] .top-center{grid-area:center;justify-content:flex-start;align-content:start;gap:6px}
+body[data-layout-mode="desktop"] .top-right{grid-area:right;justify-content:flex-end;align-content:start;gap:6px;flex-wrap:wrap}
+body[data-layout-mode="desktop"] .region-btn,body[data-layout-mode="desktop"] .meta-pill,body[data-layout-mode="desktop"] .alert-badge,body[data-layout-mode="desktop"] .guide-btn{font-size:10px;padding:4px 8px}
+body[data-layout-mode="desktop"] .brand{font-size:14px}
+body[data-layout-mode="desktop"] .regime-chip{padding:4px 10px;font-size:10px}
+body[data-layout-mode="desktop"] .lower{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}
+body[data-layout-mode="desktop"] .lower .g-panel{width:auto;max-width:none}
+body[data-layout-mode="desktop"] .lower .lp-ticker,body[data-layout-mode="desktop"] .lower .lp-macro,body[data-layout-mode="desktop"] .lower .lp-ideas,body[data-layout-mode="desktop"] .lower .lp-analysis{flex:none;max-width:none;width:auto}
+body[data-layout-mode="desktop"] .lower .lp-macro,body[data-layout-mode="desktop"] .lower .lp-ticker{grid-column:1 / -1}
+body[data-layout-mode="desktop"] .lower .lp-analysis{grid-column:1;grid-row:2}
+body[data-layout-mode="desktop"] .lower .lp-ideas{grid-column:2;grid-row:2}
+body[data-layout-mode="desktop"] .lower .lp-ticker{grid-row:3}
+body[data-layout-mode="desktop"] .lp-ideas,body[data-layout-mode="desktop"] .right-review-queue,body[data-layout-mode="desktop"] .right-evidence,body[data-layout-mode="desktop"] .right-osint{max-height:min(56vh,560px);overflow:auto;padding-right:4px}
 body[data-layout-mode="wallboard"] #main{padding:8px 10px}
 body[data-layout-mode="wallboard"] .grid{grid-template-columns:220px minmax(0,1.3fr) 300px;gap:8px;min-height:calc(100vh - 86px)}
 body[data-layout-mode="wallboard"] .topbar{padding:10px 14px}
@@ -318,10 +333,10 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-track{background:transparent}
 body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,0.2);border-radius:2px}
 
 /* RESPONSIVE */
-@media(max-width:1400px){.grid{grid-template-columns:240px 1fr 320px}.metrics-row{grid-template-columns:repeat(3,1fr)}.src-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:1400px){.grid{grid-template-columns:220px 1fr 300px}.metrics-row{grid-template-columns:repeat(3,1fr)}.src-grid{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:1100px){
   #main{padding:8px}
-  .topbar{padding:10px 12px}
+  .topbar{padding:10px 12px;display:flex}
   .top-left,.top-center,.top-right{width:100%}
   .top-center{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
   .map-region-bar{display:none}
@@ -1659,11 +1674,11 @@ function renderLower(){
       ${ideasHtml}
       <div class="disclosure">FOR INFORMATIONAL PURPOSES ONLY. This is not financial advice, a recommendation to buy or sell any security, or a solicitation of any kind. All signal-based observations are derived from publicly available OSINT data and should not be relied upon for investment decisions. Consult a licensed financial advisor before making any investment. Past performance does not guarantee future results.</div>`));
   const lowerPanels = [
-    { id:'newsTicker', pinned:getPanelPref('newsTicker').pinned?1:0, priority:getPanelPref('newsTicker').priority, order:1, html:tickerPanel },
-    ...(osintPanel ? [{ id:'osintStream', pinned:getPanelPref('osintStream').pinned?1:0, priority:getPanelPref('osintStream').priority, order:2, html:finishWrappedPanel(wrapPanel('osintStream','lp-osint', osintPanel.replace(/^<div class="g-panel lp-osint" style="display:flex;flex-direction:column">|<\/div>$/g,''))) }] : []),
-    { id:'macroMarkets', pinned:getPanelPref('macroMarkets').pinned?1:0, priority:getPanelPref('macroMarkets').priority, order:3, html:macroPanel },
-    { id:'agentAnalysis', pinned:getPanelPref('agentAnalysis').pinned?1:0, priority:getPanelPref('agentAnalysis').priority, order:4, html:analysisPanel },
-    { id:'tradeIdeas', pinned:getPanelPref('tradeIdeas').pinned?1:0, priority:getPanelPref('tradeIdeas').priority, order:5, html:ideasPanel },
+    { id:'macroMarkets', pinned:getPanelPref('macroMarkets').pinned?1:0, priority:getPanelPref('macroMarkets').priority, order:1, html:macroPanel },
+    { id:'agentAnalysis', pinned:getPanelPref('agentAnalysis').pinned?1:0, priority:getPanelPref('agentAnalysis').priority, order:2, html:analysisPanel },
+    { id:'tradeIdeas', pinned:getPanelPref('tradeIdeas').pinned?1:0, priority:getPanelPref('tradeIdeas').priority, order:3, html:ideasPanel },
+    { id:'newsTicker', pinned:getPanelPref('newsTicker').pinned?1:0, priority:getPanelPref('newsTicker').priority, order:4, html:tickerPanel },
+    ...(osintPanel ? [{ id:'osintStream', pinned:getPanelPref('osintStream').pinned?1:0, priority:getPanelPref('osintStream').priority, order:5, html:finishWrappedPanel(wrapPanel('osintStream','lp-osint', osintPanel.replace(/^<div class="g-panel lp-osint" style="display:flex;flex-direction:column">|<\/div>$/g,''))) }] : []),
   ];
   document.getElementById('lowerGrid').innerHTML = sortPanels(lowerPanels);
 }

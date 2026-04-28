@@ -48,10 +48,12 @@ Recent promotions:
 - Dashboard map proportional sizing was promoted into `local-fork/plan.json` as Epic 45, effort 45.1 on 2026-04-27.
 - Dashboard map sizing tokens were promoted into `local-fork/plan.json` as Epic 46, effort 46.1 on 2026-04-27.
 - Dashboard layout budget diagnostics were promoted into `local-fork/plan.json` as Epic 47, effort 47.1 on 2026-04-27.
+- Dashboard layout efficiency tuning was promoted into `local-fork/plan.json` as Epic 48, effort 48.1 on 2026-04-27.
 
 New items can be added here when they do not yet belong in the active roadmap.
 
 - `backlog-2026-04-27-dashboard-layout-budget-browser-contract` — add browser-level regression coverage for dashboard layout-budget diagnostics so measured map and panel ratios fail fast when a layout change lets the dashboard freelance again.
+- `backlog-2026-04-27-dashboard-preset-density-tuning` — add preset-specific density tuning and possibly alternate topbar/control placement so operator, diagnostics, and executive modes can optimize for different screen budgets without one global layout compromise.
 - `backlog-2026-04-27-runtime-action-feedback-contract` — generalize the shared runtime-action feedback helper beyond restart-safe so stop and future bounded runtime actions can report queued, completed, and failed states consistently.
 - `backlog-2026-04-27-critical-event-classifier-observability` — expose critical-event classifier match basis and ambiguity flags so operators can inspect why a signal matched a class or was intentionally discarded as ambiguous during queue evaluation.
 - `backlog-2026-04-27-critical-event-audit-operator-surface` — expose critical-event queue transition audit on operator-facing diagnostics surfaces so retained history is easier to review than raw contract JSON alone.

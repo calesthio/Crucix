@@ -1160,13 +1160,25 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-48",
+        "title": "Dashboard layout efficiency tuning",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-48.1",
+            "title": "Analyze live dashboard space waste and tune desktop column balance, topbar density, and lower-panel placement so operator surfaces use screen real estate more efficiently without collapsing graceful degradation",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 156,
+    "sequence": 157,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-156"
+    "lastCompletedCycleId": "2026-04-27-cycle-157"
   },
   "backlog": [
     {
@@ -1175,6 +1187,13 @@
       "status": "pending",
       "source": "cycle-156",
       "reason": "The live layout-budget panel now exposes measured DOM state and active map tokens, but the contract is still human-read. A browser-level assertion pass against the surfaced ratios would catch future regressions earlier and more objectively."
+    },
+    {
+      "id": "backlog-2026-04-27-dashboard-preset-density-tuning",
+      "title": "Add preset-specific density tuning and possibly alternate topbar/control placement so operator, diagnostics, and executive modes can optimize for different screen budgets without one global layout compromise",
+      "status": "pending",
+      "source": "cycle-157",
+      "reason": "The first desktop efficiency pass improved column balance and lower-panel placement, but the dashboard still uses one shared topbar/control posture across very different workspace presets. Preset-specific density tuning would let operator, diagnostics, and wallboard modes use the screen more intentionally."
     },
     {
       "id": "backlog-2026-04-27-runtime-action-feedback-contract",
