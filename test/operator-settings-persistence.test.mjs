@@ -145,6 +145,8 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     }).then(r => r.json().then(body => ({ status: r.status, body })));
     assert.equal(staleWrite.status, 409);
     assert.equal(staleWrite.body.error, 'settings-revision-conflict');
+    assert.equal(typeof staleWrite.body.current.revision, 'number');
+    assert.equal(typeof staleWrite.body.current.etag, 'string');
 
     const settings = await waitFor(settingsUrl, payload => payload?.layout?.controls?.visualsMode === 'lite', 30000);
     assert.equal(settings.layout.controls.mapMode, 'flat');

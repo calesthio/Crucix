@@ -374,5 +374,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.match(adminPage, /stopBtn/i);
     assert.match(adminPage, /Recent admin audit/i);
     assert.match(adminPage, /Noise suppression/i);
+    assert.match(adminPage, /Stale-write recovery/i);
+    assert.match(adminPage, /RELOAD LATEST/i);
+    assert.match(adminPage, /raw failure string/i);
   });
 });
