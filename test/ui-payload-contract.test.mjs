@@ -159,6 +159,7 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(settings.alerts.criticalEvents.queue.version, 'critical-event-queue-v1');
     assert.equal(settings.alerts.criticalEvents.queue.audit.version, 'critical-event-queue-audit-v1');
     assert.equal(settings.alerts.criticalEvents.routing.version, 'critical-event-routing-v1');
+    assert.equal(settings.alerts.criticalEvents.routing.delivery.version, 'critical-event-delivery-audit-v1');
     assert.equal(settings.access.role, 'operator');
     assert.equal(settings.access.adminSurface, '/admin/settings');
     assert.equal(settings.access.localAdminRequired, true);

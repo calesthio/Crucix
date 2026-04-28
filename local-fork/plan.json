@@ -1212,7 +1212,7 @@
       {
         "id": "epic-52",
         "title": "Critical event operator observability and workflow surfaces",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-52.1",
@@ -1227,7 +1227,7 @@
           {
             "id": "effort-52.3",
             "title": "Expose critical-event delivery audit and resend posture on operator-facing diagnostics surfaces",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -1347,9 +1347,9 @@
     ]
   },
   "cycleState": {
-    "sequence": 168,
+    "sequence": 169,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-28-cycle-168"
+    "lastCompletedCycleId": "2026-04-28-cycle-169"
   },
   "backlog": [
     {
