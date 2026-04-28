@@ -4692,44 +4692,73 @@ function buildCriticalEventClassificationText(signal = {}) {
   ].filter(Boolean).join(' ').toLowerCase();
 }
 
-function classifyCriticalEventSignal(signal = {}) {
+function inspectCriticalEventClassification(signal = {}) {
   const text = buildCriticalEventClassificationText(signal);
-  if (!text) return null;
   const score = {
     radiationAnomaly: 0,
     aviationIncident: 0,
     governmentSiteViolence: 0,
     chokepointDisruption: 0,
   };
-  const add = (key, points) => { score[key] = Number(score[key] || 0) + Number(points || 0); };
+  const basis = {
+    radiationAnomaly: [],
+    aviationIncident: [],
+    governmentSiteViolence: [],
+    chokepointDisruption: [],
+  };
+  const add = (key, points, reason) => {
+    score[key] = Number(score[key] || 0) + Number(points || 0);
+    if (reason) basis[key].push(reason);
+  };
+  if (!text) {
+    return { text, winner: null, winnerScore: 0, secondScore: 0, ambiguous: false, weakMatch: true, score, basis, accepted: false };
+  }
 
-  if (/(radiation|radioactive|nuclear|reactor|meltdown|cpm|npp|safecast|chernobyl|fukushima|zaporizhzhia|bushehr|dimona|yongbyon|iaea|gamma)/.test(text)) add('radiationAnomaly', 3);
-  if (/(sensor network|radiation dashboard|dosimeter|monitoring station)/.test(text)) add('radiationAnomaly', 2);
+  if (/(radiation|radioactive|nuclear|reactor|meltdown|cpm|npp|safecast|chernobyl|fukushima|zaporizhzhia|bushehr|dimona|yongbyon|iaea|gamma)/.test(text)) add('radiationAnomaly', 3, 'radiation or reactor terms matched');
+  if (/(sensor network|radiation dashboard|dosimeter|monitoring station)/.test(text)) add('radiationAnomaly', 2, 'radiation monitoring evidence terms matched');
 
-  if (/(aircraft|airliner|airplane|plane|flight|airport|helicopter|jet|aviation|ads-b|opensky|transponder|runway|airspace)/.test(text)) add('aviationIncident', 2);
-  if (/(crash|collision|downed|shot down|missing|fire|explosion|destroyed|incident|emergency landing|diversion)/.test(text)) add('aviationIncident', 2);
-  if (/(air crash|aviation incident|air disaster|flight incident)/.test(text)) add('aviationIncident', 3);
+  if (/(aircraft|airliner|airplane|plane|flight|airport|helicopter|jet|aviation|ads-b|opensky|transponder|runway|airspace)/.test(text)) add('aviationIncident', 2, 'aviation platform terms matched');
+  if (/(crash|collision|downed|shot down|missing|fire|explosion|destroyed|incident|emergency landing|diversion)/.test(text)) add('aviationIncident', 2, 'aviation incident terms matched');
+  if (/(air crash|aviation incident|air disaster|flight incident)/.test(text)) add('aviationIncident', 3, 'explicit aviation incident phrase matched');
 
-  if (/(white house|capitol|congress|parliament|embassy|consulate|ministry|government|president(?:ial)? palace|kremlin|state department|supreme court|governor(?:'s)? mansion|city hall)/.test(text)) add('governmentSiteViolence', 2);
-  if (/(shoot|shot|attack|assault|explosion|breach|storm|violence|gunfire|drone|strike|riot|intrusion)/.test(text)) add('governmentSiteViolence', 2);
-  if (/(secret service|executive protection|government compound|state building)/.test(text)) add('governmentSiteViolence', 1);
+  if (/(white house|capitol|congress|parliament|embassy|consulate|ministry|government|president(?:ial)? palace|kremlin|state department|supreme court|governor(?:'s)? mansion|city hall)/.test(text)) add('governmentSiteViolence', 2, 'government site terms matched');
+  if (/(shoot|shot|attack|assault|explosion|breach|storm|violence|gunfire|drone|strike|riot|intrusion)/.test(text)) add('governmentSiteViolence', 2, 'government-site violence terms matched');
+  if (/(secret service|executive protection|government compound|state building)/.test(text)) add('governmentSiteViolence', 1, 'executive protection or compound terms matched');
 
-  if (/(strait of hormuz|suez|malacca|bab el-mandeb|gibraltar|bosphorus|panama canal|chokepoint|shipping lane|canal|red sea|taiwan strait|black sea corridor)/.test(text)) add('chokepointDisruption', 2);
-  if (/(blockade|closed|closure|mine|mines|disruption|strike|attack|collision|grounded|halt|diverted shipping|tanker|maritime security)/.test(text)) add('chokepointDisruption', 2);
-  if (/(shipping disruption|maritime chokepoint|port closure)/.test(text)) add('chokepointDisruption', 3);
+  if (/(strait of hormuz|suez|malacca|bab el-mandeb|gibraltar|bosphorus|panama canal|chokepoint|shipping lane|canal|red sea|taiwan strait|black sea corridor)/.test(text)) add('chokepointDisruption', 2, 'maritime chokepoint terms matched');
+  if (/(blockade|closed|closure|mine|mines|disruption|strike|attack|collision|grounded|halt|diverted shipping|tanker|maritime security)/.test(text)) add('chokepointDisruption', 2, 'shipping disruption terms matched');
+  if (/(shipping disruption|maritime chokepoint|port closure)/.test(text)) add('chokepointDisruption', 3, 'explicit shipping disruption phrase matched');
 
   if (/(no incident reported|exercise only|drill only|routine policy update|funding announcement)/.test(text)) {
     score.aviationIncident = Math.max(0, score.aviationIncident - 2);
     score.governmentSiteViolence = Math.max(0, score.governmentSiteViolence - 2);
     score.chokepointDisruption = Math.max(0, score.chokepointDisruption - 2);
+    basis.aviationIncident.push('down-weighted by benign or drill-only language');
+    basis.governmentSiteViolence.push('down-weighted by benign or drill-only language');
+    basis.chokepointDisruption.push('down-weighted by benign or drill-only language');
   }
 
   const ranked = Object.entries(score).sort((a, b) => b[1] - a[1]);
   const [winner, winnerScore] = ranked[0] || [];
   const secondScore = ranked[1]?.[1] || 0;
-  if (!winner || winnerScore < 3) return null;
-  if (winnerScore === secondScore && winnerScore < 4) return null;
-  return winner;
+  const weakMatch = !winner || winnerScore < 3;
+  const ambiguous = Boolean(winner && winnerScore === secondScore && winnerScore < 4);
+  return {
+    text,
+    winner: weakMatch || ambiguous ? null : winner,
+    winnerScore: Number(winnerScore || 0),
+    secondScore: Number(secondScore || 0),
+    ambiguous,
+    weakMatch,
+    score,
+    basis,
+    ranked: ranked.map(([classId, points]) => ({ classId, points, basis: basis[classId] || [] })),
+    accepted: !weakMatch && !ambiguous,
+  };
+}
+
+function classifyCriticalEventSignal(signal = {}) {
+  return inspectCriticalEventClassification(signal).winner;
 }
 
 function inferCriticalEventTrustTier(signal = {}) {
@@ -4852,7 +4881,8 @@ function processCriticalEventQueue(snapshot = {}) {
   ];
 
   for (const signal of signals) {
-    const classId = classifyCriticalEventSignal(signal);
+    const classification = inspectCriticalEventClassification(signal);
+    const classId = classification.winner;
     if (!classId) continue;
     const classPolicy = prefs.classes?.[classId];
     if (!prefs.enabled || !classPolicy?.enabled) continue;
@@ -4924,6 +4954,16 @@ function processCriticalEventQueue(snapshot = {}) {
         minMediumTrustCorroboration: Number(classPolicy.minMediumTrustCorroboration || 1),
         officialConfirmationRequired: Boolean(classPolicy.officialConfirmationRequired),
         freshnessMinutes,
+      },
+      classification: {
+        accepted: Boolean(classification.accepted),
+        classId,
+        winnerScore: Number(classification.winnerScore || 0),
+        secondScore: Number(classification.secondScore || 0),
+        ambiguous: Boolean(classification.ambiguous),
+        weakMatch: Boolean(classification.weakMatch),
+        topBasis: Array.isArray(classification.basis?.[classId]) ? classification.basis[classId].slice(0, 4) : [],
+        ranked: Array.isArray(classification.ranked) ? classification.ranked.slice(0, 4) : [],
       },
     };
     const promotion = buildCriticalEventPromotion(nextEntry);
@@ -5007,6 +5047,7 @@ function buildCriticalEventQueueContract(snapshot = null) {
       signalId: entry.signalId || null,
       evidence: entry.evidence || {},
       thresholds: entry.thresholds || {},
+      classification: entry.classification || null,
       promotion: entry.promotion || buildCriticalEventPromotion(entry),
       evidenceSummary: entry.evidenceSummary || buildCriticalEventEvidenceSummary(entry),
     }));
@@ -5038,6 +5079,7 @@ function buildCriticalEventQueueContract(snapshot = null) {
       'Monitoring candidates are retained across sweeps so low-trust and medium-trust signals can wait for corroboration instead of paging immediately.',
       'Promotion requires the configured high-trust or medium-trust corroboration threshold, plus official confirmation when the class policy demands it.',
       'Each candidate now exposes promotion state and an explicit evidence summary explaining why it crossed, missed, or aged out before the paging threshold.',
+      'Classification metadata now exposes match basis, winning score, runner-up score, and ambiguity flags so operators can review why a signal was routed into a critical-event class.',
     ],
   };
 }

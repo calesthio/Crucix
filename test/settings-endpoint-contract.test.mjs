@@ -147,6 +147,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(Array.isArray(settings.alerts.criticalEvents.taxonomy), true);
     assert.equal(Array.isArray(settings.alerts.criticalEvents.queue.candidates), true);
     assert.equal(typeof settings.alerts.criticalEvents.queue.monitoringCount, 'number');
+    assert.equal(Array.isArray(settings.alerts.criticalEvents.queue.notes), true);
     assert.equal(settings.alerts.criticalEvents.taxonomy.some(item => item.id === 'radiationAnomaly' && item.severity === 'critical'), true);
     assert.equal(typeof settings.alerts.operational.policies.noiseSuppressionPressure.active, 'boolean');
     assert.equal(typeof settings.alerts.operational.policies.noiseSuppressionPressure.active, 'boolean');
@@ -328,6 +329,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.match(diagnosticsPage, /activeSurface: 'diagnostics'/i);
     assert.match(diagnosticsPage, /Noise suppression/i);
     assert.match(diagnosticsPage, /Operator cue/i);
+    assert.match(diagnosticsPage, /Critical event classifier review/i);
     assert.match(diagnosticsPage, /Runtime action audit timeline/i);
     assert.match(diagnosticsPage, /Runtime history diagnostics/i);
     assert.match(diagnosticsPage, /createRuntimeActionMonitor/i);

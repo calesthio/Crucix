@@ -226,6 +226,7 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.alerts.criticalEvents.routing.version, 'critical-event-routing-v1');
   assert.equal(contract.alerts.criticalEvents.routing.delivery.version, 'critical-event-delivery-audit-v1');
   assert.equal(Array.isArray(contract.alerts.criticalEvents.queue.candidates), true);
+  assert.equal(contract.alerts.criticalEvents.queue.notes.some(item => /Classification metadata now exposes match basis/i.test(item)), true);
   assert.equal(Array.isArray(contract.alerts.criticalEvents.queue.audit.recentTransitions), true);
   assert.equal(Array.isArray(contract.alerts.criticalEvents.routing.delivery.recentRecords), true);
   assert.equal(contract.alerts.criticalEvents.queue.confidenceStates.includes('official-confirmation'), true);
@@ -323,6 +324,10 @@ test('critical-event queue retains transition audit entries when status changes 
   assert.equal(contract.queue.audit.totalEntries >= 1, true);
   assert.equal(contract.queue.audit.recentTransitions[0].candidateId.startsWith('radiationAnomaly:'), true);
   assert.match(contract.queue.audit.recentTransitions[0].transition, /new->promoted|new->monitoring/);
+  assert.equal(contract.queue.candidates[0].classification.classId, 'radiationAnomaly');
+  assert.equal(contract.queue.candidates[0].classification.winnerScore >= 3, true);
+  assert.equal(Array.isArray(contract.queue.candidates[0].classification.topBasis), true);
+  assert.equal(contract.queue.candidates[0].classification.ambiguous, false);
 });
 
 test('sdr corroboration exposes bounded session plans and retained evidence placeholders', () => {

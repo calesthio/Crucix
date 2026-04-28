@@ -109,6 +109,7 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(health.criticalEventRouting.version, 'critical-event-routing-v1');
     assert.equal(health.sdrCorroboration.version, 'sdr-corroboration-v1');
     assert.equal(Array.isArray(health.criticalEventQueue.confidenceStates), true);
+    assert.equal(Array.isArray(health.criticalEventQueue.notes), true);
     assert.equal(Array.isArray(health.criticalEventRouting.eligibleCandidates), true);
     assert.equal(typeof health.criticalEventQueue.promotedCount, 'number');
     assertOperatorLlmState(health);
@@ -125,6 +126,7 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(data.criticalEventRouting.version, 'critical-event-routing-v1');
     assert.equal(data.sdrCorroboration.version, 'sdr-corroboration-v1');
     assert.equal(Array.isArray(data.criticalEventQueue.candidates), true);
+    assert.equal(data.criticalEventQueue.candidates.every(item => ('classification' in item)), true);
     assert.equal(Array.isArray(data.criticalEventRouting.eligibleCandidates), true);
     assert.equal(typeof data.criticalEventQueue.activeCount, 'number');
     assert.equal(typeof data.reviewQueue.summary, 'string');

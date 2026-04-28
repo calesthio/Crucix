@@ -1217,7 +1217,7 @@
           {
             "id": "effort-52.1",
             "title": "Expose critical-event classifier match basis and ambiguity flags for operator review",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-52.2",
@@ -1347,9 +1347,9 @@
     ]
   },
   "cycleState": {
-    "sequence": 166,
+    "sequence": 167,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-28-cycle-166"
+    "lastCompletedCycleId": "2026-04-28-cycle-167"
   },
   "backlog": [
     {
