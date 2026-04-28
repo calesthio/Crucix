@@ -1176,7 +1176,7 @@
       {
         "id": "epic-49",
         "title": "Dashboard layout regression contracts",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-49.1",
@@ -1200,12 +1200,12 @@
       {
         "id": "epic-51",
         "title": "Shared runtime action feedback contracts",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-51.1",
             "title": "Generalize shared runtime-action feedback helpers beyond restart-safe so stop or future bounded actions can report queued, completed, and failed states consistently",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -1331,13 +1331,25 @@
             "status": "pending"
           }
         ]
+      },
+      {
+        "id": "epic-61",
+        "title": "Admin preset presentation controls",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-61.1",
+            "title": "Extend local admin preset authoring so custom presets can explicitly edit densityMode and topbarMode instead of inheriting only built-in presentation defaults",
+            "status": "pending"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 164,
+    "sequence": 166,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-28-cycle-164"
+    "lastCompletedCycleId": "2026-04-28-cycle-166"
   },
   "backlog": [
     {

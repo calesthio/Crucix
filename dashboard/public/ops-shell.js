@@ -14,7 +14,7 @@ function renderCard(title, subtitle, body){return `<section class="card"><div cl
 function renderSurfaceNav(activeId){
   return CRUCIX_SURFACES.map(surface => `<a class="nav-card${surface.id===activeId ? ' active' : ''}" href="${surface.href}"><div class="nav-card-title"><span>${esc(surface.label)}</span><span class="nav-tag">${esc(surface.tag)}</span></div><div class="nav-desc">${esc(surface.desc)}</div></a>`).join('');
 }
-function createRestartAuditMonitor(shell, options = {}) {
+function createRuntimeActionMonitor(shell, options = {}) {
   let handle = null;
   function clear(){
     if (handle) {
@@ -30,7 +30,8 @@ function createRestartAuditMonitor(shell, options = {}) {
     }, options.intervalMs || 2000);
   }
   function update(latestEntry, state = {}) {
-    const queuedMessage = state.queuedMessage || 'Restart-safe is queued, polling…';
+    const actionLabel = state.actionLabel || latestEntry?.action || 'runtime action';
+    const queuedMessage = state.queuedMessage || `${actionLabel} is queued, polling…`;
     const preserveStatus = state.preserveStatus || null;
     if (latestEntry?.phase === 'queued') {
       schedule(queuedMessage);
@@ -38,7 +39,7 @@ function createRestartAuditMonitor(shell, options = {}) {
     }
     clear();
     if (preserveStatus && latestEntry?.phase) {
-      const outcome = `Latest restart-safe outcome: ${latestEntry.phase} (${latestEntry.status || 'unknown'})`;
+      const outcome = `Latest ${latestEntry?.action || actionLabel} outcome: ${latestEntry.phase} (${latestEntry.status || 'unknown'})`;
       shell.status.textContent = outcome;
       return { polling: false, preserveStatus: outcome };
     }
@@ -46,6 +47,7 @@ function createRestartAuditMonitor(shell, options = {}) {
   }
   return { clear, schedule, update };
 }
+const createRestartAuditMonitor = createRuntimeActionMonitor;
 function mountOpsShell(options){
   const app = document.getElementById(options.appId || 'app');
   if (!app) throw new Error('Missing app mount');
@@ -85,4 +87,4 @@ function mountOpsShell(options){
     actions,
   };
 }
-window.CRUCIX_OPS_SHELL = { CRUCIX_SURFACES, esc, row, tags, renderCard, mountOpsShell, createRestartAuditMonitor };
+window.CRUCIX_OPS_SHELL = { CRUCIX_SURFACES, esc, row, tags, renderCard, mountOpsShell, createRuntimeActionMonitor, createRestartAuditMonitor };

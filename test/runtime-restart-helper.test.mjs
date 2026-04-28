@@ -22,17 +22,19 @@ test('classifyListenerOwnership only claims clearly owned Crucix listeners', () 
   assert.equal(foreignNonNode.owned, false);
 });
 
-test('appendRuntimeRestartAudit retains newest restart outcomes first', () => {
+test('appendRuntimeRestartAudit retains newest bounded runtime action outcomes first', () => {
   const dir = mkdtempSync(join(tmpdir(), 'crucix-runtime-restart-'));
   const path = join(dir, 'runtime-restart-audit.json');
   appendRuntimeRestartAudit(path, { action: 'restart-safe', phase: 'queued', status: 'accepted', recordedAt: '2026-04-27T18:00:00.000Z' }, 3);
-  appendRuntimeRestartAudit(path, { action: 'restart-safe', phase: 'completed', status: 'ok', livePid: 123, rotationProved: true, recordedAt: '2026-04-27T18:05:00.000Z' }, 3);
+  appendRuntimeRestartAudit(path, { action: 'stop', phase: 'completed', status: 'ok', livePid: 123, recordedAt: '2026-04-27T18:05:00.000Z' }, 3);
   const loaded = loadRuntimeRestartAudit(path);
   assert.equal(loaded.version, 'runtime-restart-audit-v1');
   assert.equal(loaded.updatedAt, '2026-04-27T18:05:00.000Z');
   assert.equal(loaded.history.length, 2);
+  assert.equal(loaded.history[0].action, 'stop');
   assert.equal(loaded.history[0].phase, 'completed');
   assert.equal(loaded.history[0].livePid, 123);
+  assert.equal(loaded.history[1].action, 'restart-safe');
   assert.equal(loaded.history[1].phase, 'queued');
   assert.equal(JSON.parse(readFileSync(path, 'utf8')).history.length, 2);
 });

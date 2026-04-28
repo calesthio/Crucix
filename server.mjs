@@ -5887,8 +5887,9 @@ function buildRuntimeControlContract(snapshot = null) {
       totalEntries: Array.isArray(restartAudit.history) ? restartAudit.history.length : 0,
       recentEntries: Array.isArray(restartAudit.history) ? restartAudit.history.slice(0, 8) : [],
       notes: [
-        'Retained restart-safe audit shows queued and completed restart attempts with listener-rotation proof when available.',
-        'Entries are sourced from local restart-safe control flow and helper outcomes, not inferred from chat responses.',
+        'Retained runtime action audit shows queued and completed bounded actions, including restart-safe and stop.',
+        'Restart-safe entries include listener-rotation proof when available; stop entries record the queued and final termination handoff.',
+        'Entries are sourced from local runtime control flow and helper outcomes, not inferred from chat responses.',
       ],
     },
     controls: {
@@ -6671,16 +6672,16 @@ app.post('/api/runtime/control', requireDebugAccess, (req, res) => {
   if (!runtimeControl.controls.allowedActions.includes(action)) {
     return res.status(400).json({ ok: false, error: 'Unsupported runtime control action', allowedActions: runtimeControl.controls.allowedActions });
   }
+  const queuedAt = new Date().toISOString();
+  appendRuntimeRestartAudit(RUNTIME_RESTART_AUDIT_PATH, {
+    action,
+    phase: 'queued',
+    requestedByPid: process.pid,
+    queuedAt,
+    status: 'accepted',
+    port: runtimeControl.process.port,
+  });
   if (action === 'restart-safe') {
-    const queuedAt = new Date().toISOString();
-    appendRuntimeRestartAudit(RUNTIME_RESTART_AUDIT_PATH, {
-      action,
-      phase: 'queued',
-      requestedByPid: process.pid,
-      queuedAt,
-      status: 'accepted',
-      port: runtimeControl.process.port,
-    });
     res.json({ ok: true, accepted: true, action, queuedAt, process: runtimeControl.process });
     setTimeout(() => {
       try {
@@ -6707,8 +6708,21 @@ app.post('/api/runtime/control', requireDebugAccess, (req, res) => {
     }, 100);
     return;
   }
-  res.json({ ok: true, accepted: true, action, queuedAt: new Date().toISOString(), process: runtimeControl.process });
-  setTimeout(() => process.kill(process.pid, 'SIGTERM'), 100);
+  res.json({ ok: true, accepted: true, action, queuedAt, process: runtimeControl.process });
+  setTimeout(() => {
+    appendRuntimeRestartAudit(RUNTIME_RESTART_AUDIT_PATH, {
+      action,
+      phase: 'completed',
+      requestedByPid: process.pid,
+      queuedAt,
+      completedAt: new Date().toISOString(),
+      status: 'ok',
+      port: runtimeControl.process.port,
+      livePid: process.pid,
+      handoff: 'sigterm-requested',
+    });
+    process.kill(process.pid, 'SIGTERM');
+  }, 100);
 });
 
 app.get('/api/brief/compact', async (req, res) => {
