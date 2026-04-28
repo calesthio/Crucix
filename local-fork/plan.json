@@ -1010,7 +1010,7 @@
           {
             "id": "effort-36.5",
             "title": "Add operator-editable preset authoring plus clone, reset, and import-export controls so workspace presets stop being code-defined bundles and can be tuned safely from the UI",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-36.6",
@@ -1239,6 +1239,59 @@
           {
             "id": "effort-53.1",
             "title": "Expose SDR session plans, observation capture, and evidence-review workflow on operator-facing surfaces",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-54",
+        "title": "Settings conflict recovery UX",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-54.1",
+            "title": "Add clearer admin-surface stale-write recovery UX for settings concurrency conflicts so operators can reload or reconcile after a bounded 409 instead of only seeing a raw failure string",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-55",
+        "title": "Extended local admin write-auth boundaries",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-55.1",
+            "title": "Extend local admin write-auth nonce coverage to additional debug-side mutation endpoints so source controls, review workflow source actions, and runtime control can be evaluated under the same local write boundary",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-56",
+        "title": "Restart-safe helper portability hardening",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-56.1",
+            "title": "Harden restart-safe helper portability when lsof is unavailable so local runtime rotation can fall back cleanly instead of failing on host packaging gaps",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-57",
+        "title": "Dashboard persistence honesty and feedback",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-57.1",
+            "title": "Restore bounded persistence for dashboard-side panel, map, and workspace controls after the local-admin nonce rollout so operator tweaks do not silently fail across reloads",
+            "status": "pending"
+          },
+          {
+            "id": "effort-57.2",
+            "title": "Add explicit dashboard-side save-status feedback for preset and panel-layout actions so operators can tell when a layout action only applied locally versus durably persisted through the supported write boundary",
             "status": "pending"
           }
         ]

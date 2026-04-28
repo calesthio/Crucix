@@ -4,6 +4,9 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 
 ## Candidate backlog items
 
+- `backlog-2026-04-28-admin-preset-browser-regression`
+  - Add browser-level regression coverage for admin preset clone, import, and delete flows so the operator-editable preset authoring path stays honest when future UI work touches the local control plane.
+
 Recent promotions:
 - Noise-suppression pressure alert acknowledge/snooze controls plus recent audit visibility was promoted into `local-fork/plan.json` as Epic 29, effort 29.9 on 2026-04-26.
 - SQLite runtime-history diagnostics or export visibility was promoted into `local-fork/plan.json` as Epic 33, effort 33.7 on 2026-04-26.
@@ -37,6 +40,12 @@ Recent promotions:
 New items can be added here when they do not yet belong in the active roadmap.
 
 Recent promotions:
+- Settings concurrency conflict UX was promoted into `local-fork/plan.json` as Epic 54, effort 54.1 on 2026-04-28.
+- Extended local admin write-auth boundary work was promoted into `local-fork/plan.json` as Epic 55, effort 55.1 on 2026-04-28.
+- Restart-safe helper portability hardening was promoted into `local-fork/plan.json` as Epic 56, effort 56.1 on 2026-04-28.
+- Dashboard persistence honesty work was promoted into `local-fork/plan.json` as Epic 57, efforts 57.1 through 57.2 on 2026-04-28.
+
+Recent promotions:
 - Critical-event classifier hardening, transition audit, and delivery audit work were promoted into `local-fork/plan.json` as Epic 39, efforts 39.1 through 39.3 on 2026-04-27.
 - Browser-level regression coverage for dashboard layout-budget diagnostics was promoted into `local-fork/plan.json` as Epic 49, effort 49.1 on 2026-04-28.
 - Preset-specific dashboard density tuning was promoted into `local-fork/plan.json` as Epic 50, effort 50.1 on 2026-04-28.
@@ -56,9 +65,4 @@ Recent promotions:
 New items can be added here when they do not yet belong in the active roadmap.
 
 
-- `backlog-2026-04-28-settings-concurrency-conflict-ux` — add clearer admin-surface stale-write recovery UX for settings concurrency conflicts so operators can reload or reconcile after a bounded 409 instead of only seeing a raw failure string.
 
-- `backlog-2026-04-28-extend-local-admin-write-auth` — extend local admin write-auth nonce coverage to other debug-side mutation endpoints so source controls, review workflow source actions, and runtime control can be evaluated for the same anti-CSRF-style boundary instead of relying on locality alone.
-- `backlog-2026-04-28-restart-safe-helper-portability` — harden restart-safe helper portability when `lsof` is unavailable so local runtime rotation can fall back cleanly instead of failing on host packaging gaps.
-- `backlog-2026-04-28-dashboard-panel-pref-write-auth` — restore bounded persistence for dashboard-side panel, map, and workspace controls after the local-admin nonce rollout, because `jarvis.html` still attempts silent `/api/settings/operator` writes without the advertised nonce/concurrency contract and those operator tweaks can now fail to persist across reloads.
-- `backlog-2026-04-28-dashboard-preset-save-feedback` — add explicit dashboard-side save-status feedback for preset and panel-layout actions so operators can tell when a layout reset or preset switch only applied locally versus actually persisted through the local-admin write boundary.

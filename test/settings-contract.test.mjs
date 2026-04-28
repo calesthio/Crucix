@@ -191,11 +191,14 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.layout.controls.resetSupported, true);
   assert.equal(contract.layout.controls.resetActions.includes('restore-preset-panels'), true);
   assert.equal(contract.layout.controls.namedPresets.some(item => item.id === 'executive-briefing' && item.label === 'Wallboard'), true);
+  assert.equal(contract.layout.controls.namedPresets.some(item => item.id === 'operator' && item.builtIn === true), true);
+  assert.equal(contract.layout.controls.importExportSupported, true);
+  assert.equal(Object.keys(contract.layout.controls.customPresets || {}).length, 0);
   assert.equal(contract.layout.controls.panelPreferences.reviewQueue.pinned, true);
   assert.equal(contract.layout.controls.panelPreferences.reviewQueue.size, 'wide');
   assert.equal(contract.layout.available.some(item => item.id === 'operator' && item.label === 'Analyst'), true);
   assert.equal(contract.layout.mutability.presets, 'server-file');
-  assert.equal(contract.layout.mutability.namedPresets, 'built-in');
+  assert.equal(contract.layout.mutability.namedPresets, 'built-in-plus-custom');
   assert.equal(contract.sources.total, 30);
   assert.equal(contract.sources.active, 29);
   assert.equal(contract.sources.categories[0].category, 'macro');

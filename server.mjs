@@ -349,6 +349,63 @@ function normalizeToken(value = '') {
   return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
+const builtInWorkspacePresetLibrary = [
+  { id: 'operator', label: 'Analyst', profile: 'analyst', description: 'Balanced operator workspace for normal desktop analysis.', displayMode: 'desktop', mapMode: 'auto', visualsMode: 'full', defaultRegion: 'world', activeLayer: null, panels: { reviewQueue: { pinned: true, priority: 10, size: 'wide', collapsed: false }, analysisReview: { pinned: true, priority: 20, size: 'normal', collapsed: false }, layoutBudget: { pinned: false, priority: 30, size: 'normal', collapsed: false }, tradeIdeas: { pinned: false, priority: 60, size: 'compact', collapsed: false }, evidenceAudit: { pinned: false, priority: 40, size: 'normal', collapsed: false } } },
+  { id: 'diagnostics', label: 'Narrow Screen', profile: 'narrow-screen', description: 'Dense but bounded layout for constrained displays and troubleshooting.', displayMode: 'desktop', mapMode: 'flat', visualsMode: 'lite', defaultRegion: 'world', activeLayer: 'news', panels: { reviewQueue: { pinned: true, priority: 5, size: 'wide', collapsed: false }, analysisReview: { pinned: true, priority: 10, size: 'wide', collapsed: false }, layoutBudget: { pinned: true, priority: 12, size: 'wide', collapsed: false }, evidenceAudit: { pinned: true, priority: 15, size: 'wide', collapsed: false }, tradeIdeas: { pinned: false, priority: 90, size: 'compact', collapsed: true }, newsTicker: { pinned: false, priority: 50, size: 'compact', collapsed: false } } },
+  { id: 'source-ops', label: 'Source Ops', profile: 'source-ops', description: 'Source-health triage layout that keeps evidence and review controls close.', displayMode: 'desktop', mapMode: 'flat', visualsMode: 'lite', defaultRegion: 'world', activeLayer: 'news', panels: { reviewQueue: { pinned: true, priority: 5, size: 'wide', collapsed: false }, evidenceAudit: { pinned: true, priority: 10, size: 'wide', collapsed: false }, crossSignals: { pinned: true, priority: 20, size: 'normal', collapsed: false }, layoutBudget: { pinned: false, priority: 30, size: 'compact', collapsed: true }, tradeIdeas: { pinned: false, priority: 95, size: 'compact', collapsed: true } } },
+  { id: 'executive-briefing', label: 'Wallboard', profile: 'wallboard', description: 'Wallboard-first briefing layout for glanceable shared monitoring.', displayMode: 'wallboard', mapMode: 'globe', visualsMode: 'full', defaultRegion: 'world', activeLayer: null, panels: { agentAnalysis: { pinned: true, priority: 5, size: 'wide', collapsed: false }, macroMarkets: { pinned: true, priority: 10, size: 'wide', collapsed: false }, newsTicker: { pinned: true, priority: 15, size: 'wide', collapsed: false }, reviewQueue: { pinned: false, priority: 80, size: 'compact', collapsed: true }, evidenceAudit: { pinned: false, priority: 70, size: 'compact', collapsed: true }, tradeIdeas: { pinned: false, priority: 60, size: 'compact', collapsed: false } } },
+];
+
+function buildWorkspacePresetLibrary(operatorSettings = null) {
+  const settings = operatorSettings || loadOperatorSettings();
+  const layout = settings?.preferences?.layout || {};
+  const customPresets = layout.customPresets && typeof layout.customPresets === 'object' ? layout.customPresets : {};
+  const customItems = Object.entries(customPresets).map(([id, value]) => ({
+    id,
+    label: value?.label || id,
+    profile: value?.profile || 'custom',
+    description: value?.description || 'Custom operator-authored preset.',
+    displayMode: value?.displayMode || 'desktop',
+    mapMode: value?.mapMode || 'auto',
+    visualsMode: value?.visualsMode || 'full',
+    defaultRegion: value?.defaultRegion || 'world',
+    activeLayer: value?.activeLayer || null,
+    panels: value?.panels && typeof value.panels === 'object' ? value.panels : {},
+    builtIn: false,
+  }));
+  return [...builtInWorkspacePresetLibrary.map(item => ({ ...item, builtIn: true })), ...customItems]
+    .sort((a, b) => Number(Boolean(b.builtIn)) - Number(Boolean(a.builtIn)) || String(a.label || a.id).localeCompare(String(b.label || b.id)));
+}
+
+function normalizeCustomWorkspacePresets(input = {}) {
+  const allowedRegions = ['world', 'americas', 'europe', 'middleEast', 'asiaPacific', 'africa'];
+  const allowedLayers = ['air', 'thermal', 'sdr', 'maritime', 'nuke', 'conflict', 'health', 'news', 'osint', 'space'];
+  const allowedMapModes = ['auto', 'flat', 'globe'];
+  const allowedDisplayModes = ['auto', 'narrow', 'desktop', 'wallboard'];
+  const allowedVisualsModes = ['full', 'lite'];
+  const allowedPanelSizes = ['compact', 'normal', 'wide'];
+  return Object.fromEntries(Object.entries(input && typeof input === 'object' ? input : {}).map(([key, value]) => {
+    const id = normalizeToken(key).slice(0, 48);
+    if (!id) return null;
+    return [id, {
+      label: String(value?.label || id).trim().slice(0, 64) || id,
+      profile: String(value?.profile || 'custom').trim().slice(0, 32) || 'custom',
+      description: String(value?.description || 'Custom operator-authored preset.').trim().slice(0, 240) || 'Custom operator-authored preset.',
+      displayMode: allowedDisplayModes.includes(value?.displayMode) ? value.displayMode : 'desktop',
+      mapMode: allowedMapModes.includes(value?.mapMode) ? value.mapMode : 'auto',
+      visualsMode: allowedVisualsModes.includes(value?.visualsMode) ? value.visualsMode : 'full',
+      defaultRegion: allowedRegions.includes(value?.defaultRegion) ? value.defaultRegion : 'world',
+      activeLayer: allowedLayers.includes(value?.activeLayer) ? value.activeLayer : null,
+      panels: Object.fromEntries(Object.entries(value?.panels && typeof value.panels === 'object' ? value.panels : {}).map(([panelId, panelValue]) => [panelId, {
+        collapsed: Boolean(panelValue?.collapsed),
+        pinned: Boolean(panelValue?.pinned),
+        priority: Math.max(0, Math.min(99, Number.isFinite(Number(panelValue?.priority)) ? Number(panelValue.priority) : 50)),
+        size: allowedPanelSizes.includes(panelValue?.size) ? panelValue.size : 'normal',
+      }])),
+    }];
+  }).filter(Boolean));
+}
+
 function operatorSettingsDefaults() {
   return {
     version: 'operator-settings-store-v1',
@@ -366,6 +423,7 @@ function operatorSettingsDefaults() {
           wallboardVirtualization: 'auto',
         },
         panels: {},
+        customPresets: {},
       },
       sources: {
         enabledCategories: [],
@@ -444,7 +502,7 @@ function normalizeOperatorSettings(input = {}) {
   const allowedFallbackModes = ['always', 'llm-unavailable-only', 'disabled'];
   const allowedHorizonBehaviors = ['short-only', 'balanced', 'extended'];
   const allowedPanelSizes = ['compact', 'normal', 'wide'];
-  const allowedWorkspacePresets = ['operator', 'diagnostics', 'source-ops', 'executive-briefing'];
+  const builtInWorkspacePresetIds = builtInWorkspacePresetLibrary.map(item => item.id);
   const allowedWallboardVirtualizationModes = ['auto', 'off', 'on'];
   const allowedAlertRoutes = ['telegram', 'discord'];
   const normalizeAlertRoute = value => Array.isArray(value)
@@ -465,7 +523,7 @@ function normalizeOperatorSettings(input = {}) {
         displayMode: allowedDisplayModes.includes(layout.displayMode) ? layout.displayMode : defaults.preferences.layout.displayMode,
         defaultRegion: allowedRegions.includes(layout.defaultRegion) ? layout.defaultRegion : defaults.preferences.layout.defaultRegion,
         activeLayer: allowedLayers.includes(layout.activeLayer) ? layout.activeLayer : null,
-        workspacePreset: allowedWorkspacePresets.includes(layout.workspacePreset) ? layout.workspacePreset : defaults.preferences.layout.workspacePreset,
+        workspacePreset: [...builtInWorkspacePresetLibrary.map(item => item.id), ...Object.keys(normalizeCustomWorkspacePresets(layout.customPresets))].includes(layout.workspacePreset) ? layout.workspacePreset : defaults.preferences.layout.workspacePreset,
         performance: {
           wallboardVirtualization: allowedWallboardVirtualizationModes.includes(layout.performance?.wallboardVirtualization)
             ? layout.performance.wallboardVirtualization
@@ -477,6 +535,7 @@ function normalizeOperatorSettings(input = {}) {
           priority: Math.max(0, Math.min(99, Number.isFinite(Number(value?.priority)) ? Number(value.priority) : 50)),
           size: allowedPanelSizes.includes(value?.size) ? value.size : 'normal',
         }])),
+        customPresets: normalizeCustomWorkspacePresets(layout.customPresets),
       },
       sources: {
         enabledCategories: Array.isArray(sources.enabledCategories) ? Array.from(new Set(sources.enabledCategories.map(value => String(value).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)) : [],
@@ -743,6 +802,7 @@ function mergeOperatorSettingsPatch(patch = {}, options = {}) {
       layout: {
         ...current.preferences.layout,
         ...(patch?.preferences?.layout || {}),
+        customPresets: patch?.preferences?.layout && Object.prototype.hasOwnProperty.call(patch.preferences.layout, 'customPresets') ? patch.preferences.layout.customPresets : current.preferences.layout.customPresets,
       },
       sources: {
         ...current.preferences.sources,
@@ -3976,12 +4036,7 @@ app.use(express.static(join(ROOT, 'dashboard/public')));
 function injectDashboardRuntimeHtml(html = '') {
   const locale = getLocale();
   const operatorSettings = loadOperatorSettings();
-  const workspacePresetLibrary = [
-    { id: 'operator', label: 'Analyst', profile: 'analyst', description: 'Balanced operator workspace for normal desktop analysis.', displayMode: 'desktop', mapMode: 'auto', visualsMode: 'full', defaultRegion: 'world', activeLayer: null, panels: { reviewQueue: { pinned: true, priority: 10, size: 'wide', collapsed: false }, analysisReview: { pinned: true, priority: 20, size: 'normal', collapsed: false }, layoutBudget: { pinned: false, priority: 30, size: 'normal', collapsed: false }, tradeIdeas: { pinned: false, priority: 60, size: 'compact', collapsed: false }, evidenceAudit: { pinned: false, priority: 40, size: 'normal', collapsed: false } } },
-    { id: 'diagnostics', label: 'Narrow Screen', profile: 'narrow-screen', description: 'Dense but bounded layout for constrained displays and troubleshooting.', displayMode: 'desktop', mapMode: 'flat', visualsMode: 'lite', defaultRegion: 'world', activeLayer: 'news', panels: { reviewQueue: { pinned: true, priority: 5, size: 'wide', collapsed: false }, analysisReview: { pinned: true, priority: 10, size: 'wide', collapsed: false }, layoutBudget: { pinned: true, priority: 12, size: 'wide', collapsed: false }, evidenceAudit: { pinned: true, priority: 15, size: 'wide', collapsed: false }, tradeIdeas: { pinned: false, priority: 90, size: 'compact', collapsed: true }, newsTicker: { pinned: false, priority: 50, size: 'compact', collapsed: false } } },
-    { id: 'source-ops', label: 'Source Ops', profile: 'source-ops', description: 'Source-health triage layout that keeps evidence and review controls close.', displayMode: 'desktop', mapMode: 'flat', visualsMode: 'lite', defaultRegion: 'world', activeLayer: 'news', panels: { reviewQueue: { pinned: true, priority: 5, size: 'wide', collapsed: false }, evidenceAudit: { pinned: true, priority: 10, size: 'wide', collapsed: false }, crossSignals: { pinned: true, priority: 20, size: 'normal', collapsed: false }, layoutBudget: { pinned: false, priority: 30, size: 'compact', collapsed: true }, tradeIdeas: { pinned: false, priority: 95, size: 'compact', collapsed: true } } },
-    { id: 'executive-briefing', label: 'Wallboard', profile: 'wallboard', description: 'Wallboard-first briefing layout for glanceable shared monitoring.', displayMode: 'wallboard', mapMode: 'globe', visualsMode: 'full', defaultRegion: 'world', activeLayer: null, panels: { agentAnalysis: { pinned: true, priority: 5, size: 'wide', collapsed: false }, macroMarkets: { pinned: true, priority: 10, size: 'wide', collapsed: false }, newsTicker: { pinned: true, priority: 15, size: 'wide', collapsed: false }, reviewQueue: { pinned: false, priority: 80, size: 'compact', collapsed: true }, evidenceAudit: { pinned: false, priority: 70, size: 'compact', collapsed: true }, tradeIdeas: { pinned: false, priority: 60, size: 'compact', collapsed: false } } },
-  ];
+  const workspacePresetLibrary = buildWorkspacePresetLibrary(operatorSettings);
   const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
   const runtimeScript = `<script>window.__CRUCIX_RUNTIME__ = ${JSON.stringify({ refreshIntervalMinutes: config.refreshIntervalMinutes, settingsUrl: '/settings', diagnosticsUrl: '/diagnostics', adminSettingsUrl: '/admin/settings', operatorSettings: operatorSettings.preferences, workspacePresetLibrary }).replace(/<\/script>/gi, '<\\/script>')};</script>`;
   return html.replace('</head>', `${localeScript}
@@ -5487,12 +5542,20 @@ function buildOperatorSettingsContract(snapshot = null) {
     config.discord?.botToken || config.discord?.webhookUrl ? 'discord' : null,
   ].filter(Boolean);
   const operationalAlerts = summarizeOperationalAlertState(activeSnapshot);
-  const workspacePresetCatalog = [
-    { id: 'operator', label: 'Analyst', status: 'active', profile: 'analyst', description: 'Balanced operator workspace for normal desktop analysis.', displayMode: 'desktop', mapMode: 'auto', visualsMode: 'full', defaultRegion: 'world', activeLayer: null, panelDefaults: { reviewQueue: { pinned: true, priority: 10, size: 'wide', collapsed: false }, analysisReview: { pinned: true, priority: 20, size: 'normal', collapsed: false }, layoutBudget: { pinned: false, priority: 30, size: 'normal', collapsed: false }, tradeIdeas: { pinned: false, priority: 60, size: 'compact', collapsed: false }, evidenceAudit: { pinned: false, priority: 40, size: 'normal', collapsed: false } } },
-    { id: 'diagnostics', label: 'Narrow Screen', status: 'active', profile: 'narrow-screen', description: 'Dense but bounded layout for constrained displays and troubleshooting.', displayMode: 'desktop', mapMode: 'flat', visualsMode: 'lite', defaultRegion: 'world', activeLayer: 'news', panelDefaults: { reviewQueue: { pinned: true, priority: 5, size: 'wide', collapsed: false }, analysisReview: { pinned: true, priority: 10, size: 'wide', collapsed: false }, layoutBudget: { pinned: true, priority: 12, size: 'wide', collapsed: false }, evidenceAudit: { pinned: true, priority: 15, size: 'wide', collapsed: false }, tradeIdeas: { pinned: false, priority: 90, size: 'compact', collapsed: true }, newsTicker: { pinned: false, priority: 50, size: 'compact', collapsed: false } } },
-    { id: 'source-ops', label: 'Source Ops', status: 'active', profile: 'source-ops', description: 'Source-health triage layout that keeps evidence and review controls close.', displayMode: 'desktop', mapMode: 'flat', visualsMode: 'lite', defaultRegion: 'world', activeLayer: 'news', panelDefaults: { reviewQueue: { pinned: true, priority: 5, size: 'wide', collapsed: false }, evidenceAudit: { pinned: true, priority: 10, size: 'wide', collapsed: false }, crossSignals: { pinned: true, priority: 20, size: 'normal', collapsed: false }, layoutBudget: { pinned: false, priority: 30, size: 'compact', collapsed: true }, tradeIdeas: { pinned: false, priority: 95, size: 'compact', collapsed: true } } },
-    { id: 'executive-briefing', label: 'Wallboard', status: 'active', profile: 'wallboard', description: 'Wallboard-first briefing layout for glanceable shared monitoring.', displayMode: 'wallboard', mapMode: 'globe', visualsMode: 'full', defaultRegion: 'world', activeLayer: null, panelDefaults: { agentAnalysis: { pinned: true, priority: 5, size: 'wide', collapsed: false }, macroMarkets: { pinned: true, priority: 10, size: 'wide', collapsed: false }, newsTicker: { pinned: true, priority: 15, size: 'wide', collapsed: false }, reviewQueue: { pinned: false, priority: 80, size: 'compact', collapsed: true }, evidenceAudit: { pinned: false, priority: 70, size: 'compact', collapsed: true }, tradeIdeas: { pinned: false, priority: 60, size: 'compact', collapsed: false } } },
-  ];
+  const workspacePresetCatalogBuilder = typeof buildWorkspacePresetLibrary === 'function'
+    ? buildWorkspacePresetLibrary
+    : ((settings = null) => {
+        const activeSettings = settings || loadOperatorSettings();
+        const builtIns = [
+          { id: 'operator', label: 'Analyst', profile: 'analyst', description: 'Balanced operator workspace for normal desktop analysis.', displayMode: 'desktop', mapMode: 'auto', visualsMode: 'full', defaultRegion: 'world', activeLayer: null, panels: { reviewQueue: { pinned: true, priority: 10, size: 'wide', collapsed: false }, analysisReview: { pinned: true, priority: 20, size: 'normal', collapsed: false }, layoutBudget: { pinned: false, priority: 30, size: 'normal', collapsed: false }, tradeIdeas: { pinned: false, priority: 60, size: 'compact', collapsed: false }, evidenceAudit: { pinned: false, priority: 40, size: 'normal', collapsed: false } } },
+          { id: 'diagnostics', label: 'Narrow Screen', profile: 'narrow-screen', description: 'Dense but bounded layout for constrained displays and troubleshooting.', displayMode: 'desktop', mapMode: 'flat', visualsMode: 'lite', defaultRegion: 'world', activeLayer: 'news', panels: { reviewQueue: { pinned: true, priority: 5, size: 'wide', collapsed: false }, analysisReview: { pinned: true, priority: 10, size: 'wide', collapsed: false }, layoutBudget: { pinned: true, priority: 12, size: 'wide', collapsed: false }, evidenceAudit: { pinned: true, priority: 15, size: 'wide', collapsed: false }, tradeIdeas: { pinned: false, priority: 90, size: 'compact', collapsed: true }, newsTicker: { pinned: false, priority: 50, size: 'compact', collapsed: false } } },
+          { id: 'source-ops', label: 'Source Ops', profile: 'source-ops', description: 'Source-health triage layout that keeps evidence and review controls close.', displayMode: 'desktop', mapMode: 'flat', visualsMode: 'lite', defaultRegion: 'world', activeLayer: 'news', panels: { reviewQueue: { pinned: true, priority: 5, size: 'wide', collapsed: false }, evidenceAudit: { pinned: true, priority: 10, size: 'wide', collapsed: false }, crossSignals: { pinned: true, priority: 20, size: 'normal', collapsed: false }, layoutBudget: { pinned: false, priority: 30, size: 'compact', collapsed: true }, tradeIdeas: { pinned: false, priority: 95, size: 'compact', collapsed: true } } },
+          { id: 'executive-briefing', label: 'Wallboard', profile: 'wallboard', description: 'Wallboard-first briefing layout for glanceable shared monitoring.', displayMode: 'wallboard', mapMode: 'globe', visualsMode: 'full', defaultRegion: 'world', activeLayer: null, panels: { agentAnalysis: { pinned: true, priority: 5, size: 'wide', collapsed: false }, macroMarkets: { pinned: true, priority: 10, size: 'wide', collapsed: false }, newsTicker: { pinned: true, priority: 15, size: 'wide', collapsed: false }, reviewQueue: { pinned: false, priority: 80, size: 'compact', collapsed: true }, evidenceAudit: { pinned: false, priority: 70, size: 'compact', collapsed: true }, tradeIdeas: { pinned: false, priority: 60, size: 'compact', collapsed: false } } },
+        ];
+        const customPresets = activeSettings?.preferences?.layout?.customPresets && typeof activeSettings.preferences.layout.customPresets === 'object' ? activeSettings.preferences.layout.customPresets : {};
+        return [...builtIns.map(item => ({ ...item, builtIn: true })), ...Object.entries(customPresets).map(([id, value]) => ({ id, label: value?.label || id, profile: value?.profile || 'custom', description: value?.description || 'Custom operator-authored preset.', displayMode: value?.displayMode || 'desktop', mapMode: value?.mapMode || 'auto', visualsMode: value?.visualsMode || 'full', defaultRegion: value?.defaultRegion || 'world', activeLayer: value?.activeLayer || null, panels: value?.panels && typeof value.panels === 'object' ? value.panels : {}, builtIn: false }))];
+      });
+  const workspacePresetCatalog = workspacePresetCatalogBuilder(operatorSettings).map(item => ({ ...item, status: 'active', panelDefaults: item.panels || {} }));
   const currentWorkspacePreset = operatorSettings.preferences.layout.workspacePreset || 'operator';
   const currentWorkspacePresetMeta = workspacePresetCatalog.find(item => item.id === currentWorkspacePreset) || workspacePresetCatalog[0];
 
@@ -5514,9 +5577,11 @@ function buildOperatorSettingsContract(snapshot = null) {
         workspacePreset: currentWorkspacePreset,
         currentWorkspacePresetLabel: currentWorkspacePresetMeta.label,
         availableWorkspacePresets: workspacePresetCatalog.map(item => item.id),
-        namedPresets: workspacePresetCatalog.map(item => ({ id: item.id, label: item.label, status: item.status, profile: item.profile, description: item.description, displayMode: item.displayMode, mapMode: item.mapMode, visualsMode: item.visualsMode, defaultRegion: item.defaultRegion, activeLayer: item.activeLayer, panelDefaults: item.panelDefaults })),
+        namedPresets: workspacePresetCatalog.map(item => ({ id: item.id, label: item.label, status: item.status, builtIn: item.builtIn !== false, profile: item.profile, description: item.description, displayMode: item.displayMode, mapMode: item.mapMode, visualsMode: item.visualsMode, defaultRegion: item.defaultRegion, activeLayer: item.activeLayer, panelDefaults: item.panelDefaults })),
+        customPresets: operatorSettings.preferences.layout.customPresets || {},
         resetSupported: true,
         resetActions: ['restore-preset-panels', 'clear-panel-overrides'],
+        importExportSupported: true,
         performance: operatorSettings.preferences.layout.performance || operatorSettingsDefaults().preferences.layout.performance,
         availableWallboardVirtualizationModes: ['auto', 'off', 'on'],
         panelPreferences: operatorSettings.preferences.layout.panels || {},
@@ -5525,7 +5590,7 @@ function buildOperatorSettingsContract(snapshot = null) {
       mutability: {
         current: 'server-file',
         presets: 'server-file',
-        namedPresets: 'built-in',
+        namedPresets: 'built-in-plus-custom',
       },
     },
     sources: {

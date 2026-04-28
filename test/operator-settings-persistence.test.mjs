@@ -75,7 +75,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
         expectedEtag: initialAdmin.persistence.etag,
         localAdminNonce: adminWriteToken,
         preferences: {
-          layout: { visualsMode: 'lite', mapMode: 'flat', displayMode: 'wallboard', defaultRegion: 'asiaPacific', activeLayer: 'news', workspacePreset: 'source-ops', performance: { wallboardVirtualization: 'on' }, panels: { reviewQueue: { collapsed: false, pinned: true, priority: 5, size: 'wide' }, tradeIdeas: { collapsed: true, pinned: false, priority: 40, size: 'compact' } } },
+          layout: { visualsMode: 'lite', mapMode: 'flat', displayMode: 'wallboard', defaultRegion: 'asiaPacific', activeLayer: 'news', workspacePreset: 'source-ops', performance: { wallboardVirtualization: 'on' }, panels: { reviewQueue: { collapsed: false, pinned: true, priority: 5, size: 'wide' }, tradeIdeas: { collapsed: true, pinned: false, priority: 40, size: 'compact' } }, customPresets: { focusdeck: { label: 'Focus Deck', profile: 'custom', description: 'Tighter custom workflow preset.', visualsMode: 'lite', mapMode: 'flat', displayMode: 'desktop', defaultRegion: 'europe', activeLayer: 'osint', panels: { reviewQueue: { collapsed: false, pinned: true, priority: 3, size: 'wide' } } } } },
           sources: { enabledCategories: ['news', 'air'], enabledSourceIds: ['gdelt-global', 'opensky-network'], noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 3 }, repetitiveLowValue: { enabled: false, maxStoryCount: 2, maxSourceCount: 1 }, sourceRules: [{ sourceId: 'gdelt-global', action: 'suppress', reason: 'duplicate-heavy', enabled: true }] } },
           llm: { newsModeDefault: 'force' },
           agentAnalysis: {
@@ -153,6 +153,8 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(settings.layout.controls.workspacePreset, 'source-ops');
     assert.equal(settings.layout.controls.currentWorkspacePresetLabel, 'Source Ops');
     assert.equal(settings.layout.controls.namedPresets.some(item => item.id === 'source-ops'), true);
+    assert.equal(settings.layout.controls.namedPresets.some(item => item.id === 'focusdeck' && item.builtIn === false), true);
+    assert.equal(settings.layout.controls.customPresets.focusdeck.label, 'Focus Deck');
     assert.equal(settings.layout.controls.performance.wallboardVirtualization, 'on');
     assert.equal(settings.layout.controls.panelPreferences.reviewQueue.pinned, true);
     assert.equal(settings.layout.controls.panelPreferences.reviewQueue.priority, 5);
@@ -171,6 +173,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(settings.agentAnalysis.controls.tippingPointMinProbability, 'LOW');
     assert.equal(settings.agentAnalysis.controls.maxPublishedTippingPoints, 2);
     assert.equal(settings.persistence.persistedPreferences.layout.visualsMode, 'lite');
+    assert.equal(settings.persistence.persistedPreferences.layout.customPresets.focusdeck.activeLayer, 'osint');
     assert.equal(settings.persistence.persistedPreferences.sources.noiseSuppression.sourceRules[0].sourceId, 'gdelt-global');
     assert.equal(settings.alerts.operational.version, 'operational-alert-routing-v1');
     assert.equal(settings.sdrCorroboration.version, 'sdr-corroboration-v1');

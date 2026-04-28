@@ -5,7 +5,7 @@ import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const BASE_PORT = 3241;
+const BASE_PORT = 3241 + Math.floor(Math.random() * 200);
 
 async function sleep(ms) {
   await new Promise(resolve => setTimeout(resolve, ms));
