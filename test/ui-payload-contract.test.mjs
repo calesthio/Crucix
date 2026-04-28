@@ -154,6 +154,8 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.deepEqual(settings.sections, ['layout', 'sources', 'sourceConsole', 'sdrCorroboration', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence']);
     assert.equal(settings.sourceConsole.version, 'source-console-v1');
     assert.equal(settings.sdrCorroboration.version, 'sdr-corroboration-v1');
+    assert.equal(settings.sdrCorroboration.sessionAutomation.version, 'sdr-session-audit-v1');
+    assert.equal(Array.isArray(settings.sdrCorroboration.sessionAutomation.recentSessions), true);
     assert.equal(settings.config.contract.version, 'runtime-config-v1');
     assert.equal(settings.persistence.capabilities.writeApi, false);
     assert.equal(settings.alerts.criticalEvents.queue.version, 'critical-event-queue-v1');
