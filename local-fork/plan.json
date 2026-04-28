@@ -1136,21 +1136,33 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-46",
+        "title": "Dashboard map sizing tokens",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-46.1",
+            "title": "Move map height clamps into explicit layout tokens so dashboard vertical budget tuning stops depending on scattered inline CSS math",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 154,
+    "sequence": 155,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-154"
+    "lastCompletedCycleId": "2026-04-27-cycle-155"
   },
   "backlog": [
     {
-      "id": "backlog-2026-04-27-dashboard-map-height-tokens",
-      "title": "Move dashboard map height clamps into explicit layout tokens or a shared sizing helper so map, topbar, and lower-panel vertical budgets can be tuned without scattering viewport math through CSS",
+      "id": "backlog-2026-04-27-dashboard-layout-budget-contract",
+      "title": "Expose dashboard layout-budget tokens or measurement diagnostics so viewport-driven map, topbar, and lower-grid sizing can be checked as a contract instead of only by visual inspection",
       "status": "pending",
-      "source": "cycle-154",
-      "reason": "The immediate oversized-map fix is shipped, but the height clamps are now encoded inline per layout mode. A shared token or helper would make future dashboard-density tuning less brittle as topbar chrome, presets, or lower-panel mixes evolve."
+      "source": "cycle-155",
+      "reason": "Map sizing is now tokenized, but layout budget remains visually verified. A small diagnostics or contract surface for active layout tokens and measured panel heights would make future dashboard regressions faster to catch and less subjective."
     },
     {
       "id": "backlog-2026-04-27-runtime-action-feedback-contract",
