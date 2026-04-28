@@ -362,6 +362,9 @@ function operatorSettingsDefaults() {
         defaultRegion: 'world',
         activeLayer: null,
         workspacePreset: 'operator',
+        performance: {
+          wallboardVirtualization: 'auto',
+        },
         panels: {},
       },
       sources: {
@@ -442,6 +445,7 @@ function normalizeOperatorSettings(input = {}) {
   const allowedHorizonBehaviors = ['short-only', 'balanced', 'extended'];
   const allowedPanelSizes = ['compact', 'normal', 'wide'];
   const allowedWorkspacePresets = ['operator', 'diagnostics', 'source-ops', 'executive-briefing'];
+  const allowedWallboardVirtualizationModes = ['auto', 'off', 'on'];
   const allowedAlertRoutes = ['telegram', 'discord'];
   const normalizeAlertRoute = value => Array.isArray(value)
     ? Array.from(new Set(value.map(item => String(item || '').trim().toLowerCase()).filter(item => allowedAlertRoutes.includes(item))))
@@ -462,6 +466,11 @@ function normalizeOperatorSettings(input = {}) {
         defaultRegion: allowedRegions.includes(layout.defaultRegion) ? layout.defaultRegion : defaults.preferences.layout.defaultRegion,
         activeLayer: allowedLayers.includes(layout.activeLayer) ? layout.activeLayer : null,
         workspacePreset: allowedWorkspacePresets.includes(layout.workspacePreset) ? layout.workspacePreset : defaults.preferences.layout.workspacePreset,
+        performance: {
+          wallboardVirtualization: allowedWallboardVirtualizationModes.includes(layout.performance?.wallboardVirtualization)
+            ? layout.performance.wallboardVirtualization
+            : defaults.preferences.layout.performance.wallboardVirtualization,
+        },
         panels: Object.fromEntries(Object.entries(layout.panels && typeof layout.panels === 'object' ? layout.panels : {}).map(([key, value]) => [key, {
           collapsed: Boolean(value?.collapsed),
           pinned: Boolean(value?.pinned),
@@ -5493,6 +5502,8 @@ function buildOperatorSettingsContract(snapshot = null) {
         activeLayer: operatorSettings.preferences.layout.activeLayer,
         workspacePreset: operatorSettings.preferences.layout.workspacePreset || 'operator',
         availableWorkspacePresets: ['operator', 'diagnostics', 'source-ops', 'executive-briefing'],
+        performance: operatorSettings.preferences.layout.performance || operatorSettingsDefaults().preferences.layout.performance,
+        availableWallboardVirtualizationModes: ['auto', 'off', 'on'],
         panelPreferences: operatorSettings.preferences.layout.panels || {},
         persistence: 'server-file',
       },

@@ -75,7 +75,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
         expectedEtag: initialAdmin.persistence.etag,
         localAdminNonce: adminWriteToken,
         preferences: {
-          layout: { visualsMode: 'lite', mapMode: 'flat', displayMode: 'wallboard', defaultRegion: 'asiaPacific', activeLayer: 'news', workspacePreset: 'source-ops', panels: { reviewQueue: { collapsed: false, pinned: true, priority: 5, size: 'wide' }, tradeIdeas: { collapsed: true, pinned: false, priority: 40, size: 'compact' } } },
+          layout: { visualsMode: 'lite', mapMode: 'flat', displayMode: 'wallboard', defaultRegion: 'asiaPacific', activeLayer: 'news', workspacePreset: 'source-ops', performance: { wallboardVirtualization: 'on' }, panels: { reviewQueue: { collapsed: false, pinned: true, priority: 5, size: 'wide' }, tradeIdeas: { collapsed: true, pinned: false, priority: 40, size: 'compact' } } },
           sources: { enabledCategories: ['news', 'air'], enabledSourceIds: ['gdelt-global', 'opensky-network'], noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 3 }, repetitiveLowValue: { enabled: false, maxStoryCount: 2, maxSourceCount: 1 }, sourceRules: [{ sourceId: 'gdelt-global', action: 'suppress', reason: 'duplicate-heavy', enabled: true }] } },
           llm: { newsModeDefault: 'force' },
           agentAnalysis: {
@@ -151,6 +151,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(settings.layout.controls.displayMode, 'wallboard');
     assert.equal(settings.layout.controls.defaultRegion, 'asiaPacific');
     assert.equal(settings.layout.controls.workspacePreset, 'source-ops');
+    assert.equal(settings.layout.controls.performance.wallboardVirtualization, 'on');
     assert.equal(settings.layout.controls.panelPreferences.reviewQueue.pinned, true);
     assert.equal(settings.layout.controls.panelPreferences.reviewQueue.priority, 5);
     assert.equal(settings.layout.controls.panelPreferences.tradeIdeas.collapsed, true);
@@ -186,6 +187,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(exported.preferences.layout.displayMode, 'wallboard');
     assert.equal(exported.preferences.layout.defaultRegion, 'asiaPacific');
     assert.equal(exported.preferences.layout.workspacePreset, 'source-ops');
+    assert.equal(exported.preferences.layout.performance.wallboardVirtualization, 'on');
     assert.equal(exported.preferences.layout.panels.reviewQueue.size, 'wide');
     assert.deepEqual(exported.preferences.sources.enabledCategories, ['air', 'news']);
     assert.equal(exported.preferences.sources.noiseSuppression.duplicateBurst.minSimilarClusters, 3);
@@ -306,7 +308,8 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.match(dashboard, /"visualsMode":"full"/);
     assert.match(dashboard, /"displayMode":"desktop"/);
     assert.match(dashboard, /"defaultRegion":"asiaPacific"/);
-    assert.match(dashboard, /"workspacePreset":"source-ops"/);
+    assert.match(dashboard, /\"workspacePreset\":\"source-ops\"/);
+    assert.match(dashboard, /\"wallboardVirtualization\":\"on\"/);
     assert.match(dashboard, /renderWorkspacePresetStrip/);
     assert.match(dashboard, /openDiagnostics/);
     assert.match(dashboard, /openAdminSettings/);

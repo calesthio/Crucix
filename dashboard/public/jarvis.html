@@ -461,6 +461,7 @@ let softwareGlobeMode = false;
 let worldAtlasData = null;
 let flightsVisible = true;
 const persistedOperatorSettings = window.__CRUCIX_RUNTIME__?.operatorSettings || {};
+const persistedPerformanceSettings = persistedOperatorSettings.layout?.performance || {};
 let lowPerfMode = (persistedOperatorSettings.layout?.visualsMode === 'lite') || localStorage.getItem('crucix_low_perf') === 'true';
 let isFlat = false;
 let currentRegion = persistedOperatorSettings.layout?.defaultRegion || 'world';
@@ -469,6 +470,7 @@ let currentLayoutMode = 'desktop';
 let flatSvg, flatProjection, flatPath, flatG, flatZoom, flatW, flatH;
 let currentWorkspacePreset = persistedOperatorSettings.layout?.workspacePreset || 'operator';
 let panelPreferences = JSON.parse(JSON.stringify(persistedOperatorSettings.layout?.panels || {}));
+let panelRenderBudgetTelemetry = {};
 
 const sensorLayerMeta = {
   air: { key:'air', label:'Air Activity' },
@@ -516,6 +518,56 @@ function panelControls(id){ const pref=getPanelPref(id); return `<div class="pan
 function wrapPanel(id, className, bodyHtml){ const pref=getPanelPref(id); return `<div class="g-panel ${className} size-${pref.size}${pref.collapsed?' collapsed':''}${pref.pinned?' pinned':''}" data-panel-id="${id}" data-priority="${pref.priority}" data-pinned="${pref.pinned?1:0}">${bodyHtml.replace('<div class="sec-head">', `<div class="sec-head">${panelControls(id)}`)}<div class="panel-body">`; }
 function finishWrappedPanel(html){ return `${html}</div></div>`; }
 function sortPanels(items){ return items.sort((a,b)=> (b.pinned-a.pinned) || (a.priority-b.priority) || a.order-b.order).map(item=>item.html).join(''); }
+function getWallboardVirtualizationPreference(){
+  const mode = persistedPerformanceSettings.wallboardVirtualization || persistedOperatorSettings.layout?.performance?.wallboardVirtualization || 'auto';
+  return ['auto','off','on'].includes(mode) ? mode : 'auto';
+}
+function resetPanelRenderBudgetTelemetry(){ panelRenderBudgetTelemetry = {}; }
+function recordPanelRenderBudget(id, meta={}){
+  panelRenderBudgetTelemetry[id] = {
+    id,
+    layoutMode: currentLayoutMode,
+    collapsed: Boolean(getPanelPref(id).collapsed),
+    pinned: Boolean(getPanelPref(id).pinned),
+    size: getPanelPref(id).size,
+    virtualizationMode: meta.virtualizationMode || 'none',
+    virtualized: Boolean(meta.virtualized),
+    totalItems: Math.max(0, Number(meta.totalItems || 0)),
+    renderedItems: Math.max(0, Number(meta.renderedItems || 0)),
+    hiddenItems: Math.max(0, Number(meta.hiddenItems || 0)),
+    estimatedDomNodes: Math.max(0, Number(meta.estimatedDomNodes || 0)),
+    notes: Array.isArray(meta.notes) ? meta.notes.filter(Boolean) : [],
+  };
+}
+function shouldVirtualizePanel(id, totalItems, estimatedDomNodes=totalItems){
+  if(currentLayoutMode !== 'wallboard') return { enabled:false, mode:'off', reason:'non-wallboard' };
+  const pref = getWallboardVirtualizationPreference();
+  if(pref === 'off') return { enabled:false, mode:'off', reason:'operator-disabled' };
+  const heavyPanel = ['reviewQueue','newsTicker','rightOsint','osintStream','evidenceAudit'].includes(id);
+  const thresholdExceeded = totalItems >= 10 || estimatedDomNodes >= 32;
+  const enabled = pref === 'on' ? heavyPanel : (heavyPanel && thresholdExceeded);
+  return { enabled, mode: pref, reason: enabled ? (pref === 'on' ? 'operator-forced' : 'auto-threshold') : 'below-threshold' };
+}
+function buildVirtualizedWindow(items, { id, maxItems, estimatedNodesPerItem=1 }={}){
+  const list = Array.isArray(items) ? items : [];
+  const estimate = list.length * Math.max(1, estimatedNodesPerItem);
+  const virtualization = shouldVirtualizePanel(id, list.length, estimate);
+  const limit = virtualization.enabled ? Math.max(1, maxItems || 8) : list.length;
+  return {
+    items: list.slice(0, limit),
+    totalItems: list.length,
+    renderedItems: Math.min(list.length, limit),
+    hiddenItems: Math.max(0, list.length - limit),
+    virtualized: virtualization.enabled,
+    virtualizationMode: virtualization.mode,
+    virtualizationReason: virtualization.reason,
+    estimatedDomNodes: (virtualization.enabled ? Math.min(list.length, limit) : list.length) * Math.max(1, estimatedNodesPerItem),
+  };
+}
+function renderVirtualizationNotice(windowed, noun='items'){
+  if(!windowed?.virtualized || !windowed.hiddenItems) return '';
+  return `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:8px">Wallboard virtualization active, showing ${cleanText(String(windowed.renderedItems))} of ${cleanText(String(windowed.totalItems))} ${cleanText(noun)} to keep the panel responsive.</div>`;
+}
 const workspacePresetDefinitions = {
   operator: { displayMode:'desktop', mapMode:'auto', visualsMode:'full', defaultRegion:'world', activeLayer:null, panels:{ reviewQueue:{ pinned:true, priority:10, size:'wide', collapsed:false }, analysisReview:{ pinned:true, priority:20, size:'normal', collapsed:false }, layoutBudget:{ pinned:false, priority:30, size:'normal', collapsed:false }, tradeIdeas:{ pinned:false, priority:60, size:'compact', collapsed:false }, evidenceAudit:{ pinned:false, priority:40, size:'normal', collapsed:false } } },
   diagnostics: { displayMode:'desktop', mapMode:'flat', visualsMode:'lite', defaultRegion:'world', activeLayer:'news', panels:{ reviewQueue:{ pinned:true, priority:5, size:'wide', collapsed:false }, analysisReview:{ pinned:true, priority:10, size:'wide', collapsed:false }, layoutBudget:{ pinned:true, priority:12, size:'wide', collapsed:false }, evidenceAudit:{ pinned:true, priority:15, size:'wide', collapsed:false }, tradeIdeas:{ pinned:false, priority:90, size:'compact', collapsed:true }, newsTicker:{ pinned:false, priority:50, size:'compact', collapsed:false } } },
@@ -1587,7 +1639,8 @@ function renderLower(){
   const srcHtml=D.health.map(s=>`<div class="src-item"><div class="sd ${s.err?'err':'ok'}"></div><span>${s.n}</span></div>`).join('');
 
   // NEWS TICKER — merges RSS + GDELT + Telegram into flowing cards (moved from right rail)
-  const feed = (D.newsFeed || []).slice(0, 20);
+  const feedWindow = buildVirtualizedWindow((D.newsFeed || []).slice(0, 20), { id:'newsTicker', maxItems:8, estimatedNodesPerItem:3 });
+  const feed = feedWindow.items;
   const srcClass = s => {
     if (!s) return 'other';
     const sl = s.toLowerCase();
@@ -1632,11 +1685,13 @@ function renderLower(){
     </div>`;
 
 
-  const tickerPanel = finishWrappedPanel(wrapPanel('newsTicker','lp-ticker', `<div class="sec-head"><h3>${t('panels.newsTicker','Live News Ticker')}</h3><span class="badge">${feed.length} ${t('badges.items','ITEMS')}</span></div>
+  const tickerPanel = finishWrappedPanel(wrapPanel('newsTicker','lp-ticker', `<div class="sec-head"><h3>${t('panels.newsTicker','Live News Ticker')}</h3><span class="badge">${cleanText(String(feedWindow.renderedItems))}/${cleanText(String(feedWindow.totalItems))} ${t('badges.items','ITEMS')}</span></div>
       <div class="ticker-wrap" style="--ticker-duration:${tickerDuration}s">
-        <div class="ticker-track">${tickerCards}${lowPerfMode ? '' : tickerCards}</div>
-      </div>`));
+        <div class="ticker-track">${tickerCards}${lowPerfMode || feedWindow.virtualized ? '' : tickerCards}</div>
+      </div>${renderVirtualizationNotice(feedWindow, 'items')}`));
+  recordPanelRenderBudget('newsTicker', { totalItems: feedWindow.totalItems, renderedItems: feedWindow.renderedItems, hiddenItems: feedWindow.hiddenItems, estimatedDomNodes: feedWindow.estimatedDomNodes + (feedWindow.virtualized ? 4 : feedWindow.renderedItems * 2), virtualized: feedWindow.virtualized, virtualizationMode: feedWindow.virtualizationMode, notes: [feedWindow.virtualizationReason === 'auto-threshold' ? 'wallboard auto cap' : 'ticker full render'] });
   const osintPanel = mobile ? buildOsintPanel('lp-osint', 240) : '';
+  if(!mobile) recordPanelRenderBudget('osintStream', { totalItems: 0, renderedItems: 0, hiddenItems: 0, estimatedDomNodes: 0, virtualized: false, virtualizationMode: 'none', notes: ['desktop uses right-rail OSINT stream'] });
   const macroPanel = finishWrappedPanel(wrapPanel('macroMarkets','lp-macro', `<div class="sec-head"><h3>${t('panels.macroMarkets','Macro + Markets')}</h3><span class="badge">${mkt.timestamp?t('badges.live','LIVE'):t('badges.delayed','DELAYED')}</span></div>
       ${hasMarkets?`<div style="margin-bottom:8px">
         <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">INDEXES</div>
@@ -1673,6 +1728,9 @@ function renderLower(){
   const ideasPanel = finishWrappedPanel(wrapPanel('tradeIdeas','lp-ideas', `<div class="sec-head"><h3>${t('panels.tradeIdeas','Leverageable Ideas')}</h3><span class="ideas-src ${D.ideasSource==='llm'?'llm':'static'}">${llmIdeasLabel(D.ideasSource)}</span></div>
       ${ideasHtml}
       <div class="disclosure">FOR INFORMATIONAL PURPOSES ONLY. This is not financial advice, a recommendation to buy or sell any security, or a solicitation of any kind. All signal-based observations are derived from publicly available OSINT data and should not be relied upon for investment decisions. Consult a licensed financial advisor before making any investment. Past performance does not guarantee future results.</div>`));
+  recordPanelRenderBudget('macroMarkets', { totalItems: metrics.length + (mkt.indexes||[]).length + (mkt.crypto||[]).length + (mkt.rates||[]).length, renderedItems: metrics.length + (mkt.indexes||[]).length + (mkt.crypto||[]).length + (mkt.rates||[]).length, hiddenItems: 0, estimatedDomNodes: metrics.length * 4, virtualized: false, virtualizationMode: 'none', notes: ['macro cards'] });
+  recordPanelRenderBudget('agentAnalysis', { totalItems: (analysis.outlook||[]).length + (analysis.risks||[]).length + (analysis.tippingPoints||[]).length + (analysis.caveats||[]).length, renderedItems: Math.min(3,(analysis.outlook||[]).length) + Math.min(3,(analysis.risks||[]).length) + Math.min(3,(analysis.tippingPoints||[]).length) + Math.min(3,(analysis.caveats||[]).length), hiddenItems: Math.max(0, (analysis.outlook||[]).length-3) + Math.max(0, (analysis.risks||[]).length-3) + Math.max(0, (analysis.tippingPoints||[]).length-3) + Math.max(0, (analysis.caveats||[]).length-3), estimatedDomNodes: 18, virtualized: false, virtualizationMode: 'none', notes: ['bounded slices already applied'] });
+  recordPanelRenderBudget('tradeIdeas', { totalItems: Array.isArray(D.ideas) ? D.ideas.length : 0, renderedItems: Array.isArray(D.ideas) ? D.ideas.length : 0, hiddenItems: 0, estimatedDomNodes: Math.max(2, (Array.isArray(D.ideas) ? D.ideas.length : 1) * 4), virtualized: false, virtualizationMode: 'none', notes: [D.ideasSource || 'static'] });
   const lowerPanels = [
     { id:'macroMarkets', pinned:getPanelPref('macroMarkets').pinned?1:0, priority:getPanelPref('macroMarkets').priority, order:1, html:macroPanel },
     { id:'agentAnalysis', pinned:getPanelPref('agentAnalysis').pinned?1:0, priority:getPanelPref('agentAnalysis').priority, order:2, html:analysisPanel },
@@ -1685,8 +1743,10 @@ function renderLower(){
 
 // === RIGHT RAIL ===
 function buildEvidencePanel(panelClass=''){
-  const corroborated = (D.corroboratedSignals || []).slice(0, 4);
-  const suspect = (D.suspectSignals || []).slice(0, 6);
+  const corroboratedWindow = buildVirtualizedWindow((D.corroboratedSignals || []).slice(0, 6), { id:'evidenceAudit', maxItems:3, estimatedNodesPerItem:4 });
+  const suspectWindow = buildVirtualizedWindow((D.suspectSignals || []).slice(0, 8), { id:'evidenceAudit', maxItems:4, estimatedNodesPerItem:4 });
+  const corroborated = corroboratedWindow.items;
+  const suspect = suspectWindow.items;
   const confidenceTone = { high:'var(--ok)', medium:'var(--accent2)', low:'var(--warn)' };
   const sourceHealthTone = { clean:'var(--ok)', 'hard-data':'var(--ok)', degraded:'var(--warn)', 'single-source':'#ffab40', 'osint-only':'#ffab40', 'air-missing':'#ffab40', 'degraded-air-ok':'#4dd0e1' };
   const badge = (text, tone) => `<span style="display:inline-block;margin:2px 4px 4px 0;padding:2px 6px;border:1px solid ${tone};border-radius:999px;font-family:var(--mono);font-size:9px;color:${tone}">${cleanText(text)}</span>`;
@@ -1758,13 +1818,15 @@ function renderRight(){
   const analysisMeta = D.agentAnalysisMeta || {};
   const runtimeLlm = D.runtimeLlm || null;
   const reviewQueue = D.reviewQueue || null;
-  const reviewQueuePanel = finishWrappedPanel(wrapPanel('reviewQueue','right-review-queue', `<div class="sec-head"><h3>Review Queue</h3><span class="badge">${cleanText(String(reviewQueue?.totalItems || 0))}</span></div>
+  const reviewQueueWindow = buildVirtualizedWindow(reviewQueue?.items || [], { id:'reviewQueue', maxItems:6, estimatedNodesPerItem:6 });
+  const reviewQueuePanel = finishWrappedPanel(wrapPanel('reviewQueue','right-review-queue', `<div class="sec-head"><h3>Review Queue</h3><span class="badge">${cleanText(String(reviewQueueWindow.renderedItems))}/${cleanText(String(reviewQueueWindow.totalItems))}</span></div>
       <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:6px">${cleanText(reviewQueue?.summary || 'No active review items.')}</div>
       ${(reviewQueue?.ackSummary?.active || 0) > 0 ? `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:8px">Dismissed now ${cleanText(String(reviewQueue?.ackSummary?.active || 0))} • repeat ${cleanText(String(reviewQueue?.ackSummary?.repeatAckCount || 0))}${reviewQueue?.ackSummary?.nextExpiry ? ` • next expiry ${cleanText(getAge(reviewQueue.ackSummary.nextExpiry))}` : ''}</div>` : ''}
       ${reviewQueue?.state === 'empty_elevated_metrics' ? `<div style="font-family:var(--mono);font-size:10px;color:var(--warn);margin-bottom:8px">Metrics still elevated • chronic ${cleanText(String(reviewQueue?.metrics?.chronicFailureCount || 0))} • recent ${cleanText(String(reviewQueue?.metrics?.recentFailureCount || 0))} • low-confidence ${cleanText(String(reviewQueue?.metrics?.lowConfidenceCount || 0))} • duplicates ${cleanText(String(reviewQueue?.metrics?.suspiciousNearDuplicateCount || 0))}</div>` : ''}
       ${reviewQueue?.topReasons?.length ? `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:8px">Top reasons: ${reviewQueue.topReasons.map(item => `${cleanText(item.reason)} (${item.count})`).join(' • ')}</div>` : ''}
-      ${(reviewQueue?.items || []).length ? reviewQueue.items.map(item=>`<div class="signal-row" style="border-left-color:${item.severity==='high'?'var(--warn)':'rgba(68,204,255,0.5)'}"><strong>${cleanText(item.region || 'region')}</strong><p>${cleanText(item.reason)} • ${cleanText(String(item.itemCount || 0))} item${(item.itemCount||0)===1?'':'s'}${item.chronic ? ' • chronic' : ''} • priority ${cleanText(String(item.priorityScore || 0))}</p><div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px">Drivers: ${cleanText((item.priorityDrivers || []).join(', ') || 'baseline')}</div><div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px">${cleanText(item.suggestedAction || '')}</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${(item.actions||[]).map(action => action.id === 'artifacts' ? `<button class="map-ctrl-btn" style="font-size:9px;padding:4px 8px" onclick="openReviewQueueAction('${cleanText(action.href)}')">${cleanText(action.label)}</button>` : `<button class="map-ctrl-btn" style="font-size:9px;padding:4px 8px" onclick="runReviewQueueAction('${cleanText(action.href)}','${cleanText(action.method || 'GET')}')">${cleanText(action.label)}</button>`).join('')}</div></div>`).join('') : `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${cleanText(reviewQueue?.emptyReason || 'No active review items')}</div>`}
-      ${reviewQueue?.hasMore ? `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:8px">Showing ${cleanText(String(reviewQueue.visibleItems || 0))} of ${cleanText(String(reviewQueue.totalItems || 0))} items</div>` : ''}`));
+      ${reviewQueueWindow.items.length ? reviewQueueWindow.items.map(item=>`<div class="signal-row" style="border-left-color:${item.severity==='high'?'var(--warn)':'rgba(68,204,255,0.5)'}"><strong>${cleanText(item.region || 'region')}</strong><p>${cleanText(item.reason)} • ${cleanText(String(item.itemCount || 0))} item${(item.itemCount||0)===1?'':'s'}${item.chronic ? ' • chronic' : ''} • priority ${cleanText(String(item.priorityScore || 0))}</p><div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px">Drivers: ${cleanText((item.priorityDrivers || []).join(', ') || 'baseline')}</div><div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px">${cleanText(item.suggestedAction || '')}</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${(item.actions||[]).map(action => action.id === 'artifacts' ? `<button class="map-ctrl-btn" style="font-size:9px;padding:4px 8px" onclick="openReviewQueueAction('${cleanText(action.href)}')">${cleanText(action.label)}</button>` : `<button class="map-ctrl-btn" style="font-size:9px;padding:4px 8px" onclick="runReviewQueueAction('${cleanText(action.href)}','${cleanText(action.method || 'GET')}')">${cleanText(action.label)}</button>`).join('')}</div></div>`).join('') : `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${cleanText(reviewQueue?.emptyReason || 'No active review items')}</div>`}
+      ${reviewQueue?.hasMore ? `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:8px">Showing ${cleanText(String(reviewQueue.visibleItems || 0))} of ${cleanText(String(reviewQueue.totalItems || 0))} items</div>` : ''}${renderVirtualizationNotice(reviewQueueWindow, 'queue items')}`));
+  recordPanelRenderBudget('reviewQueue', { totalItems: reviewQueueWindow.totalItems, renderedItems: reviewQueueWindow.renderedItems, hiddenItems: reviewQueueWindow.hiddenItems, estimatedDomNodes: reviewQueueWindow.estimatedDomNodes + 10, virtualized: reviewQueueWindow.virtualized, virtualizationMode: reviewQueueWindow.virtualizationMode, notes: [reviewQueue?.state || 'unknown'] });
   const analysisReview = finishWrappedPanel(wrapPanel('analysisReview','right-analysis-review', `<div class="sec-head"><h3>Analysis Review</h3><span class="badge">${cleanText(runtimeLlm?.analysis?.label || analysisLlmBadge(analysisMeta))}</span></div>
       <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:6px">${cleanText(runtimeLlm?.analysis?.explanation || analysisLlmMetaLine(analysisMeta))}</div>
       ${runtimeLlm ? `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:8px">Runtime LLM: ${cleanText(runtimeLlm.label)} • ${cleanText(runtimeLlm.summary || '')}</div>` : ''}
@@ -1898,6 +1960,8 @@ function getLayoutBudgetSnapshot(){
   const mapHeight = Math.round(mapRect?.height || 0);
   const lowerHeight = Math.round(lowerRect?.height || 0);
   const firstScreenFootprint = topbarHeight + mapHeight;
+  const panelTelemetry = Object.values(panelRenderBudgetTelemetry || {}).sort((a,b) => (b.estimatedDomNodes - a.estimatedDomNodes) || (b.totalItems - a.totalItems) || String(a.id).localeCompare(String(b.id)));
+  const virtualizedPanelCount = panelTelemetry.filter(item => item.virtualized).length;
   return {
     layoutMode,
     viewportW,
@@ -1916,6 +1980,9 @@ function getLayoutBudgetSnapshot(){
     firstScreenShare: pctOfViewport(firstScreenFootprint, viewportH),
     remainingViewport: Math.max(0, viewportH - firstScreenFootprint),
     centerScrollOverflow: Math.max(0, Math.round(centerRect?.height || 0) - viewportH),
+    panelTelemetry,
+    virtualizedPanelCount,
+    virtualizationPreference: getWallboardVirtualizationPreference(),
   };
 }
 
@@ -1926,13 +1993,15 @@ function renderLayoutBudgetPanel(){
       <div class="signal-row" style="border-left-color:rgba(68,204,255,0.5)"><strong>First-screen budget</strong><p>Topbar ${cleanText(b.topbarShare)} • Map ${cleanText(b.mapShare)} • Topbar+map ${cleanText(b.firstScreenShare)} • remaining viewport ${cleanText(String(b.remainingViewport))}px</p></div>
       <div class="signal-row" style="border-left-color:rgba(100,240,200,0.45)"><strong>Active tokens</strong><p>Min ${cleanText(b.mapMinHeight)} • Height ${cleanText(b.mapHeightToken)}</p></div>
       <div class="signal-row" style="border-left-color:rgba(255,184,76,0.45)"><strong>Measured panels</strong><p>Topbar ${cleanText(String(b.topbarHeight))}px • Map ${cleanText(String(b.mapHeight))}px • Lower ${cleanText(String(b.lowerHeight))}px • center overflow ${cleanText(String(b.centerScrollOverflow))}px</p></div>
+      <div class="signal-row" style="border-left-color:rgba(105,240,174,0.45)"><strong>Render budget telemetry</strong><p>Virtualization pref ${cleanText(String(b.virtualizationPreference || 'auto').toUpperCase())} • active panels ${cleanText(String(b.virtualizedPanelCount || 0))} • heaviest ${cleanText((b.panelTelemetry || []).slice(0,3).map(item => `${item.id}:${item.estimatedDomNodes}n/${item.renderedItems}/${item.totalItems}${item.virtualized?'*':''}`).join(' • ') || 'none')}</p></div>
       <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:8px">This is a live DOM budget check, not a promise from memory. If these ratios drift, the layout is freelancing again.</div>`));
 }
 
 function buildOsintPanel(panelClass='', maxHeight=260){
   const allPosts=[...D.tg.urgent,...D.tg.topPosts].sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
   const whoItems=D.who.slice(0,4).map(w=>({channel:'WHO ALERT',text:w.title,date:w.date,isWho:true}));
-  const osintItems=[...allPosts.slice(0,15),...whoItems];
+  const osintWindow = buildVirtualizedWindow([...allPosts.slice(0,15),...whoItems], { id: panelClass === 'right-osint' ? 'rightOsint' : 'osintStream', maxItems:7, estimatedNodesPerItem:3 });
+  const osintItems=osintWindow.items;
   const osintCards=osintItems.map(p=>{
     const isU=p.urgentFlags&&p.urgentFlags.length>0;
     const views=p.views?p.views>=1000?`${(p.views/1000).toFixed(0)}K`:p.views:'';
@@ -1942,11 +2011,14 @@ function buildOsintPanel(panelClass='', maxHeight=260){
     return `<div class="tk-card ${isU?'urgent':''}"><span ${srcCls}>${(p.channel||'OSINT').toUpperCase().substring(0,14)}</span>${views?`<span class="tk-src other">${views}</span>`:''}<span class="tk-time">${age}</span>${flags}<div class="tk-head">${cleanText((p.text||'').substring(0,160))}</div></div>`;
   }).join('');
   const osintDuration=Math.max(25,osintItems.length*3);
+  const panelId = panelClass === 'right-osint' ? 'rightOsint' : 'osintStream';
+  recordPanelRenderBudget(panelId, { totalItems: osintWindow.totalItems, renderedItems: osintWindow.renderedItems, hiddenItems: osintWindow.hiddenItems, estimatedDomNodes: osintWindow.estimatedDomNodes + (osintWindow.virtualized ? 4 : osintWindow.renderedItems * 2), virtualized: osintWindow.virtualized, virtualizationMode: osintWindow.virtualizationMode, notes: [osintWindow.virtualizationReason] });
   return `<div class="g-panel ${panelClass}" style="display:flex;flex-direction:column">
-      <div class="sec-head"><h3>${t('panels.osintStream','OSINT Stream')}</h3><span class="badge">${D.tg.urgent.length} ${t('badges.urgent','URGENT')}</span></div>
+      <div class="sec-head"><h3>${t('panels.osintStream','OSINT Stream')}</h3><span class="badge">${cleanText(String(osintWindow.renderedItems))}/${cleanText(String(osintWindow.totalItems))} ${t('badges.urgent','URGENT')}</span></div>
       <div class="ticker-wrap" style="--ticker-duration:${osintDuration}s;max-height:${maxHeight}px">
-        <div class="ticker-track">${osintCards}${lowPerfMode ? '' : osintCards}</div>
+        <div class="ticker-track">${osintCards}${lowPerfMode || osintWindow.virtualized ? '' : osintCards}</div>
       </div>
+      ${renderVirtualizationNotice(osintWindow, 'posts')}
     </div>`;
 }
 
@@ -2027,6 +2099,7 @@ function syncResponsiveLayout(force=false){
 
 // === REINIT (for live updates without boot sequence) ===
 function reinit(){
+  resetPanelRenderBudgetTelemetry();
   renderTopbar();renderLeftRail();renderLower();renderRight();
   plotMarkers();
 }
@@ -2066,6 +2139,7 @@ function connectSSE(){
 // === INIT ===
 let booted = false;
 function init(){
+  resetPanelRenderBudgetTelemetry();
   renderTopbar();renderLeftRail();renderLower();renderRight();
   renderGlossary();
   initMap();

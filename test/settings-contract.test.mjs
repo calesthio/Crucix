@@ -28,6 +28,11 @@ const context = {
   llmProvider: { model: 'qwen', isConfigured: true },
   currentLanguage: 'en',
   OPERATOR_SETTINGS_PATH: '/tmp/test-operator-settings.json',
+  buildSettingsRevisionEtag: settings => `etag-${settings?.revision ?? 0}`,
+  buildSettingsConcurrencyState: settings => ({ required: true, revision: settings?.revision ?? 0, etag: `etag-${settings?.revision ?? 0}` }),
+  LOCAL_ADMIN_WRITE_HEADER: 'X-Crucix-Local-Admin-Nonce',
+  LOCAL_ADMIN_WRITE_BODY_FIELD: 'localAdminNonce',
+  buildLocalAdminWriteAuthState: () => ({ required: true, token: 'test-token' }),
   currentData: null,
   lastSweepTime: '2026-04-25T20:00:00.000Z',
   sweepInProgress: false,
@@ -54,7 +59,7 @@ const context = {
     version: 'operator-settings-store-v1',
     updatedAt: null,
     preferences: {
-      layout: { visualsMode: 'full', mapMode: 'auto', displayMode: 'desktop', defaultRegion: 'world', activeLayer: null, workspacePreset: 'diagnostics', panels: { reviewQueue: { collapsed: false, pinned: true, priority: 10, size: 'wide' } } },
+      layout: { visualsMode: 'full', mapMode: 'auto', displayMode: 'desktop', defaultRegion: 'world', activeLayer: null, workspacePreset: 'diagnostics', performance: { wallboardVirtualization: 'auto' }, panels: { reviewQueue: { collapsed: false, pinned: true, priority: 10, size: 'wide' } } },
       sources: { enabledCategories: ['news'], enabledSourceIds: ['gdelt-global'], suppressedSourceIds: [], quarantinedSourceIds: [], noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 3 }, repetitiveLowValue: { enabled: true, maxStoryCount: 1, maxSourceCount: 1 }, sourceRules: [{ sourceId: 'gdelt-global', action: 'suppress', reason: 'duplicate burst source', enabled: true }] } },
       llm: { newsModeDefault: 'auto' },
       agentAnalysis: {
@@ -178,6 +183,8 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.layout.current, 'diagnostics');
   assert.equal(contract.layout.controls.displayMode, 'desktop');
   assert.equal(contract.layout.controls.workspacePreset, 'diagnostics');
+  assert.equal(contract.layout.controls.performance.wallboardVirtualization, 'auto');
+  assert.equal(contract.layout.controls.availableWallboardVirtualizationModes.includes('on'), true);
   assert.equal(Array.isArray(contract.layout.controls.availableDisplayModes), true);
   assert.equal(Array.isArray(contract.layout.controls.availableWorkspacePresets), true);
   assert.equal(contract.layout.controls.panelPreferences.reviewQueue.pinned, true);

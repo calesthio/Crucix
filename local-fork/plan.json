@@ -1000,7 +1000,7 @@
           {
             "id": "effort-36.3",
             "title": "Add panel-level render budget telemetry and optional virtualization for wallboard mode so long OSINT and news streams plus large review queues do not silently degrade browser responsiveness as the dashboard grows",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-36.4",
@@ -1246,9 +1246,9 @@
     ]
   },
   "cycleState": {
-    "sequence": 159,
+    "sequence": 160,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-28-cycle-159"
+    "lastCompletedCycleId": "2026-04-28-cycle-160"
   },
   "backlog": [
     {

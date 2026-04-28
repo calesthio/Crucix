@@ -127,7 +127,10 @@ test('booted server serves runtime-backed dashboard and operator pages with inje
     const dashboardHtml = await fetchText(`${baseUrl}/`);
     const dashboardRuntime = extractInjectedJson(dashboardHtml, '__CRUCIX_RUNTIME__');
     assert.deepEqual(Object.keys(dashboardRuntime).sort(), ['adminSettingsUrl', 'diagnosticsUrl', 'operatorSettings', 'refreshIntervalMinutes', 'settingsUrl'].sort());
+    assert.equal(['auto', 'off', 'on'].includes(dashboardRuntime.operatorSettings.layout.performance.wallboardVirtualization), true);
     assert.match(dashboardHtml, /fetch\('\/api\/data'/i);
+    assert.match(dashboardHtml, /panelRenderBudgetTelemetry/i);
+    assert.match(dashboardHtml, /Wallboard virtualization active/i);
     assert.equal(health.runtimeIdentity.port, BASE_PORT);
   });
 });
