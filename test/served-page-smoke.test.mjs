@@ -135,5 +135,15 @@ test('booted server serves runtime-backed dashboard and operator pages with inje
     assert.match(dashboardHtml, /Wallboard virtualization active/i);
     assert.match(dashboardHtml, /Reset Layout/i);
     assert.equal(health.runtimeIdentity.port, BASE_PORT);
+
+    const diagnosticsPreset = dashboardRuntime.workspacePresetLibrary.find(item => item.id === 'diagnostics');
+    assert.ok(diagnosticsPreset, 'expected diagnostics preset in workspace library');
+    assert.equal(diagnosticsPreset.panels.layoutBudget.pinned, true);
+    assert.equal(diagnosticsPreset.panels.layoutBudget.size, 'wide');
+    assert.match(dashboardHtml, /function getLayoutBudgetSnapshot\(/i);
+    assert.match(dashboardHtml, /Topbar\+map/i);
+    assert.match(dashboardHtml, /center overflow/i);
+    assert.match(dashboardHtml, /Render budget telemetry/i);
+    assert.match(dashboardHtml, /This is a live DOM budget check, not a promise from memory/i);
   });
 });

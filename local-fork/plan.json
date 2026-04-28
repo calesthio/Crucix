@@ -1181,7 +1181,7 @@
           {
             "id": "effort-49.1",
             "title": "Add browser-level regression coverage for dashboard layout-budget diagnostics so measured map and panel ratios fail fast when a layout change lets the dashboard freelance again",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -1295,13 +1295,37 @@
             "status": "pending"
           }
         ]
+      },
+      {
+        "id": "epic-58",
+        "title": "Admin preset browser regression coverage",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-58.1",
+            "title": "Add browser-level regression coverage for admin preset clone, import, and delete flows so the operator-editable preset authoring path stays honest when future UI work touches the local control plane",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-59",
+        "title": "Telegram and RSS cluster corroboration hardening",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-59.1",
+            "title": "Add bounded corroboration and de-duplication between urgent Telegram map candidates and matching RSS/GDELT stories so high-salience OSINT incidents land on the map quickly without permanently inflating single-source weak-cluster pressure",
+            "status": "pending"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 161,
+    "sequence": 164,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-28-cycle-161"
+    "lastCompletedCycleId": "2026-04-28-cycle-164"
   },
   "backlog": [
     {

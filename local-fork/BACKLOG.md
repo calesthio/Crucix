@@ -4,10 +4,8 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 
 ## Candidate backlog items
 
-- `backlog-2026-04-28-admin-preset-browser-regression`
-  - Add browser-level regression coverage for admin preset clone, import, and delete flows so the operator-editable preset authoring path stays honest when future UI work touches the local control plane.
-- `backlog-2026-04-28-telegram-rss-cluster-corroboration`
-  - Add bounded corroboration and de-duplication between urgent Telegram map candidates and matching RSS/GDELT stories so high-salience OSINT incidents land on the map quickly without permanently inflating single-source weak-cluster pressure.
+- `backlog-2026-04-28-layout-budget-headless-measurements`
+  - Add true headless-browser layout-budget measurements and threshold assertions so future regressions can verify computed topbar/map/overflow ratios directly instead of relying only on served-page contract coverage.
 
 Recent promotions:
 - Noise-suppression pressure alert acknowledge/snooze controls plus recent audit visibility was promoted into `local-fork/plan.json` as Epic 29, effort 29.9 on 2026-04-26.
@@ -46,6 +44,8 @@ Recent promotions:
 - Extended local admin write-auth boundary work was promoted into `local-fork/plan.json` as Epic 55, effort 55.1 on 2026-04-28.
 - Restart-safe helper portability hardening was promoted into `local-fork/plan.json` as Epic 56, effort 56.1 on 2026-04-28.
 - Dashboard persistence honesty work was promoted into `local-fork/plan.json` as Epic 57, efforts 57.1 through 57.2 on 2026-04-28.
+- Admin preset browser regression coverage was promoted into `local-fork/plan.json` as Epic 58, effort 58.1 on 2026-04-28.
+- Telegram and RSS cluster corroboration hardening was promoted into `local-fork/plan.json` as Epic 59, effort 59.1 on 2026-04-28.
 
 Recent promotions:
 - Critical-event classifier hardening, transition audit, and delivery audit work were promoted into `local-fork/plan.json` as Epic 39, efforts 39.1 through 39.3 on 2026-04-27.
