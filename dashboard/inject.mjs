@@ -126,6 +126,32 @@ function geoTagText(text) {
   return findGeoKeyword(text);
 }
 
+function buildTelegramNewsCandidates(posts = []) {
+  const candidates = [];
+  for (const post of posts) {
+    const rawText = String(post?.text || '').replace(/\s+/g, ' ').trim();
+    if (!rawText) continue;
+    const geo = geoTagText(rawText);
+    if (!geo) continue;
+    candidates.push({
+      title: rawText.substring(0, 160),
+      source: post?.channel?.toUpperCase() || 'TELEGRAM',
+      type: 'telegram',
+      date: post?.date || null,
+      url: null,
+      lat: geo.lat,
+      lon: geo.lon,
+      region: geo.region,
+      placementPrecision: geo.precision,
+      placementBasis: 'telegram-urgent',
+      placementClass: geo.placementClass,
+      urgent: true,
+      urgentFlags: Array.isArray(post?.urgentFlags) ? post.urgentFlags : [],
+    });
+  }
+  return candidates;
+}
+
 function resolveNewsPlacement(item = {}) {
   if (Number.isFinite(item.lat) && Number.isFinite(item.lon)) {
     return buildPlacementDescriptor({
@@ -1466,6 +1492,7 @@ export async function synthesize(data, llmProvider = createLLMProvider(config.ll
   const tgUrgent = (tgData.urgentPosts || []).filter(p => isEnglish(p.text)).map(p => ({
     channel: p.channel, text: p.text?.substring(0, 200), views: p.views, date: p.date, urgentFlags: p.urgentFlags || []
   }));
+  const tgUrgentNews = buildTelegramNewsCandidates(tgUrgent);
   const tgTop = (tgData.topPosts || []).filter(p => isEnglish(p.text)).map(p => ({
     channel: p.channel, text: p.text?.substring(0, 200), views: p.views, date: p.date, urgentFlags: []
   }));
@@ -1641,8 +1668,9 @@ export async function synthesize(data, llmProvider = createLLMProvider(config.ll
     energy.signals.push(`Brent live quote downgraded to low confidence, using prior close $${yfBrent.prevClose} instead of raw $${yfBrent.price}`);
   }
 
-  // Fetch RSS
-  const news = await fetchAllNews();
+  // Fetch RSS and fold in geocodable urgent Telegram items so high-salience OSINT events are eligible for clustering and map placement.
+  const rssNews = await fetchAllNews();
+  const news = [...tgUrgentNews, ...rssNews];
   const { clusters: newsClusters, llmDebug: newsLlmDebug, qualitySummary: newsClusterQuality } = await buildNewsClusters(news, llmProvider, { mode: options.newsLlmMode || 'auto' });
 
   const corroboratedSignals = buildCorroboratedSignals({

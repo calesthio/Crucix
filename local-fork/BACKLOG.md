@@ -6,6 +6,8 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 
 - `backlog-2026-04-28-admin-preset-browser-regression`
   - Add browser-level regression coverage for admin preset clone, import, and delete flows so the operator-editable preset authoring path stays honest when future UI work touches the local control plane.
+- `backlog-2026-04-28-telegram-rss-cluster-corroboration`
+  - Add bounded corroboration and de-duplication between urgent Telegram map candidates and matching RSS/GDELT stories so high-salience OSINT incidents land on the map quickly without permanently inflating single-source weak-cluster pressure.
 
 Recent promotions:
 - Noise-suppression pressure alert acknowledge/snooze controls plus recent audit visibility was promoted into `local-fork/plan.json` as Epic 29, effort 29.9 on 2026-04-26.

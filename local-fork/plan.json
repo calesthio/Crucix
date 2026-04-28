@@ -1015,7 +1015,7 @@
           {
             "id": "effort-36.6",
             "title": "Investigate and harden missing map surfacing for high-salience breaking open-source events, starting with the White House Correspondents' Dinner Secret Service shooting signature, including source carriage, ingestion, clustering, geocoding, and map-placement behavior",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },

@@ -77,3 +77,47 @@ test('buildNewsClusters preserves source-fallback class when clustered items wer
   assert.equal(clusters[0].placementClass, 'source-fallback');
   assert.ok(clusters[0].qualityFlags.includes('source-fallback-placement'));
 });
+
+test('buildNewsClusters keeps urgent Telegram incidents eligible for mapped clustering', async () => {
+  const news = [{
+    title: 'Secret Service confirms shooting near White House complex during correspondents dinner lockdown',
+    source: 'OSINT ALERTS',
+    type: 'telegram',
+    date: '2026-04-28T18:20:00Z',
+    url: null,
+    lat: 38.9,
+    lon: -77,
+    region: 'White House',
+    placementPrecision: 'subregion',
+    placementBasis: 'telegram-urgent',
+    placementClass: 'inferred-subregion',
+  }];
+
+  const { clusters } = await buildNewsClusters(news, null, { mode: 'off' });
+  assert.equal(clusters.length, 1);
+  assert.equal(clusters[0].placementBasis, 'telegram-urgent');
+  assert.equal(clusters[0].placementClass, 'inferred-subregion');
+  assert.equal(clusters[0].sourceProvenance.topSources[0].runtimeSource, 'Telegram');
+});
+
+test('buildNewsClusters prefers exact Telegram coordinates over generic regional aliases', async () => {
+  const news = [{
+    title: 'White House lockdown after Secret Service response in Washington',
+    source: 'FIELD SIGNAL',
+    type: 'telegram',
+    date: '2026-04-28T18:25:00Z',
+    url: null,
+    lat: 38.9,
+    lon: -77,
+    region: 'United States',
+    placementPrecision: 'subregion',
+    placementBasis: 'telegram-urgent',
+    placementClass: 'inferred-subregion',
+  }];
+
+  const { clusters } = await buildNewsClusters(news, null, { mode: 'off' });
+  assert.equal(clusters.length, 1);
+  assert.equal(clusters[0].region, 'United States');
+  assert.ok(Math.abs(clusters[0].lat - 38.9) < 3);
+  assert.ok(Math.abs(clusters[0].lon + 77) < 3);
+});
