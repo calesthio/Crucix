@@ -176,10 +176,11 @@ test('booted operator and admin settings surfaces stay role-separated with local
     const audit = await waitFor(reviewWorkflowAuditUrl, payload => Array.isArray(payload?.entries), 30000);
     assert.equal(audit.entries.some(item => item.policyKey === 'noiseSuppressionPressure' && item.targetType === 'operational-alert'), true);
 
+    const adminBeforeSuppress = await fetchJson(adminSettingsUrl);
     const suppressSource = await fetch(reviewWorkflowActionUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'suppress-source', sourceId: 'gdelt-global', note: 'triage test suppression' }),
+      headers: { 'Content-Type': 'application/json', 'If-Match': adminBeforeSuppress.persistence.etag },
+      body: JSON.stringify({ action: 'suppress-source', sourceId: 'gdelt-global', note: 'triage test suppression', expectedRevision: adminBeforeSuppress.persistence.revision, expectedEtag: adminBeforeSuppress.persistence.etag }),
     }).then(r => r.json().then(body => ({ status: r.status, body })));
     assert.equal(suppressSource.status, 200);
     assert.equal(suppressSource.body.ok, true);
@@ -187,10 +188,11 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(suppressSource.body.undo.action, 'unsuppress-source');
     assert.equal(suppressSource.body.reviewWorkflowAudit.status, 'applied');
 
+    const adminBeforeUndo = await fetchJson(adminSettingsUrl);
     const undoSuppress = await fetch(reviewWorkflowActionUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'unsuppress-source', sourceId: 'gdelt-global', note: 'triage test undo' }),
+      headers: { 'Content-Type': 'application/json', 'If-Match': adminBeforeUndo.persistence.etag },
+      body: JSON.stringify({ action: 'unsuppress-source', sourceId: 'gdelt-global', note: 'triage test undo', expectedRevision: adminBeforeUndo.persistence.revision, expectedEtag: adminBeforeUndo.persistence.etag }),
     }).then(r => r.json().then(body => ({ status: r.status, body })));
     assert.equal(undoSuppress.status, 200);
     assert.equal(undoSuppress.body.ok, true);
@@ -202,6 +204,10 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(sourceControlAudit.entries.some(item => item.action === 'unsuppress-source' && item.sourceId === 'gdelt-global'), true);
 
     assert.equal(settings.persistence.capabilities.writeApi, false);
+    assert.equal(settings.persistence.capabilities.writeConcurrencyToken, true);
+    assert.equal(typeof settings.persistence.revision, 'number');
+    assert.equal(typeof settings.persistence.etag, 'string');
+    assert.equal(settings.persistence.concurrency.required, true);
     assert.equal(settings.sourceConsole.version, 'source-console-v1');
     assert.equal(settings.sourceConsole.surface, '/source-ops');
     assert.equal(settings.sourceConsole.roleGrouping.enabled, true);
@@ -229,9 +235,13 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(admin.persistence.capabilities.stateBundle, true);
     assert.equal(admin.persistence.capabilities.auditHistory, true);
     assert.equal(admin.persistence.capabilities.writeApi, true);
+    assert.equal(admin.persistence.capabilities.writeConcurrencyToken, true);
+    assert.equal(typeof admin.persistence.revision, 'number');
+    assert.equal(typeof admin.persistence.etag, 'string');
     assert.equal(admin.access.role, 'admin');
     assert.equal(admin.admin.boundaries.requiresLocalRequest, true);
     assert.equal(admin.admin.controls.auditEndpoint, '/api/settings/audit');
+    assert.equal(admin.admin.controls.concurrencyHeader, 'If-Match');
     assert.equal(admin.admin.controls.runtimeHistoryDiagnosticsEndpoint, '/api/runtime-history/diagnostics');
     assert.equal(admin.admin.backup.bundleVersion, 'settings-state-bundle-v1');
     assert.equal(Array.isArray(admin.admin.auditTrail), true);

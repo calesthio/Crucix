@@ -990,7 +990,7 @@
           {
             "id": "effort-36.1",
             "title": "Add revision or ETag-style concurrency tokens to the operator settings store and write API so stale listeners, conflicting saves, and restore drift are detected instead of silently last-write-wins",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-36.2",
@@ -1172,63 +1172,91 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-49",
+        "title": "Dashboard layout regression contracts",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-49.1",
+            "title": "Add browser-level regression coverage for dashboard layout-budget diagnostics so measured map and panel ratios fail fast when a layout change lets the dashboard freelance again",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-50",
+        "title": "Preset-aware dashboard density tuning",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-50.1",
+            "title": "Add preset-specific density tuning and possibly alternate topbar/control placement so operator, diagnostics, and executive modes can optimize for different screen budgets without one global layout compromise",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-51",
+        "title": "Shared runtime action feedback contracts",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-51.1",
+            "title": "Generalize shared runtime-action feedback helpers beyond restart-safe so stop or future bounded actions can report queued, completed, and failed states consistently",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-52",
+        "title": "Critical event operator observability and workflow surfaces",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-52.1",
+            "title": "Expose critical-event classifier match basis and ambiguity flags for operator review",
+            "status": "pending"
+          },
+          {
+            "id": "effort-52.2",
+            "title": "Expose critical-event queue transition audit on operator-facing diagnostics surfaces",
+            "status": "pending"
+          },
+          {
+            "id": "effort-52.3",
+            "title": "Expose critical-event delivery audit and resend posture on operator-facing diagnostics surfaces",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-53",
+        "title": "SDR session operator workflow surfaces",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-53.1",
+            "title": "Expose SDR session plans, observation capture, and evidence-review workflow on operator-facing surfaces",
+            "status": "pending"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 157,
+    "sequence": 158,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-157"
+    "lastCompletedCycleId": "2026-04-28-cycle-158"
   },
   "backlog": [
     {
-      "id": "backlog-2026-04-27-dashboard-layout-budget-browser-contract",
-      "title": "Add browser-level regression coverage for dashboard layout-budget diagnostics so measured map and panel ratios fail fast when a layout change lets the dashboard freelance again",
+      "id": "backlog-2026-04-28-settings-concurrency-conflict-ux",
+      "title": "Add clearer admin-surface stale-write recovery UX for settings concurrency conflicts",
       "status": "pending",
-      "source": "cycle-156",
-      "reason": "The live layout-budget panel now exposes measured DOM state and active map tokens, but the contract is still human-read. A browser-level assertion pass against the surfaced ratios would catch future regressions earlier and more objectively."
-    },
-    {
-      "id": "backlog-2026-04-27-dashboard-preset-density-tuning",
-      "title": "Add preset-specific density tuning and possibly alternate topbar/control placement so operator, diagnostics, and executive modes can optimize for different screen budgets without one global layout compromise",
-      "status": "pending",
-      "source": "cycle-157",
-      "reason": "The first desktop efficiency pass improved column balance and lower-panel placement, but the dashboard still uses one shared topbar/control posture across very different workspace presets. Preset-specific density tuning would let operator, diagnostics, and wallboard modes use the screen more intentionally."
-    },
-    {
-      "id": "backlog-2026-04-27-runtime-action-feedback-contract",
-      "title": "Generalize shared runtime-action feedback helpers beyond restart-safe so stop or future bounded actions can report queued, completed, and failed states consistently",
-      "status": "pending",
-      "source": "cycle-153",
-      "reason": "The restart-audit helper is now centralized in the shared ops shell, but runtime-action feedback is still restart-specific. A small shared contract for runtime actions would make stop and future bounded actions reuse the same queued/completed/failed operator messaging path."
-    },
-    {
-      "id": "backlog-2026-04-27-critical-event-classifier-observability",
-      "title": "Expose critical-event classifier match basis and ambiguity flags for operator review",
-      "status": "pending",
-      "source": "cycle-146",
-      "reason": "The classifier now consumes richer metadata, but operators and future tuning work would benefit from seeing why a signal matched a class, which cues fired, and when a near-tie was intentionally discarded as ambiguous."
-    },
-    {
-      "id": "backlog-2026-04-27-critical-event-audit-operator-surface",
-      "title": "Expose critical-event queue transition audit on operator-facing diagnostics surfaces",
-      "status": "pending",
-      "source": "cycle-147",
-      "reason": "Transition history is now retained in state and surfaced in the contract, but operator-facing diagnostics and UI workflows still need a clearer review surface for browsing, filtering, and interpreting queue history over time."
-    },
-    {
-      "id": "backlog-2026-04-27-critical-event-delivery-operator-surface",
-      "title": "Expose critical-event delivery audit and resend posture on operator-facing diagnostics surfaces",
-      "status": "pending",
-      "source": "cycle-148",
-      "reason": "Delivery audit and resend posture now exist in contract state, but operators still need a clearer diagnostics and UI surface to review preview-only outcomes, blocked routes, and future resend eligibility over time."
-    },
-    {
-      "id": "backlog-2026-04-27-sdr-session-operator-workflow",
-      "title": "Expose SDR session plans, observation capture, and evidence-review workflow on operator-facing surfaces",
-      "status": "pending",
-      "source": "cycle-149",
-      "reason": "Bounded SDR session plans and retained evidence placeholders now exist in contract state, but operators still need a first-class workflow to open a session, capture observations, attach artifacts, and close out RF-side corroboration without editing raw state."
+      "source": "cycle-158",
+      "reason": "Settings writes now fail safely on stale revision tokens, but the admin surface still only reports the conflict text. A follow-on slice should surface current-vs-stale revision detail and offer a bounded reload or diff-friendly recovery path."
     }
   ]
 }

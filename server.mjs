@@ -348,6 +348,7 @@ function normalizeToken(value = '') {
 function operatorSettingsDefaults() {
   return {
     version: 'operator-settings-store-v1',
+    revision: 0,
     updatedAt: null,
     preferences: {
       layout: {
@@ -447,6 +448,7 @@ function normalizeOperatorSettings(input = {}) {
   const sourceRules = Array.isArray(noiseSuppression.sourceRules) ? noiseSuppression.sourceRules : [];
   return {
     version: defaults.version,
+    revision: Math.max(0, Number.isFinite(Number(input?.revision)) ? Number(input.revision) : (Number.isFinite(Number(defaults.revision)) ? Number(defaults.revision) : 0)),
     updatedAt: input?.updatedAt || null,
     preferences: {
       layout: {
@@ -585,22 +587,95 @@ function normalizeOperatorSettings(input = {}) {
   };
 }
 
+function buildSettingsRevisionEtag(settings = {}) {
+  const revision = Math.max(0, Number.isFinite(Number(settings?.revision)) ? Number(settings.revision) : 0);
+  return `"operator-settings-r${revision}"`;
+}
+
+function buildSettingsConcurrencyState(settings = {}) {
+  const revision = Math.max(0, Number.isFinite(Number(settings?.revision)) ? Number(settings.revision) : 0);
+  return {
+    revision,
+    etag: buildSettingsRevisionEtag({ revision }),
+    updatedAt: settings?.updatedAt || null,
+    required: true,
+    header: 'If-Match',
+    bodyFields: ['expectedRevision', 'expectedEtag'],
+    notes: [
+      'Admin writes require a current revision token so stale tabs and restore drift fail with a bounded conflict instead of silently last-write-wins.',
+      'Use either If-Match with the advertised ETag or include expectedRevision/expectedEtag in the JSON body.',
+    ],
+  };
+}
+
+function resolveExpectedSettingsRevision(req) {
+  const ifMatch = String(req.get('if-match') || '').trim();
+  const expectedEtag = String(req.body?.expectedEtag || ifMatch || '').trim();
+  const expectedRevisionRaw = req.body?.expectedRevision;
+  const expectedRevision = Number.isFinite(Number(expectedRevisionRaw)) ? Number(expectedRevisionRaw) : null;
+  return {
+    expectedRevision,
+    expectedEtag: expectedEtag || null,
+    provided: expectedRevision !== null || Boolean(expectedEtag),
+  };
+}
+
+function buildSettingsConflictPayload(currentSettings = {}, detail = 'settings revision conflict') {
+  const concurrency = buildSettingsConcurrencyState(currentSettings);
+  return {
+    ok: false,
+    error: 'settings-revision-conflict',
+    detail,
+    current: concurrency,
+  };
+}
+
+function assertExpectedSettingsRevision(currentSettings = {}, expected = {}) {
+  const concurrency = buildSettingsConcurrencyState(currentSettings);
+  if (!expected?.provided) {
+    const error = new Error('settings revision token required');
+    error.statusCode = 428;
+    error.payload = {
+      ok: false,
+      error: 'settings-revision-required',
+      detail: 'Admin writes must provide the current settings revision token.',
+      current: concurrency,
+    };
+    throw error;
+  }
+  if (expected.expectedRevision !== null && expected.expectedRevision !== concurrency.revision) {
+    const error = new Error('settings revision conflict');
+    error.statusCode = 409;
+    error.payload = buildSettingsConflictPayload(currentSettings, 'expectedRevision does not match the current persisted revision');
+    throw error;
+  }
+  if (expected.expectedEtag && expected.expectedEtag !== concurrency.etag) {
+    const error = new Error('settings revision conflict');
+    error.statusCode = 409;
+    error.payload = buildSettingsConflictPayload(currentSettings, 'expectedEtag does not match the current persisted revision token');
+    throw error;
+  }
+}
+
 function loadOperatorSettings() {
   return normalizeOperatorSettings(loadJsonFile(OPERATOR_SETTINGS_PATH, operatorSettingsDefaults()));
 }
 
 function saveOperatorSettings(input = {}) {
   const normalized = normalizeOperatorSettings(input);
+  const current = loadOperatorSettings();
   const persisted = {
     ...normalized,
+    revision: Math.max(0, Number.isFinite(Number(current?.revision)) ? Number(current.revision) : 0) + 1,
     updatedAt: new Date().toISOString(),
   };
   saveJsonFile(OPERATOR_SETTINGS_PATH, persisted);
   return persisted;
 }
 
-function mergeOperatorSettingsPatch(patch = {}) {
+function mergeOperatorSettingsPatch(patch = {}, options = {}) {
   const current = loadOperatorSettings();
+  assertExpectedSettingsRevision(current, options.expected || {});
   const merged = {
     ...current,
     preferences: {
@@ -687,11 +762,12 @@ function buildSettingsStateBundle() {
   };
 }
 
-function importSettingsStateBundle(payload = {}) {
+function importSettingsStateBundle(payload = {}, options = {}) {
   const importedAt = new Date().toISOString();
   if (!payload || typeof payload !== 'object') {
     throw new Error('settings-import-payload-required');
   }
+  assertExpectedSettingsRevision(loadOperatorSettings(), options.expected || {});
   const isBundle = payload.version === 'settings-state-bundle-v1' || payload.config || payload.state;
   if (!isBundle) {
     const settingsPayload = payload?.preferences ? payload : { preferences: payload || {} };
@@ -1041,6 +1117,7 @@ function applySourceControlAction(action = '', sourceId = '', options = {}) {
   if (!allowedActions.includes(trimmedAction)) throw new Error('unsupported-source-op-action');
 
   const current = loadOperatorSettings();
+  const expected = options.expected || null;
   const suppressed = new Set(current.preferences.sources.suppressedSourceIds || []);
   const quarantined = new Set(current.preferences.sources.quarantinedSourceIds || []);
   const before = {
@@ -1060,7 +1137,7 @@ function applySourceControlAction(action = '', sourceId = '', options = {}) {
         quarantinedSourceIds: Array.from(quarantined).sort((a, b) => a.localeCompare(b)),
       },
     },
-  });
+  }, expected ? { expected } : {});
 
   const after = {
     suppressed: saved.preferences.sources.suppressedSourceIds.includes(trimmedSourceId),
@@ -5566,6 +5643,8 @@ function buildOperatorSettingsContract(snapshot = null) {
     },
     persistence: {
       version: operatorSettings.version,
+      revision: operatorSettings.revision,
+      etag: buildSettingsRevisionEtag(operatorSettings),
       updatedAt: operatorSettings.updatedAt,
       path: null,
       capabilities: {
@@ -5573,7 +5652,9 @@ function buildOperatorSettingsContract(snapshot = null) {
         export: false,
         import: false,
         writeApi: false,
+        writeConcurrencyToken: true,
       },
+      concurrency: buildSettingsConcurrencyState(operatorSettings),
       persistedPreferences: operatorSettings.preferences,
       alertStateKey: OPERATIONAL_ALERTS_STATE_KEY,
     },
@@ -6086,6 +6167,7 @@ function buildAdminSettingsContract(snapshot = null) {
         writeApi: true,
         stateBundle: true,
         auditHistory: true,
+        writeConcurrencyToken: true,
       },
       persistedPreferences: operatorSettings.preferences,
       latestAudit: settingsAdminAuditSnapshot(1)[0] || null,
@@ -6104,6 +6186,7 @@ function buildAdminSettingsContract(snapshot = null) {
         importEndpoint: '/api/settings/import',
         writeEndpoint: '/api/settings/operator',
         auditEndpoint: '/api/settings/audit',
+        concurrencyHeader: 'If-Match',
         runtimeControlEndpoint: '/api/runtime/control',
         runtimeHistoryDiagnosticsEndpoint: '/api/runtime-history/diagnostics',
       },
@@ -6221,19 +6304,33 @@ app.get('/api/runtime-history/diagnostics', requireDebugAccess, (req, res) => {
 });
 
 app.put('/api/settings/operator', requireDebugAccess, (req, res) => {
-  const saved = mergeOperatorSettingsPatch(req.body || {});
-  const audit = recordSettingsAdminAudit({
-    action: 'write',
-    mode: 'settings',
-    status: 'success',
-    summary: { settings: buildSettingsPayloadSummary(saved) },
-  });
-  res.json({ ok: true, settings: saved, audit });
+  try {
+    const expected = resolveExpectedSettingsRevision(req);
+    const saved = mergeOperatorSettingsPatch(req.body || {}, { expected });
+    const audit = recordSettingsAdminAudit({
+      action: 'write',
+      mode: 'settings',
+      status: 'success',
+      summary: { settings: buildSettingsPayloadSummary(saved) },
+    });
+    res.setHeader('ETag', buildSettingsRevisionEtag(saved));
+    res.json({ ok: true, settings: saved, concurrency: buildSettingsConcurrencyState(saved), audit });
+  } catch (error) {
+    const statusCode = Number(error?.statusCode) || 400;
+    const audit = recordSettingsAdminAudit({
+      action: 'write',
+      mode: 'settings',
+      status: statusCode === 409 ? 'conflict' : 'failed',
+      error: error?.payload?.error || error.message || 'settings-write-failed',
+    });
+    res.status(statusCode).json({ ...(error?.payload || { ok: false, error: error.message || 'settings-write-failed' }), audit });
+  }
 });
 
 app.post('/api/source-ops/control', requireDebugAccess, (req, res) => {
   const action = String(req.body?.action || '').trim();
   const sourceId = String(req.body?.sourceId || '').trim();
+  const expected = resolveExpectedSettingsRevision(req);
   const allowedActions = ['suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine'];
   if (!allowedActions.includes(action)) {
     return res.status(400).json({ ok: false, error: 'unsupported-source-op-action', allowedActions });
@@ -6247,10 +6344,12 @@ app.post('/api/source-ops/control', requireDebugAccess, (req, res) => {
       actorSurface: 'source-ops',
       actorEndpoint: '/api/source-ops/control',
       workflowAction: false,
+      expected,
     });
-    res.json({ ok: true, ...result });
+    res.json({ ok: true, ...result, concurrency: buildSettingsConcurrencyState(loadOperatorSettings()) });
   } catch (error) {
-    res.status(400).json({ ok: false, error: error.message || 'source-control-action-failed', allowedActions });
+    const statusCode = error?.payload?.statusCode || (error.message === 'settings revision conflict' ? 409 : error.message === 'settings revision token required' ? 428 : 400);
+    res.status(statusCode).json({ ...(error?.payload || { ok: false, error: error.message || 'source-control-action-failed', allowedActions }) });
   }
 });
 
@@ -6313,12 +6412,14 @@ app.post('/api/review-workflow/action', requireDebugAccess, (req, res) => {
 
     if (['suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine'].includes(action)) {
       const sourceId = String(req.body?.sourceId || '').trim();
+      const expected = resolveExpectedSettingsRevision(req);
       if (!sourceId) return res.status(400).json({ ok: false, error: 'sourceId is required' });
       const result = applySourceControlAction(action, sourceId, {
         note: note || null,
         actorSurface: 'review-workflow',
         actorEndpoint: '/api/review-workflow/action',
         workflowAction: true,
+        expected,
       });
       const audit = recordReviewWorkflowAudit({
         action,
@@ -6389,7 +6490,8 @@ app.post('/api/review-workflow/action', requireDebugAccess, (req, res) => {
 
 app.post('/api/settings/import', requireDebugAccess, (req, res) => {
   try {
-    const imported = importSettingsStateBundle(req.body || {});
+    const expected = resolveExpectedSettingsRevision(req);
+    const imported = importSettingsStateBundle(req.body || {}, { expected });
     const audit = recordSettingsAdminAudit({
       action: 'import',
       mode: imported.mode,
@@ -6399,15 +6501,16 @@ app.post('/api/settings/import', requireDebugAccess, (req, res) => {
         restored: imported.restored,
       },
     });
-    res.json({ ok: true, ...imported, audit });
+    res.setHeader('ETag', buildSettingsRevisionEtag(imported.settings));
+    res.json({ ok: true, ...imported, concurrency: buildSettingsConcurrencyState(imported.settings), audit });
   } catch (error) {
     const audit = recordSettingsAdminAudit({
       action: 'import',
       mode: req.body?.version === 'settings-state-bundle-v1' ? 'bundle' : 'settings',
-      status: 'failed',
-      error: error.message || 'settings-import-failed',
+      status: Number(error?.statusCode) === 409 ? 'conflict' : 'failed',
+      error: error?.payload?.error || error.message || 'settings-import-failed',
     });
-    res.status(400).json({ ok: false, error: error.message || 'settings-import-failed', audit });
+    res.status(Number(error?.statusCode) || 400).json({ ...(error?.payload || { ok: false, error: error.message || 'settings-import-failed' }), audit });
   }
 });
 

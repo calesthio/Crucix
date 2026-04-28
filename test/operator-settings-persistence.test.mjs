@@ -64,12 +64,14 @@ test('operator settings persist, export, and influence runtime bootstrap state',
   try {
     const settingsUrl = `http://127.0.0.1:${BASE_PORT}/api/settings`;
     const adminSettingsUrl = `http://127.0.0.1:${BASE_PORT}/api/settings/admin`;
-    await waitFor(adminSettingsUrl, payload => payload?.persistence?.capabilities?.writeApi === true, 30000);
+    const initialAdmin = await waitFor(adminSettingsUrl, payload => payload?.persistence?.capabilities?.writeApi === true, 30000);
 
     const updated = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/settings/operator`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'If-Match': initialAdmin.persistence.etag },
       body: JSON.stringify({
+        expectedRevision: initialAdmin.persistence.revision,
+        expectedEtag: initialAdmin.persistence.etag,
         preferences: {
           layout: { visualsMode: 'lite', mapMode: 'flat', displayMode: 'wallboard', defaultRegion: 'asiaPacific', activeLayer: 'news', workspacePreset: 'source-ops', panels: { reviewQueue: { collapsed: false, pinned: true, priority: 5, size: 'wide' }, tradeIdeas: { collapsed: true, pinned: false, priority: 40, size: 'compact' } } },
           sources: { enabledCategories: ['news', 'air'], enabledSourceIds: ['gdelt-global', 'opensky-network'], noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 3 }, repetitiveLowValue: { enabled: false, maxStoryCount: 2, maxSourceCount: 1 }, sourceRules: [{ sourceId: 'gdelt-global', action: 'suppress', reason: 'duplicate-heavy', enabled: true }] } },
@@ -123,6 +125,16 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(updated.settings.preferences.alerts.criticalEvents.classes.chokepointDisruption.enabled, false);
     assert.equal(updated.audit.action, 'write');
     assert.equal(updated.audit.mode, 'settings');
+    assert.equal(typeof updated.concurrency.revision, 'number');
+    assert.equal(typeof updated.concurrency.etag, 'string');
+
+    const staleWrite = await fetch(`http://127.0.0.1:${BASE_PORT}/api/settings/operator`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'If-Match': initialAdmin.persistence.etag },
+      body: JSON.stringify({ expectedRevision: initialAdmin.persistence.revision, expectedEtag: initialAdmin.persistence.etag, preferences: { layout: { visualsMode: 'full' } } }),
+    }).then(r => r.json().then(body => ({ status: r.status, body })));
+    assert.equal(staleWrite.status, 409);
+    assert.equal(staleWrite.body.error, 'settings-revision-conflict');
 
     const settings = await waitFor(settingsUrl, payload => payload?.layout?.controls?.visualsMode === 'lite', 30000);
     assert.equal(settings.layout.controls.mapMode, 'flat');
@@ -184,9 +196,11 @@ test('operator settings persist, export, and influence runtime bootstrap state',
 
     const imported = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/settings/import`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'If-Match': updated.concurrency.etag },
       body: JSON.stringify({
         ...bundle,
+        expectedRevision: updated.concurrency.revision,
+        expectedEtag: updated.concurrency.etag,
         config: {
           ...bundle.config,
           operatorSettings: {
@@ -210,6 +224,8 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(imported.restored.reviewAcks, true);
     assert.equal(imported.audit.action, 'import');
     assert.equal(imported.audit.mode, 'bundle');
+    assert.equal(typeof imported.concurrency.revision, 'number');
+    assert.equal(typeof imported.concurrency.etag, 'string');
 
     const afterImport = await waitFor(settingsUrl, payload => payload?.layout?.controls?.visualsMode === 'full', 30000);
     assert.equal(afterImport.layout.controls.displayMode, 'desktop');
@@ -235,10 +251,11 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.match(adminPage, /importBtn/i);
     assert.match(adminPage, /activeSurface: 'admin-settings'/i);
 
+    const sourceAdminBefore = await fetchJson(adminSettingsUrl);
     const sourceControl = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/source-ops/control`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'quarantine-source', sourceId: 'gdelt-global', note: 'persistence test quarantine' }),
+      headers: { 'Content-Type': 'application/json', 'If-Match': sourceAdminBefore.persistence.etag },
+      body: JSON.stringify({ action: 'quarantine-source', sourceId: 'gdelt-global', note: 'persistence test quarantine', expectedRevision: sourceAdminBefore.persistence.revision, expectedEtag: sourceAdminBefore.persistence.etag }),
     });
     assert.equal(sourceControl.ok, true);
     assert.equal(sourceControl.after.quarantined, true);
@@ -252,14 +269,20 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     const operatorContract = await fetchJson(settingsUrl);
     assert.equal(operatorContract.sdrCorroboration.version, 'sdr-corroboration-v1');
     assert.equal(operatorContract.persistence.capabilities.writeApi, false);
+    assert.equal(operatorContract.persistence.capabilities.writeConcurrencyToken, true);
+    assert.equal(typeof operatorContract.persistence.revision, 'number');
+    assert.equal(typeof operatorContract.persistence.etag, 'string');
+    assert.equal(operatorContract.persistence.concurrency.required, true);
     assert.equal(operatorContract.access.role, 'operator');
 
     const adminContract = await fetchJson(adminSettingsUrl);
     assert.equal(adminContract.persistence.capabilities.writeApi, true);
+    assert.equal(adminContract.persistence.capabilities.writeConcurrencyToken, true);
     assert.equal(adminContract.persistence.capabilities.stateBundle, true);
     assert.equal(adminContract.persistence.capabilities.auditHistory, true);
     assert.equal(adminContract.access.role, 'admin');
     assert.equal(adminContract.admin.controls.auditEndpoint, '/api/settings/audit');
+    assert.equal(adminContract.admin.controls.concurrencyHeader, 'If-Match');
     assert.equal(adminContract.sourceConsole.sourceControls.version, 'source-ops-control-v2');
     assert.equal(adminContract.sourceConsole.sourceControls.auditEndpoint, '/api/source-ops/audit');
 

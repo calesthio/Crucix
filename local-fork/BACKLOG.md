@@ -4,8 +4,6 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 
 ## Candidate backlog items
 
-All current backlog items were integrated into `local-fork/plan.json` on 2026-04-26.
-
 Recent promotions:
 - Noise-suppression pressure alert acknowledge/snooze controls plus recent audit visibility was promoted into `local-fork/plan.json` as Epic 29, effort 29.9 on 2026-04-26.
 - SQLite runtime-history diagnostics or export visibility was promoted into `local-fork/plan.json` as Epic 33, effort 33.7 on 2026-04-26.
@@ -40,6 +38,11 @@ New items can be added here when they do not yet belong in the active roadmap.
 
 Recent promotions:
 - Critical-event classifier hardening, transition audit, and delivery audit work were promoted into `local-fork/plan.json` as Epic 39, efforts 39.1 through 39.3 on 2026-04-27.
+- Browser-level regression coverage for dashboard layout-budget diagnostics was promoted into `local-fork/plan.json` as Epic 49, effort 49.1 on 2026-04-28.
+- Preset-specific dashboard density tuning was promoted into `local-fork/plan.json` as Epic 50, effort 50.1 on 2026-04-28.
+- Shared runtime-action feedback helpers beyond restart-safe were promoted into `local-fork/plan.json` as Epic 51, effort 51.1 on 2026-04-28.
+- Critical-event classifier observability plus operator-facing audit and delivery surfaces were promoted into `local-fork/plan.json` as Epic 52, efforts 52.1 through 52.3 on 2026-04-28.
+- SDR session operator workflow surfacing was promoted into `local-fork/plan.json` as Epic 53, effort 53.1 on 2026-04-28.
 - SDR session automation and retained RF evidence work were promoted into `local-fork/plan.json` as Epic 40, effort 40.1 on 2026-04-27.
 - Runtime restart audit visibility work was promoted into `local-fork/plan.json` as Epic 41, effort 41.1 on 2026-04-27.
 - Runtime restart audit UI/workflow surfacing was promoted into `local-fork/plan.json` as Epic 42, effort 42.1 on 2026-04-27.
@@ -52,10 +55,5 @@ Recent promotions:
 
 New items can be added here when they do not yet belong in the active roadmap.
 
-- `backlog-2026-04-27-dashboard-layout-budget-browser-contract` — add browser-level regression coverage for dashboard layout-budget diagnostics so measured map and panel ratios fail fast when a layout change lets the dashboard freelance again.
-- `backlog-2026-04-27-dashboard-preset-density-tuning` — add preset-specific density tuning and possibly alternate topbar/control placement so operator, diagnostics, and executive modes can optimize for different screen budgets without one global layout compromise.
-- `backlog-2026-04-27-runtime-action-feedback-contract` — generalize the shared runtime-action feedback helper beyond restart-safe so stop and future bounded runtime actions can report queued, completed, and failed states consistently.
-- `backlog-2026-04-27-critical-event-classifier-observability` — expose critical-event classifier match basis and ambiguity flags so operators can inspect why a signal matched a class or was intentionally discarded as ambiguous during queue evaluation.
-- `backlog-2026-04-27-critical-event-audit-operator-surface` — expose critical-event queue transition audit on operator-facing diagnostics surfaces so retained history is easier to review than raw contract JSON alone.
-- `backlog-2026-04-27-critical-event-delivery-operator-surface` — expose critical-event delivery audit and resend posture on operator-facing diagnostics surfaces so preview-only outcomes, blocked routes, and resend eligibility are visible without reading raw contract JSON.
-- `backlog-2026-04-27-sdr-session-operator-workflow` — expose SDR session plans, observation capture, and evidence-review workflow on operator-facing surfaces so RF-side corroboration can be worked and closed out without touching raw state.
+
+- `backlog-2026-04-28-settings-concurrency-conflict-ux` — add clearer admin-surface stale-write recovery UX for settings concurrency conflicts so operators can reload or reconcile after a bounded 409 instead of only seeing a raw failure string.

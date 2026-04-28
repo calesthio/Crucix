@@ -31,7 +31,8 @@ shell.content.innerHTML = '<section class="summary" id="summary" hidden></sectio
 function sourceEnabled(item, selection){const cat=selection?.enabledCategories||[]; const ids=selection?.enabledSourceIds||[]; const catOk=!cat.length || cat.includes(item.category); const idOk=!ids.length || ids.includes(item.id); return catOk && idOk;}
 function sourceSuppressed(item, selection){return (selection?.suppressedSourceIds || []).includes(item.id);}
 function sourceQuarantined(item, selection){return (selection?.quarantinedSourceIds || []).includes(item.id);}
-async function postControl(action, sourceId){ const res = await fetch('/api/source-ops/control', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action, sourceId }) }); if(!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); }
+async function loadAdminConcurrency(){ const res = await fetch('/api/settings/admin'); if(!res.ok) throw new Error(`HTTP ${res.status}`); const data = await res.json(); const concurrency = data?.persistence?.concurrency || null; if(concurrency) window.__CRUCIX_SETTINGS_CONCURRENCY__ = concurrency; return concurrency || {}; }
+async function postControl(action, sourceId){ const concurrency = window.__CRUCIX_SETTINGS_CONCURRENCY__ || await loadAdminConcurrency(); const res = await fetch('/api/source-ops/control', { method:'POST', headers:{'Content-Type':'application/json','If-Match': concurrency.etag || ''}, body: JSON.stringify({ action, sourceId, expectedRevision: concurrency.revision, expectedEtag: concurrency.etag }) }); if(!res.ok){ let body=null; try{body=await res.json();}catch{} throw new Error(body?.detail || body?.error || `HTTP ${res.status}`); } const result = await res.json(); if(result?.concurrency) window.__CRUCIX_SETTINGS_CONCURRENCY__ = result.concurrency; return result; }
 function render(){
   const consoleData = window.__SOURCE_CONSOLE__;
   const summary = document.getElementById('summary');
@@ -86,6 +87,7 @@ async function boot(){
     const res = await fetch('/api/settings');
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+    window.__CRUCIX_SETTINGS_CONCURRENCY__ = data?.persistence?.concurrency || window.__CRUCIX_SETTINGS_CONCURRENCY__ || null;
     const consoleData = data.sourceConsole;
     window.__SOURCE_CONSOLE__ = consoleData;
     controls.hidden = false;
