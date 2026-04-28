@@ -129,9 +129,14 @@ test('booted server serves runtime-backed dashboard and operator pages with inje
     assert.deepEqual(Object.keys(dashboardRuntime).sort(), ['adminSettingsUrl', 'diagnosticsUrl', 'operatorSettings', 'refreshIntervalMinutes', 'settingsUrl', 'workspacePresetLibrary'].sort());
     assert.equal(Array.isArray(dashboardRuntime.workspacePresetLibrary), true);
     assert.equal(dashboardRuntime.workspacePresetLibrary.some(item => item.label === 'Wallboard'), true);
+    assert.equal(dashboardRuntime.workspacePresetLibrary.some(item => item.id === 'diagnostics' && item.densityMode === 'dense' && item.topbarMode === 'compact'), true);
+    assert.equal(dashboardRuntime.workspacePresetLibrary.some(item => item.id === 'executive-briefing' && item.densityMode === 'briefing' && item.topbarMode === 'briefing'), true);
     assert.equal(['auto', 'off', 'on'].includes(dashboardRuntime.operatorSettings.layout.performance.wallboardVirtualization), true);
     assert.match(dashboardHtml, /fetch\('\/api\/data'/i);
     assert.match(dashboardHtml, /panelRenderBudgetTelemetry/i);
+    assert.match(dashboardHtml, /currentDensityMode/i);
+    assert.match(dashboardHtml, /data-density-mode/i);
+    assert.match(dashboardHtml, /data-topbar-mode/i);
     assert.match(dashboardHtml, /Wallboard virtualization active/i);
     assert.match(dashboardHtml, /Reset Layout/i);
     assert.equal(health.runtimeIdentity.port, BASE_PORT);

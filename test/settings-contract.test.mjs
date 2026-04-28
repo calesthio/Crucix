@@ -192,6 +192,7 @@ test('operator settings contract centralizes layout, source, llm, agent, runtime
   assert.equal(contract.layout.controls.resetActions.includes('restore-preset-panels'), true);
   assert.equal(contract.layout.controls.namedPresets.some(item => item.id === 'executive-briefing' && item.label === 'Wallboard'), true);
   assert.equal(contract.layout.controls.namedPresets.some(item => item.id === 'operator' && item.builtIn === true), true);
+  assert.equal(contract.layout.controls.namedPresets.some(item => item.id === 'diagnostics' && item.densityMode === 'dense' && item.topbarMode === 'compact'), true);
   assert.equal(contract.layout.controls.importExportSupported, true);
   assert.equal(Object.keys(contract.layout.controls.customPresets || {}).length, 0);
   assert.equal(contract.layout.controls.panelPreferences.reviewQueue.pinned, true);

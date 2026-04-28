@@ -32,6 +32,10 @@ body[data-layout-mode="narrow"] .metrics-row{grid-template-columns:repeat(2,1fr)
 body[data-layout-mode="narrow"] .src-grid{grid-template-columns:repeat(2,1fr)}
 body[data-layout-mode="desktop"] .grid{grid-template-columns:220px minmax(0,1fr) 380px}
 body[data-layout-mode="desktop"]{--map-min-height:420px;--map-height:clamp(420px,58vh,680px)}
+body[data-density-mode="dense"][data-layout-mode="desktop"]{--map-min-height:360px;--map-height:clamp(360px,48vh,560px)}
+body[data-density-mode="dense"][data-layout-mode="desktop"] .grid{grid-template-columns:200px minmax(0,1fr) 320px;gap:8px}
+body[data-density-mode="dense"][data-layout-mode="desktop"] .lp-ideas,body[data-density-mode="dense"][data-layout-mode="desktop"] .right-review-queue,body[data-density-mode="dense"][data-layout-mode="desktop"] .right-evidence,body[data-density-mode="dense"][data-layout-mode="desktop"] .right-osint{max-height:min(50vh,480px)}
+body[data-density-mode="balanced"][data-layout-mode="desktop"] .grid{grid-template-columns:220px minmax(0,1fr) 380px}
 body[data-layout-mode="desktop"] .topbar{display:grid;grid-template-columns:minmax(220px,1fr) auto;grid-template-areas:"left right" "center center";align-items:start;gap:8px 12px;padding:10px 14px}
 body[data-layout-mode="desktop"] .top-left{grid-area:left;flex-wrap:wrap;align-items:center;gap:10px}
 body[data-layout-mode="desktop"] .top-center{grid-area:center;justify-content:flex-start;align-content:start;gap:6px}
@@ -51,11 +55,22 @@ body[data-layout-mode="wallboard"] #main{padding:8px 10px}
 body[data-layout-mode="wallboard"] .grid{grid-template-columns:220px minmax(0,1.3fr) 300px;gap:8px;min-height:calc(100vh - 86px)}
 body[data-layout-mode="wallboard"] .topbar{padding:10px 14px}
 body[data-layout-mode="wallboard"]{--map-min-height:520px;--map-height:clamp(520px,68vh,860px)}
+body[data-density-mode="briefing"][data-layout-mode="wallboard"]{--map-min-height:560px;--map-height:clamp(560px,72vh,920px)}
+body[data-density-mode="briefing"][data-layout-mode="wallboard"] .grid{grid-template-columns:200px minmax(0,1.45fr) 280px;min-height:calc(100vh - 78px)}
 body[data-layout-mode="wallboard"] .lower{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 body[data-layout-mode="wallboard"] .lower .lp-ticker,body[data-layout-mode="wallboard"] .lower .lp-osint,body[data-layout-mode="wallboard"] .lower .lp-macro,body[data-layout-mode="wallboard"] .lower .lp-ideas,body[data-layout-mode="wallboard"] .lower .lp-analysis,body[data-layout-mode="wallboard"] .lower .lower-wide{max-width:none;width:100%;flex:none}
 body[data-layout-mode="wallboard"] .lower .lp-macro{grid-column:span 2}
 body[data-layout-mode="wallboard"] .lower-wide{grid-column:1 / -1}
 body[data-layout-mode="wallboard"] .feed{max-height:calc(100vh - 130px)}
+body[data-topbar-mode="compact"] .topbar{gap:6px;padding:8px 12px}
+body[data-topbar-mode="compact"] .top-left{gap:10px}
+body[data-topbar-mode="compact"] .top-center,body[data-topbar-mode="compact"] .top-right{gap:6px}
+body[data-topbar-mode="compact"] .region-btn,body[data-topbar-mode="compact"] .meta-pill,body[data-topbar-mode="compact"] .alert-badge,body[data-topbar-mode="compact"] .guide-btn,body[data-topbar-mode="compact"] .preset-btn{font-size:10px;padding:4px 7px}
+body[data-topbar-mode="briefing"] .topbar{display:grid;grid-template-columns:minmax(220px,1fr) auto;grid-template-areas:"left right" "center right";align-items:start;gap:6px 10px;padding:8px 12px}
+body[data-topbar-mode="briefing"] .top-left{grid-area:left;gap:10px;flex-wrap:wrap}
+body[data-topbar-mode="briefing"] .top-center{grid-area:center;justify-content:flex-start;gap:5px}
+body[data-topbar-mode="briefing"] .top-right{grid-area:right;justify-content:flex-end;gap:6px;flex-wrap:wrap}
+body[data-topbar-mode="briefing"] .region-btn,body[data-topbar-mode="briefing"] .meta-pill,body[data-topbar-mode="briefing"] .alert-badge,body[data-topbar-mode="briefing"] .guide-btn,body[data-topbar-mode="briefing"] .preset-btn{font-size:10px;padding:4px 7px}
 .preset-strip{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .preset-btn{border:1px solid rgba(68,204,255,0.2);background:rgba(68,204,255,0.06);color:var(--dim);font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:5px 9px;cursor:pointer}
 .preset-btn.active{border-color:var(--accent);background:rgba(100,240,200,0.12);color:var(--accent)}
@@ -469,6 +484,8 @@ let activeLayer = persistedOperatorSettings.layout?.activeLayer || null;
 let currentLayoutMode = 'desktop';
 let flatSvg, flatProjection, flatPath, flatG, flatZoom, flatW, flatH;
 let currentWorkspacePreset = persistedOperatorSettings.layout?.workspacePreset || 'operator';
+let currentDensityMode = 'balanced';
+let currentTopbarMode = 'standard';
 let panelPreferences = JSON.parse(JSON.stringify(persistedOperatorSettings.layout?.panels || {}));
 let panelRenderBudgetTelemetry = {};
 
@@ -569,19 +586,26 @@ function renderVirtualizationNotice(windowed, noun='items'){
   return `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:8px">Wallboard virtualization active, showing ${cleanText(String(windowed.renderedItems))} of ${cleanText(String(windowed.totalItems))} ${cleanText(noun)} to keep the panel responsive.</div>`;
 }
 const workspacePresetDefinitions = Object.fromEntries(((window.__CRUCIX_RUNTIME__?.workspacePresetLibrary) || [
-  { id:'operator', label:'Analyst', displayMode:'desktop', mapMode:'auto', visualsMode:'full', defaultRegion:'world', activeLayer:null, panels:{ reviewQueue:{ pinned:true, priority:10, size:'wide', collapsed:false }, analysisReview:{ pinned:true, priority:20, size:'normal', collapsed:false }, layoutBudget:{ pinned:false, priority:30, size:'normal', collapsed:false }, tradeIdeas:{ pinned:false, priority:60, size:'compact', collapsed:false }, evidenceAudit:{ pinned:false, priority:40, size:'normal', collapsed:false } } },
-  { id:'diagnostics', label:'Narrow Screen', displayMode:'desktop', mapMode:'flat', visualsMode:'lite', defaultRegion:'world', activeLayer:'news', panels:{ reviewQueue:{ pinned:true, priority:5, size:'wide', collapsed:false }, analysisReview:{ pinned:true, priority:10, size:'wide', collapsed:false }, layoutBudget:{ pinned:true, priority:12, size:'wide', collapsed:false }, evidenceAudit:{ pinned:true, priority:15, size:'wide', collapsed:false }, tradeIdeas:{ pinned:false, priority:90, size:'compact', collapsed:true }, newsTicker:{ pinned:false, priority:50, size:'compact', collapsed:false } } },
-  { id:'source-ops', label:'Source Ops', displayMode:'desktop', mapMode:'flat', visualsMode:'lite', defaultRegion:'world', activeLayer:'news', panels:{ reviewQueue:{ pinned:true, priority:5, size:'wide', collapsed:false }, evidenceAudit:{ pinned:true, priority:10, size:'wide', collapsed:false }, crossSignals:{ pinned:true, priority:20, size:'normal', collapsed:false }, layoutBudget:{ pinned:false, priority:30, size:'compact', collapsed:true }, tradeIdeas:{ pinned:false, priority:95, size:'compact', collapsed:true } } },
-  { id:'executive-briefing', label:'Wallboard', displayMode:'wallboard', mapMode:'globe', visualsMode:'full', defaultRegion:'world', activeLayer:null, panels:{ agentAnalysis:{ pinned:true, priority:5, size:'wide', collapsed:false }, macroMarkets:{ pinned:true, priority:10, size:'wide', collapsed:false }, newsTicker:{ pinned:true, priority:15, size:'wide', collapsed:false }, reviewQueue:{ pinned:false, priority:80, size:'compact', collapsed:true }, evidenceAudit:{ pinned:false, priority:70, size:'compact', collapsed:true }, tradeIdeas:{ pinned:false, priority:60, size:'compact', collapsed:false } } },
-]).map(item => [item.id, { ...item, panels: item.panels || item.panelDefaults || {} }]));
+  { id:'operator', label:'Analyst', displayMode:'desktop', mapMode:'auto', visualsMode:'full', densityMode:'balanced', topbarMode:'standard', defaultRegion:'world', activeLayer:null, panels:{ reviewQueue:{ pinned:true, priority:10, size:'wide', collapsed:false }, analysisReview:{ pinned:true, priority:20, size:'normal', collapsed:false }, layoutBudget:{ pinned:false, priority:30, size:'normal', collapsed:false }, tradeIdeas:{ pinned:false, priority:60, size:'compact', collapsed:false }, evidenceAudit:{ pinned:false, priority:40, size:'normal', collapsed:false } } },
+  { id:'diagnostics', label:'Narrow Screen', displayMode:'desktop', mapMode:'flat', visualsMode:'lite', densityMode:'dense', topbarMode:'compact', defaultRegion:'world', activeLayer:'news', panels:{ reviewQueue:{ pinned:true, priority:5, size:'wide', collapsed:false }, analysisReview:{ pinned:true, priority:10, size:'wide', collapsed:false }, layoutBudget:{ pinned:true, priority:12, size:'wide', collapsed:false }, evidenceAudit:{ pinned:true, priority:15, size:'wide', collapsed:false }, tradeIdeas:{ pinned:false, priority:90, size:'compact', collapsed:true }, newsTicker:{ pinned:false, priority:50, size:'compact', collapsed:false } } },
+  { id:'source-ops', label:'Source Ops', displayMode:'desktop', mapMode:'flat', visualsMode:'lite', densityMode:'dense', topbarMode:'compact', defaultRegion:'world', activeLayer:'news', panels:{ reviewQueue:{ pinned:true, priority:5, size:'wide', collapsed:false }, evidenceAudit:{ pinned:true, priority:10, size:'wide', collapsed:false }, crossSignals:{ pinned:true, priority:20, size:'normal', collapsed:false }, layoutBudget:{ pinned:false, priority:30, size:'compact', collapsed:true }, tradeIdeas:{ pinned:false, priority:95, size:'compact', collapsed:true } } },
+  { id:'executive-briefing', label:'Wallboard', displayMode:'wallboard', mapMode:'globe', visualsMode:'full', densityMode:'briefing', topbarMode:'briefing', defaultRegion:'world', activeLayer:null, panels:{ agentAnalysis:{ pinned:true, priority:5, size:'wide', collapsed:false }, macroMarkets:{ pinned:true, priority:10, size:'wide', collapsed:false }, newsTicker:{ pinned:true, priority:15, size:'wide', collapsed:false }, reviewQueue:{ pinned:false, priority:80, size:'compact', collapsed:true }, evidenceAudit:{ pinned:false, priority:70, size:'compact', collapsed:true }, tradeIdeas:{ pinned:false, priority:60, size:'compact', collapsed:false } } },
+]).map(item => [item.id, { ...item, densityMode: item.densityMode || 'balanced', topbarMode: item.topbarMode || 'standard', panels: item.panels || item.panelDefaults || {} }]));
 function syncLayoutClasses(){
   lowPerfMode ? document.body.classList.add('low-perf') : document.body.classList.remove('low-perf');
   document.body.dataset.layoutMode = currentLayoutMode;
+  document.body.dataset.densityMode = currentDensityMode || 'balanced';
+  document.body.dataset.topbarMode = currentTopbarMode || 'standard';
 }
 function resolveCurrentLayoutMode(){
   const preferred = persistedOperatorSettings.layout?.displayMode || 'auto';
   if (currentWorkspacePreset && workspacePresetDefinitions[currentWorkspacePreset]?.displayMode && preferred === 'auto') return workspacePresetDefinitions[currentWorkspacePreset].displayMode;
   return resolveLayoutMode(preferred);
+}
+function syncPresetPresentationModes(){
+  const preset = workspacePresetDefinitions[currentWorkspacePreset] || {};
+  currentDensityMode = preset.densityMode || 'balanced';
+  currentTopbarMode = preset.topbarMode || 'standard';
 }
 function applyWorkspacePreset(presetId){
   const preset = workspacePresetDefinitions[presetId];
@@ -591,6 +615,8 @@ function applyWorkspacePreset(presetId){
   lowPerfMode = preset.visualsMode === 'lite';
   currentRegion = preset.defaultRegion || 'world';
   activeLayer = preset.activeLayer || null;
+  currentDensityMode = preset.densityMode || 'balanced';
+  currentTopbarMode = preset.topbarMode || 'standard';
   if (preset.mapMode === 'flat') isFlat = true;
   else if (preset.mapMode === 'globe') isFlat = false;
   else isFlat = shouldStartFlat();
@@ -756,6 +782,7 @@ function resolveLayoutMode(preferredOverride = null){
 }
 function applyLayoutMode(){
   currentLayoutMode = resolveLayoutMode();
+  syncPresetPresentationModes();
   syncLayoutClasses();
 }
 

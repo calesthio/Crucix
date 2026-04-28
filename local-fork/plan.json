@@ -1188,12 +1188,12 @@
       {
         "id": "epic-50",
         "title": "Preset-aware dashboard density tuning",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-50.1",
             "title": "Add preset-specific density tuning and possibly alternate topbar/control placement so operator, diagnostics, and executive modes can optimize for different screen budgets without one global layout compromise",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -1316,6 +1316,18 @@
           {
             "id": "effort-59.1",
             "title": "Add bounded corroboration and de-duplication between urgent Telegram map candidates and matching RSS/GDELT stories so high-salience OSINT incidents land on the map quickly without permanently inflating single-source weak-cluster pressure",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-60",
+        "title": "Headless layout-budget measurement thresholds",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-60.1",
+            "title": "Add true headless-browser layout-budget measurements and threshold assertions so future regressions can verify computed topbar, map, and overflow ratios directly instead of relying only on served-page contract coverage",
             "status": "pending"
           }
         ]

@@ -4,8 +4,8 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 
 ## Candidate backlog items
 
-- `backlog-2026-04-28-layout-budget-headless-measurements`
-  - Add true headless-browser layout-budget measurements and threshold assertions so future regressions can verify computed topbar/map/overflow ratios directly instead of relying only on served-page contract coverage.
+- `backlog-2026-04-28-admin-preset-presentation-controls`
+  - Extend the local admin preset authoring surface so custom presets can explicitly edit `densityMode` and `topbarMode`, instead of inheriting defaults that only built-in presets currently define.
 
 Recent promotions:
 - Noise-suppression pressure alert acknowledge/snooze controls plus recent audit visibility was promoted into `local-fork/plan.json` as Epic 29, effort 29.9 on 2026-04-26.
@@ -46,6 +46,8 @@ Recent promotions:
 - Dashboard persistence honesty work was promoted into `local-fork/plan.json` as Epic 57, efforts 57.1 through 57.2 on 2026-04-28.
 - Admin preset browser regression coverage was promoted into `local-fork/plan.json` as Epic 58, effort 58.1 on 2026-04-28.
 - Telegram and RSS cluster corroboration hardening was promoted into `local-fork/plan.json` as Epic 59, effort 59.1 on 2026-04-28.
+- Headless layout-budget measurement thresholds were promoted into `local-fork/plan.json` as Epic 60, effort 60.1 on 2026-04-28.
+- Preset-aware dashboard density tuning was completed in `local-fork/plan.json` as Epic 50, effort 50.1 on 2026-04-28.
 
 Recent promotions:
 - Critical-event classifier hardening, transition audit, and delivery audit work were promoted into `local-fork/plan.json` as Epic 39, efforts 39.1 through 39.3 on 2026-04-27.

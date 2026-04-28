@@ -153,6 +153,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(settings.layout.controls.workspacePreset, 'source-ops');
     assert.equal(settings.layout.controls.currentWorkspacePresetLabel, 'Source Ops');
     assert.equal(settings.layout.controls.namedPresets.some(item => item.id === 'source-ops'), true);
+    assert.equal(settings.layout.controls.namedPresets.some(item => item.id === 'source-ops' && item.densityMode === 'dense' && item.topbarMode === 'compact'), true);
     assert.equal(settings.layout.controls.namedPresets.some(item => item.id === 'focusdeck' && item.builtIn === false), true);
     assert.equal(settings.layout.controls.customPresets.focusdeck.label, 'Focus Deck');
     assert.equal(settings.layout.controls.performance.wallboardVirtualization, 'on');
@@ -315,6 +316,8 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.match(dashboard, /"defaultRegion":"asiaPacific"/);
     assert.match(dashboard, /\"workspacePreset\":\"source-ops\"/);
     assert.match(dashboard, /\"wallboardVirtualization\":\"on\"/);
+    assert.match(dashboard, /\"densityMode\":\"dense\"/);
+    assert.match(dashboard, /\"topbarMode\":\"compact\"/);
     assert.match(dashboard, /renderWorkspacePresetStrip/);
     assert.match(dashboard, /openDiagnostics/);
     assert.match(dashboard, /openAdminSettings/);

@@ -162,6 +162,7 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(settings.layout.controls.performance.wallboardVirtualization, 'auto');
     assert.equal(settings.layout.controls.availableWallboardVirtualizationModes.includes('off'), true);
     assert.equal(settings.layout.controls.namedPresets.some(item => item.label === 'Wallboard'), true);
+    assert.equal(settings.layout.controls.namedPresets.some(item => item.id === 'diagnostics' && item.densityMode === 'dense' && item.topbarMode === 'compact'), true);
     assert.equal(settings.layout.controls.importExportSupported, true);
     assert.equal(settings.layout.controls.resetSupported, true);
 
@@ -174,6 +175,7 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(admin.admin.controls.runtimeHistoryDiagnosticsEndpoint, '/api/runtime-history/diagnostics');
     assert.equal(admin.layout.controls.performance.wallboardVirtualization, 'auto');
     assert.equal(admin.layout.controls.namedPresets.some(item => item.label === 'Analyst'), true);
+    assert.equal(admin.layout.controls.namedPresets.some(item => item.id === 'executive-briefing' && item.densityMode === 'briefing' && item.topbarMode === 'briefing'), true);
     assert.deepEqual(admin.layout.controls.customPresets, {});
     assert.equal(admin.persistence.capabilities.writeApi, true);
     assert.equal(admin.runtimeControl.version, 'runtime-control-v1');
