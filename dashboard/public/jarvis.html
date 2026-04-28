@@ -502,9 +502,9 @@ function wrapPanel(id, className, bodyHtml){ const pref=getPanelPref(id); return
 function finishWrappedPanel(html){ return `${html}</div></div>`; }
 function sortPanels(items){ return items.sort((a,b)=> (b.pinned-a.pinned) || (a.priority-b.priority) || a.order-b.order).map(item=>item.html).join(''); }
 const workspacePresetDefinitions = {
-  operator: { displayMode:'desktop', mapMode:'auto', visualsMode:'full', defaultRegion:'world', activeLayer:null, panels:{ reviewQueue:{ pinned:true, priority:10, size:'wide', collapsed:false }, analysisReview:{ pinned:true, priority:20, size:'normal', collapsed:false }, tradeIdeas:{ pinned:false, priority:60, size:'compact', collapsed:false }, evidenceAudit:{ pinned:false, priority:40, size:'normal', collapsed:false } } },
-  diagnostics: { displayMode:'desktop', mapMode:'flat', visualsMode:'lite', defaultRegion:'world', activeLayer:'news', panels:{ reviewQueue:{ pinned:true, priority:5, size:'wide', collapsed:false }, analysisReview:{ pinned:true, priority:10, size:'wide', collapsed:false }, evidenceAudit:{ pinned:true, priority:15, size:'wide', collapsed:false }, tradeIdeas:{ pinned:false, priority:90, size:'compact', collapsed:true }, newsTicker:{ pinned:false, priority:50, size:'compact', collapsed:false } } },
-  'source-ops': { displayMode:'desktop', mapMode:'flat', visualsMode:'lite', defaultRegion:'world', activeLayer:'news', panels:{ reviewQueue:{ pinned:true, priority:5, size:'wide', collapsed:false }, evidenceAudit:{ pinned:true, priority:10, size:'wide', collapsed:false }, crossSignals:{ pinned:true, priority:20, size:'normal', collapsed:false }, tradeIdeas:{ pinned:false, priority:95, size:'compact', collapsed:true } } },
+  operator: { displayMode:'desktop', mapMode:'auto', visualsMode:'full', defaultRegion:'world', activeLayer:null, panels:{ reviewQueue:{ pinned:true, priority:10, size:'wide', collapsed:false }, analysisReview:{ pinned:true, priority:20, size:'normal', collapsed:false }, layoutBudget:{ pinned:false, priority:30, size:'normal', collapsed:false }, tradeIdeas:{ pinned:false, priority:60, size:'compact', collapsed:false }, evidenceAudit:{ pinned:false, priority:40, size:'normal', collapsed:false } } },
+  diagnostics: { displayMode:'desktop', mapMode:'flat', visualsMode:'lite', defaultRegion:'world', activeLayer:'news', panels:{ reviewQueue:{ pinned:true, priority:5, size:'wide', collapsed:false }, analysisReview:{ pinned:true, priority:10, size:'wide', collapsed:false }, layoutBudget:{ pinned:true, priority:12, size:'wide', collapsed:false }, evidenceAudit:{ pinned:true, priority:15, size:'wide', collapsed:false }, tradeIdeas:{ pinned:false, priority:90, size:'compact', collapsed:true }, newsTicker:{ pinned:false, priority:50, size:'compact', collapsed:false } } },
+  'source-ops': { displayMode:'desktop', mapMode:'flat', visualsMode:'lite', defaultRegion:'world', activeLayer:'news', panels:{ reviewQueue:{ pinned:true, priority:5, size:'wide', collapsed:false }, evidenceAudit:{ pinned:true, priority:10, size:'wide', collapsed:false }, crossSignals:{ pinned:true, priority:20, size:'normal', collapsed:false }, layoutBudget:{ pinned:false, priority:30, size:'compact', collapsed:true }, tradeIdeas:{ pinned:false, priority:95, size:'compact', collapsed:true } } },
   'executive-briefing': { displayMode:'wallboard', mapMode:'globe', visualsMode:'full', defaultRegion:'world', activeLayer:null, panels:{ agentAnalysis:{ pinned:true, priority:5, size:'wide', collapsed:false }, macroMarkets:{ pinned:true, priority:10, size:'wide', collapsed:false }, newsTicker:{ pinned:true, priority:15, size:'wide', collapsed:false }, reviewQueue:{ pinned:false, priority:80, size:'compact', collapsed:true }, evidenceAudit:{ pinned:false, priority:70, size:'compact', collapsed:true }, tradeIdeas:{ pinned:false, priority:60, size:'compact', collapsed:false } } },
 };
 function syncLayoutClasses(){
@@ -1755,6 +1755,7 @@ function renderRight(){
       ${runtimeLlm ? `<div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:8px">Runtime LLM: ${cleanText(runtimeLlm.label)} • ${cleanText(runtimeLlm.summary || '')}</div>` : ''}
       <div style="font-size:10px;color:var(--dim);margin-bottom:8px">${(analysis.iMessageSummary||[]).slice(0,5).map(line=>`<div style="margin-bottom:4px">• ${cleanText(line)}</div>`).join('') || 'No analysis summary yet'}</div>
       <div style="font-family:var(--mono);font-size:10px;color:var(--dim)">Review endpoint: <span style="color:var(--accent2)">/api/analysis/review</span></div>`));
+  const layoutBudgetPanel = renderLayoutBudgetPanel();
   const signalsPanel = finishWrappedPanel(wrapPanel('crossSignals','right-signals', `<div class="sec-head"><h3>${t('panels.crossSourceSignals','Cross-Source Signals')}</h3><span class="badge">${t('badges.worldview','WORLDVIEW')}</span></div>${signals}`));
   const corePanel = finishWrappedPanel(wrapPanel('signalCore','right-core', `<div class="sec-head"><h3>${t('panels.signalCore','Signal Core')}</h3><span class="badge">${t('badges.hotMetrics','HOT METRICS')}</span></div>${signalMetrics.map(s=>`<div class="sm"><span class="sml">${s.l}</span><div class="smb"><span style="width:${s.p}%"></span></div><span class="smv">${s.v}</span></div>`).join('')}`));
   const deltaPanel = finishWrappedPanel(wrapPanel('sweepDelta','right-delta', `<div class="sec-head"><h3>${t('panels.sweepDelta','Sweep Delta')}</h3><span class="badge ${dirClass}">${dirEmoji} ${ds.direction?t('delta.'+ds.direction,ds.direction.toUpperCase()):t('delta.baseline','BASELINE')}</span></div>
@@ -1768,10 +1769,11 @@ function renderRight(){
     { id:'crossSignals', pinned:getPanelPref('crossSignals').pinned?1:0, priority:getPanelPref('crossSignals').priority, order:1, html:signalsPanel },
     ...(!mobile ? [{ id:'rightOsint', pinned:getPanelPref('rightOsint').pinned?1:0, priority:getPanelPref('rightOsint').priority, order:2, html:finishWrappedPanel(wrapPanel('rightOsint','right-osint', buildOsintPanel('right-osint', 260).replace(/^<div class="g-panel right-osint" style="display:flex;flex-direction:column">|<\/div>$/g,''))) }] : []),
     { id:'analysisReview', pinned:getPanelPref('analysisReview').pinned?1:0, priority:getPanelPref('analysisReview').priority, order:3, html:analysisReview },
-    { id:'reviewQueue', pinned:getPanelPref('reviewQueue').pinned?1:0, priority:getPanelPref('reviewQueue').priority, order:4, html:reviewQueuePanel },
-    { id:'evidenceAudit', pinned:getPanelPref('evidenceAudit').pinned?1:0, priority:getPanelPref('evidenceAudit').priority, order:5, html:buildEvidencePanel('right-evidence') },
-    { id:'signalCore', pinned:getPanelPref('signalCore').pinned?1:0, priority:getPanelPref('signalCore').priority, order:6, html:corePanel },
-    { id:'sweepDelta', pinned:getPanelPref('sweepDelta').pinned?1:0, priority:getPanelPref('sweepDelta').priority, order:7, html:deltaPanel },
+    { id:'layoutBudget', pinned:getPanelPref('layoutBudget').pinned?1:0, priority:getPanelPref('layoutBudget').priority, order:4, html:layoutBudgetPanel },
+    { id:'reviewQueue', pinned:getPanelPref('reviewQueue').pinned?1:0, priority:getPanelPref('reviewQueue').priority, order:5, html:reviewQueuePanel },
+    { id:'evidenceAudit', pinned:getPanelPref('evidenceAudit').pinned?1:0, priority:getPanelPref('evidenceAudit').priority, order:6, html:buildEvidencePanel('right-evidence') },
+    { id:'signalCore', pinned:getPanelPref('signalCore').pinned?1:0, priority:getPanelPref('signalCore').priority, order:7, html:corePanel },
+    { id:'sweepDelta', pinned:getPanelPref('sweepDelta').pinned?1:0, priority:getPanelPref('sweepDelta').priority, order:8, html:deltaPanel },
   ];
   document.getElementById('rightRail').innerHTML = sortPanels(rightPanels);
 }
@@ -1855,6 +1857,62 @@ function runBoot(){
 }
 
 function isMobileLayout(){ return currentLayoutMode === 'narrow'; }
+
+function pctOfViewport(px, viewport){
+  if(!Number.isFinite(px) || !Number.isFinite(viewport) || viewport <= 0) return 'n/a';
+  return `${Math.round((px / viewport) * 100)}%`;
+}
+
+function getLayoutBudgetSnapshot(){
+  const viewportW = window.innerWidth || 0;
+  const viewportH = window.innerHeight || 0;
+  const topbar = document.getElementById('topbar');
+  const map = document.getElementById('mapContainer');
+  const lower = document.getElementById('lowerGrid');
+  const center = document.getElementById('centerCol');
+  const grid = document.querySelector('.grid');
+  const topbarRect = topbar?.getBoundingClientRect?.() || null;
+  const mapRect = map?.getBoundingClientRect?.() || null;
+  const lowerRect = lower?.getBoundingClientRect?.() || null;
+  const centerRect = center?.getBoundingClientRect?.() || null;
+  const gridRect = grid?.getBoundingClientRect?.() || null;
+  const mapStyle = map ? getComputedStyle(map) : null;
+  const bodyStyle = getComputedStyle(document.body);
+  const layoutMode = document.body.dataset.layoutMode || currentLayoutMode || 'unknown';
+  const topbarHeight = Math.round(topbarRect?.height || 0);
+  const mapHeight = Math.round(mapRect?.height || 0);
+  const lowerHeight = Math.round(lowerRect?.height || 0);
+  const firstScreenFootprint = topbarHeight + mapHeight;
+  return {
+    layoutMode,
+    viewportW,
+    viewportH,
+    mapHeight,
+    mapWidth: Math.round(mapRect?.width || 0),
+    topbarHeight,
+    lowerHeight,
+    centerHeight: Math.round(centerRect?.height || 0),
+    gridHeight: Math.round(gridRect?.height || 0),
+    mapMinHeight: bodyStyle.getPropertyValue('--map-min-height').trim() || (mapStyle?.minHeight || 'n/a'),
+    mapHeightToken: bodyStyle.getPropertyValue('--map-height').trim() || (mapStyle?.height || 'n/a'),
+    mapComputedHeight: mapStyle?.height || 'n/a',
+    topbarShare: pctOfViewport(topbarHeight, viewportH),
+    mapShare: pctOfViewport(mapHeight, viewportH),
+    firstScreenShare: pctOfViewport(firstScreenFootprint, viewportH),
+    remainingViewport: Math.max(0, viewportH - firstScreenFootprint),
+    centerScrollOverflow: Math.max(0, Math.round(centerRect?.height || 0) - viewportH),
+  };
+}
+
+function renderLayoutBudgetPanel(){
+  const b = getLayoutBudgetSnapshot();
+  return finishWrappedPanel(wrapPanel('layoutBudget','right-layout-budget', `<div class="sec-head"><h3>Layout Budget</h3><span class="badge">${cleanText(String(b.layoutMode || 'unknown').toUpperCase())}</span></div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:8px">Viewport ${cleanText(String(b.viewportW))}×${cleanText(String(b.viewportH))} • map ${cleanText(String(b.mapWidth))}×${cleanText(String(b.mapHeight))} • computed ${cleanText(b.mapComputedHeight)}</div>
+      <div class="signal-row" style="border-left-color:rgba(68,204,255,0.5)"><strong>First-screen budget</strong><p>Topbar ${cleanText(b.topbarShare)} • Map ${cleanText(b.mapShare)} • Topbar+map ${cleanText(b.firstScreenShare)} • remaining viewport ${cleanText(String(b.remainingViewport))}px</p></div>
+      <div class="signal-row" style="border-left-color:rgba(100,240,200,0.45)"><strong>Active tokens</strong><p>Min ${cleanText(b.mapMinHeight)} • Height ${cleanText(b.mapHeightToken)}</p></div>
+      <div class="signal-row" style="border-left-color:rgba(255,184,76,0.45)"><strong>Measured panels</strong><p>Topbar ${cleanText(String(b.topbarHeight))}px • Map ${cleanText(String(b.mapHeight))}px • Lower ${cleanText(String(b.lowerHeight))}px • center overflow ${cleanText(String(b.centerScrollOverflow))}px</p></div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:8px">This is a live DOM budget check, not a promise from memory. If these ratios drift, the layout is freelancing again.</div>`));
+}
 
 function buildOsintPanel(panelClass='', maxHeight=260){
   const allPosts=[...D.tg.urgent,...D.tg.topPosts].sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));

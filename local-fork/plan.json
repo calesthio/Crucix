@@ -1148,21 +1148,33 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-47",
+        "title": "Dashboard layout budget diagnostics",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-47.1",
+            "title": "Expose live dashboard layout-budget diagnostics so viewport-driven map, topbar, and lower-grid sizing can be checked from measured DOM state instead of only by visual inspection",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 155,
+    "sequence": 156,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-27-cycle-155"
+    "lastCompletedCycleId": "2026-04-27-cycle-156"
   },
   "backlog": [
     {
-      "id": "backlog-2026-04-27-dashboard-layout-budget-contract",
-      "title": "Expose dashboard layout-budget tokens or measurement diagnostics so viewport-driven map, topbar, and lower-grid sizing can be checked as a contract instead of only by visual inspection",
+      "id": "backlog-2026-04-27-dashboard-layout-budget-browser-contract",
+      "title": "Add browser-level regression coverage for dashboard layout-budget diagnostics so measured map and panel ratios fail fast when a layout change lets the dashboard freelance again",
       "status": "pending",
-      "source": "cycle-155",
-      "reason": "Map sizing is now tokenized, but layout budget remains visually verified. A small diagnostics or contract surface for active layout tokens and measured panel heights would make future dashboard regressions faster to catch and less subjective."
+      "source": "cycle-156",
+      "reason": "The live layout-budget panel now exposes measured DOM state and active map tokens, but the contract is still human-read. A browser-level assertion pass against the surfaced ratios would catch future regressions earlier and more objectively."
     },
     {
       "id": "backlog-2026-04-27-runtime-action-feedback-contract",
