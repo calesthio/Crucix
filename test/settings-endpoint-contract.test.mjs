@@ -330,6 +330,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.match(diagnosticsPage, /Noise suppression/i);
     assert.match(diagnosticsPage, /Operator cue/i);
     assert.match(diagnosticsPage, /Critical event classifier review/i);
+    assert.match(diagnosticsPage, /Critical event queue transition audit/i);
     assert.match(diagnosticsPage, /Runtime action audit timeline/i);
     assert.match(diagnosticsPage, /Runtime history diagnostics/i);
     assert.match(diagnosticsPage, /createRuntimeActionMonitor/i);

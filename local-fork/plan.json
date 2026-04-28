@@ -1222,7 +1222,7 @@
           {
             "id": "effort-52.2",
             "title": "Expose critical-event queue transition audit on operator-facing diagnostics surfaces",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-52.3",
@@ -1347,9 +1347,9 @@
     ]
   },
   "cycleState": {
-    "sequence": 167,
+    "sequence": 168,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-28-cycle-167"
+    "lastCompletedCycleId": "2026-04-28-cycle-168"
   },
   "backlog": [
     {
