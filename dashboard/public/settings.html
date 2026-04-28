@@ -42,13 +42,13 @@ async function boot(){
       ].join('')),
       renderCard('Layout', 'Current operator posture', [
         row('Current', esc(data.layout?.current || 'unknown')),
-        row('Visuals mode', esc(data.layout?.controls?.visualsMode || 'unknown')),
+        row('Visuals mode', esc(data.layout?.controls?.visualsMode || 'unknown')), row('Workspace preset', esc(data.layout?.controls?.currentWorkspacePresetLabel || data.layout?.controls?.workspacePreset || 'unknown')), row('Preset reset support', esc(String(Boolean(data.layout?.controls?.resetSupported)))),
         row('Map mode', esc(data.layout?.controls?.mapMode || 'unknown')),
         row('Display mode', esc(data.layout?.controls?.displayMode || 'auto')),
         row('Default region', esc(data.layout?.controls?.defaultRegion || 'unknown')),
         row('Active layer', esc(data.layout?.controls?.activeLayer || 'all')),
         row('Persistence', esc(data.layout?.controls?.persistence || 'unknown')),
-        tags(layouts),
+        tags(layouts), (data.layout?.controls?.namedPresets || []).length ? tags((data.layout.controls.namedPresets || []).map(item => `${item.label || item.id}: ${item.description || item.profile || 'n/a'}`)) : '',
       ].join('')),
       renderCard('Sources', 'Inventory and selection state', [
         row('Total', esc(data.sources?.total ?? 0)),

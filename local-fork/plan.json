@@ -1005,7 +1005,7 @@
           {
             "id": "effort-36.4",
             "title": "Add saved panel-layout reset plus named operator presets so per-panel collapse, pin, priority, and size controls can recover from bad workspace states and switch intentionally between analyst, narrow-screen, and wallboard profiles",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-36.5",
@@ -1246,9 +1246,9 @@
     ]
   },
   "cycleState": {
-    "sequence": 160,
+    "sequence": 161,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-28-cycle-160"
+    "lastCompletedCycleId": "2026-04-28-cycle-161"
   },
   "backlog": [
     {

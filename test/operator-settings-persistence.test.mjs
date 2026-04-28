@@ -151,6 +151,8 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(settings.layout.controls.displayMode, 'wallboard');
     assert.equal(settings.layout.controls.defaultRegion, 'asiaPacific');
     assert.equal(settings.layout.controls.workspacePreset, 'source-ops');
+    assert.equal(settings.layout.controls.currentWorkspacePresetLabel, 'Source Ops');
+    assert.equal(settings.layout.controls.namedPresets.some(item => item.id === 'source-ops'), true);
     assert.equal(settings.layout.controls.performance.wallboardVirtualization, 'on');
     assert.equal(settings.layout.controls.panelPreferences.reviewQueue.pinned, true);
     assert.equal(settings.layout.controls.panelPreferences.reviewQueue.priority, 5);

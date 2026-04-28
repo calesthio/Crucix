@@ -161,6 +161,8 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(settings.access.localAdminRequired, true);
     assert.equal(settings.layout.controls.performance.wallboardVirtualization, 'auto');
     assert.equal(settings.layout.controls.availableWallboardVirtualizationModes.includes('off'), true);
+    assert.equal(settings.layout.controls.namedPresets.some(item => item.label === 'Wallboard'), true);
+    assert.equal(settings.layout.controls.resetSupported, true);
 
     const admin = await waitFor(adminSettingsUrl, payload => payload?.version === 'admin-settings-v1', 30000);
     assert.equal(admin.access.role, 'admin');
@@ -170,6 +172,7 @@ test('booted UI-facing and operator-facing payloads preserve core contracts acro
     assert.equal(admin.admin.controls.auditEndpoint, '/api/settings/audit');
     assert.equal(admin.admin.controls.runtimeHistoryDiagnosticsEndpoint, '/api/runtime-history/diagnostics');
     assert.equal(admin.layout.controls.performance.wallboardVirtualization, 'auto');
+    assert.equal(admin.layout.controls.namedPresets.some(item => item.label === 'Analyst'), true);
     assert.equal(admin.persistence.capabilities.writeApi, true);
     assert.equal(admin.runtimeControl.version, 'runtime-control-v1');
   });

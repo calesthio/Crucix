@@ -3976,9 +3976,17 @@ app.use(express.static(join(ROOT, 'dashboard/public')));
 function injectDashboardRuntimeHtml(html = '') {
   const locale = getLocale();
   const operatorSettings = loadOperatorSettings();
+  const workspacePresetLibrary = [
+    { id: 'operator', label: 'Analyst', profile: 'analyst', description: 'Balanced operator workspace for normal desktop analysis.', displayMode: 'desktop', mapMode: 'auto', visualsMode: 'full', defaultRegion: 'world', activeLayer: null, panels: { reviewQueue: { pinned: true, priority: 10, size: 'wide', collapsed: false }, analysisReview: { pinned: true, priority: 20, size: 'normal', collapsed: false }, layoutBudget: { pinned: false, priority: 30, size: 'normal', collapsed: false }, tradeIdeas: { pinned: false, priority: 60, size: 'compact', collapsed: false }, evidenceAudit: { pinned: false, priority: 40, size: 'normal', collapsed: false } } },
+    { id: 'diagnostics', label: 'Narrow Screen', profile: 'narrow-screen', description: 'Dense but bounded layout for constrained displays and troubleshooting.', displayMode: 'desktop', mapMode: 'flat', visualsMode: 'lite', defaultRegion: 'world', activeLayer: 'news', panels: { reviewQueue: { pinned: true, priority: 5, size: 'wide', collapsed: false }, analysisReview: { pinned: true, priority: 10, size: 'wide', collapsed: false }, layoutBudget: { pinned: true, priority: 12, size: 'wide', collapsed: false }, evidenceAudit: { pinned: true, priority: 15, size: 'wide', collapsed: false }, tradeIdeas: { pinned: false, priority: 90, size: 'compact', collapsed: true }, newsTicker: { pinned: false, priority: 50, size: 'compact', collapsed: false } } },
+    { id: 'source-ops', label: 'Source Ops', profile: 'source-ops', description: 'Source-health triage layout that keeps evidence and review controls close.', displayMode: 'desktop', mapMode: 'flat', visualsMode: 'lite', defaultRegion: 'world', activeLayer: 'news', panels: { reviewQueue: { pinned: true, priority: 5, size: 'wide', collapsed: false }, evidenceAudit: { pinned: true, priority: 10, size: 'wide', collapsed: false }, crossSignals: { pinned: true, priority: 20, size: 'normal', collapsed: false }, layoutBudget: { pinned: false, priority: 30, size: 'compact', collapsed: true }, tradeIdeas: { pinned: false, priority: 95, size: 'compact', collapsed: true } } },
+    { id: 'executive-briefing', label: 'Wallboard', profile: 'wallboard', description: 'Wallboard-first briefing layout for glanceable shared monitoring.', displayMode: 'wallboard', mapMode: 'globe', visualsMode: 'full', defaultRegion: 'world', activeLayer: null, panels: { agentAnalysis: { pinned: true, priority: 5, size: 'wide', collapsed: false }, macroMarkets: { pinned: true, priority: 10, size: 'wide', collapsed: false }, newsTicker: { pinned: true, priority: 15, size: 'wide', collapsed: false }, reviewQueue: { pinned: false, priority: 80, size: 'compact', collapsed: true }, evidenceAudit: { pinned: false, priority: 70, size: 'compact', collapsed: true }, tradeIdeas: { pinned: false, priority: 60, size: 'compact', collapsed: false } } },
+  ];
   const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
-  const runtimeScript = `<script>window.__CRUCIX_RUNTIME__ = ${JSON.stringify({ refreshIntervalMinutes: config.refreshIntervalMinutes, settingsUrl: '/settings', diagnosticsUrl: '/diagnostics', adminSettingsUrl: '/admin/settings', operatorSettings: operatorSettings.preferences }).replace(/<\/script>/gi, '<\\/script>')};</script>`;
-  return html.replace('</head>', `${localeScript}\n${runtimeScript}\n</head>`);
+  const runtimeScript = `<script>window.__CRUCIX_RUNTIME__ = ${JSON.stringify({ refreshIntervalMinutes: config.refreshIntervalMinutes, settingsUrl: '/settings', diagnosticsUrl: '/diagnostics', adminSettingsUrl: '/admin/settings', operatorSettings: operatorSettings.preferences, workspacePresetLibrary }).replace(/<\/script>/gi, '<\\/script>')};</script>`;
+  return html.replace('</head>', `${localeScript}
+${runtimeScript}
+</head>`);
 }
 
 // Serve loading page until first sweep completes, then the dashboard with injected locale
@@ -5479,19 +5487,22 @@ function buildOperatorSettingsContract(snapshot = null) {
     config.discord?.botToken || config.discord?.webhookUrl ? 'discord' : null,
   ].filter(Boolean);
   const operationalAlerts = summarizeOperationalAlertState(activeSnapshot);
+  const workspacePresetCatalog = [
+    { id: 'operator', label: 'Analyst', status: 'active', profile: 'analyst', description: 'Balanced operator workspace for normal desktop analysis.', displayMode: 'desktop', mapMode: 'auto', visualsMode: 'full', defaultRegion: 'world', activeLayer: null, panelDefaults: { reviewQueue: { pinned: true, priority: 10, size: 'wide', collapsed: false }, analysisReview: { pinned: true, priority: 20, size: 'normal', collapsed: false }, layoutBudget: { pinned: false, priority: 30, size: 'normal', collapsed: false }, tradeIdeas: { pinned: false, priority: 60, size: 'compact', collapsed: false }, evidenceAudit: { pinned: false, priority: 40, size: 'normal', collapsed: false } } },
+    { id: 'diagnostics', label: 'Narrow Screen', status: 'active', profile: 'narrow-screen', description: 'Dense but bounded layout for constrained displays and troubleshooting.', displayMode: 'desktop', mapMode: 'flat', visualsMode: 'lite', defaultRegion: 'world', activeLayer: 'news', panelDefaults: { reviewQueue: { pinned: true, priority: 5, size: 'wide', collapsed: false }, analysisReview: { pinned: true, priority: 10, size: 'wide', collapsed: false }, layoutBudget: { pinned: true, priority: 12, size: 'wide', collapsed: false }, evidenceAudit: { pinned: true, priority: 15, size: 'wide', collapsed: false }, tradeIdeas: { pinned: false, priority: 90, size: 'compact', collapsed: true }, newsTicker: { pinned: false, priority: 50, size: 'compact', collapsed: false } } },
+    { id: 'source-ops', label: 'Source Ops', status: 'active', profile: 'source-ops', description: 'Source-health triage layout that keeps evidence and review controls close.', displayMode: 'desktop', mapMode: 'flat', visualsMode: 'lite', defaultRegion: 'world', activeLayer: 'news', panelDefaults: { reviewQueue: { pinned: true, priority: 5, size: 'wide', collapsed: false }, evidenceAudit: { pinned: true, priority: 10, size: 'wide', collapsed: false }, crossSignals: { pinned: true, priority: 20, size: 'normal', collapsed: false }, layoutBudget: { pinned: false, priority: 30, size: 'compact', collapsed: true }, tradeIdeas: { pinned: false, priority: 95, size: 'compact', collapsed: true } } },
+    { id: 'executive-briefing', label: 'Wallboard', status: 'active', profile: 'wallboard', description: 'Wallboard-first briefing layout for glanceable shared monitoring.', displayMode: 'wallboard', mapMode: 'globe', visualsMode: 'full', defaultRegion: 'world', activeLayer: null, panelDefaults: { agentAnalysis: { pinned: true, priority: 5, size: 'wide', collapsed: false }, macroMarkets: { pinned: true, priority: 10, size: 'wide', collapsed: false }, newsTicker: { pinned: true, priority: 15, size: 'wide', collapsed: false }, reviewQueue: { pinned: false, priority: 80, size: 'compact', collapsed: true }, evidenceAudit: { pinned: false, priority: 70, size: 'compact', collapsed: true }, tradeIdeas: { pinned: false, priority: 60, size: 'compact', collapsed: false } } },
+  ];
+  const currentWorkspacePreset = operatorSettings.preferences.layout.workspacePreset || 'operator';
+  const currentWorkspacePresetMeta = workspacePresetCatalog.find(item => item.id === currentWorkspacePreset) || workspacePresetCatalog[0];
 
   return {
     version: 'operator-settings-v1',
     generatedAt: new Date().toISOString(),
     sections: ['layout', 'sources', 'sourceConsole', 'sdrCorroboration', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence'],
     layout: {
-      current: operatorSettings.preferences.layout.workspacePreset || 'operator',
-      available: [
-        { id: 'operator', label: 'Operator', status: 'active' },
-        { id: 'diagnostics', label: 'Diagnostics', status: 'active' },
-        { id: 'source-ops', label: 'Source Ops', status: 'active' },
-        { id: 'executive-briefing', label: 'Executive Briefing', status: 'active' },
-      ],
+      current: currentWorkspacePreset,
+      available: workspacePresetCatalog.map(item => ({ id: item.id, label: item.label, status: item.status, profile: item.profile, description: item.description })),
       controls: {
         visualsMode: operatorSettings.preferences.layout.visualsMode,
         mobileFlatMapDefault: operatorSettings.preferences.layout.mapMode !== 'globe',
@@ -5500,8 +5511,12 @@ function buildOperatorSettingsContract(snapshot = null) {
         availableDisplayModes: ['auto', 'narrow', 'desktop', 'wallboard'],
         defaultRegion: operatorSettings.preferences.layout.defaultRegion,
         activeLayer: operatorSettings.preferences.layout.activeLayer,
-        workspacePreset: operatorSettings.preferences.layout.workspacePreset || 'operator',
-        availableWorkspacePresets: ['operator', 'diagnostics', 'source-ops', 'executive-briefing'],
+        workspacePreset: currentWorkspacePreset,
+        currentWorkspacePresetLabel: currentWorkspacePresetMeta.label,
+        availableWorkspacePresets: workspacePresetCatalog.map(item => item.id),
+        namedPresets: workspacePresetCatalog.map(item => ({ id: item.id, label: item.label, status: item.status, profile: item.profile, description: item.description, displayMode: item.displayMode, mapMode: item.mapMode, visualsMode: item.visualsMode, defaultRegion: item.defaultRegion, activeLayer: item.activeLayer, panelDefaults: item.panelDefaults })),
+        resetSupported: true,
+        resetActions: ['restore-preset-panels', 'clear-panel-overrides'],
         performance: operatorSettings.preferences.layout.performance || operatorSettingsDefaults().preferences.layout.performance,
         availableWallboardVirtualizationModes: ['auto', 'off', 'on'],
         panelPreferences: operatorSettings.preferences.layout.panels || {},
@@ -5510,6 +5525,7 @@ function buildOperatorSettingsContract(snapshot = null) {
       mutability: {
         current: 'server-file',
         presets: 'server-file',
+        namedPresets: 'built-in',
       },
     },
     sources: {
