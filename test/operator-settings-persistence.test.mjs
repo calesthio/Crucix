@@ -65,13 +65,15 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     const settingsUrl = `http://127.0.0.1:${BASE_PORT}/api/settings`;
     const adminSettingsUrl = `http://127.0.0.1:${BASE_PORT}/api/settings/admin`;
     const initialAdmin = await waitFor(adminSettingsUrl, payload => payload?.persistence?.capabilities?.writeApi === true, 30000);
+    const adminWriteToken = initialAdmin.admin.writeAuth.token;
 
     const updated = await fetchJson(`http://127.0.0.1:${BASE_PORT}/api/settings/operator`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'If-Match': initialAdmin.persistence.etag },
+      headers: { 'Content-Type': 'application/json', 'If-Match': initialAdmin.persistence.etag, 'X-Crucix-Local-Admin-Nonce': adminWriteToken },
       body: JSON.stringify({
         expectedRevision: initialAdmin.persistence.revision,
         expectedEtag: initialAdmin.persistence.etag,
+        localAdminNonce: adminWriteToken,
         preferences: {
           layout: { visualsMode: 'lite', mapMode: 'flat', displayMode: 'wallboard', defaultRegion: 'asiaPacific', activeLayer: 'news', workspacePreset: 'source-ops', panels: { reviewQueue: { collapsed: false, pinned: true, priority: 5, size: 'wide' }, tradeIdeas: { collapsed: true, pinned: false, priority: 40, size: 'compact' } } },
           sources: { enabledCategories: ['news', 'air'], enabledSourceIds: ['gdelt-global', 'opensky-network'], noiseSuppression: { duplicateBurst: { enabled: true, minSimilarClusters: 3 }, repetitiveLowValue: { enabled: false, maxStoryCount: 2, maxSourceCount: 1 }, sourceRules: [{ sourceId: 'gdelt-global', action: 'suppress', reason: 'duplicate-heavy', enabled: true }] } },
@@ -128,9 +130,17 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(typeof updated.concurrency.revision, 'number');
     assert.equal(typeof updated.concurrency.etag, 'string');
 
+    const missingWriteAuth = await fetch(`http://127.0.0.1:${BASE_PORT}/api/settings/operator`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'If-Match': updated.concurrency.etag },
+      body: JSON.stringify({ expectedRevision: updated.concurrency.revision, expectedEtag: updated.concurrency.etag, preferences: { layout: { visualsMode: 'full' } } }),
+    }).then(r => r.json().then(body => ({ status: r.status, body })));
+    assert.equal(missingWriteAuth.status, 428);
+    assert.equal(missingWriteAuth.body.error, 'local-admin-write-token-required');
+
     const staleWrite = await fetch(`http://127.0.0.1:${BASE_PORT}/api/settings/operator`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'If-Match': initialAdmin.persistence.etag },
+      headers: { 'Content-Type': 'application/json', 'If-Match': initialAdmin.persistence.etag, 'X-Crucix-Local-Admin-Nonce': adminWriteToken },
       body: JSON.stringify({ expectedRevision: initialAdmin.persistence.revision, expectedEtag: initialAdmin.persistence.etag, preferences: { layout: { visualsMode: 'full' } } }),
     }).then(r => r.json().then(body => ({ status: r.status, body })));
     assert.equal(staleWrite.status, 409);
@@ -201,6 +211,7 @@ test('operator settings persist, export, and influence runtime bootstrap state',
         ...bundle,
         expectedRevision: updated.concurrency.revision,
         expectedEtag: updated.concurrency.etag,
+        localAdminNonce: adminWriteToken,
         config: {
           ...bundle.config,
           operatorSettings: {
@@ -283,6 +294,10 @@ test('operator settings persist, export, and influence runtime bootstrap state',
     assert.equal(adminContract.access.role, 'admin');
     assert.equal(adminContract.admin.controls.auditEndpoint, '/api/settings/audit');
     assert.equal(adminContract.admin.controls.concurrencyHeader, 'If-Match');
+    assert.equal(adminContract.admin.controls.writeAuthHeader, 'X-Crucix-Local-Admin-Nonce');
+    assert.equal(adminContract.admin.controls.writeAuthBodyField, 'localAdminNonce');
+    assert.equal(adminContract.admin.writeAuth.required, true);
+    assert.equal(typeof adminContract.admin.writeAuth.token, 'string');
     assert.equal(adminContract.sourceConsole.sourceControls.version, 'source-ops-control-v2');
     assert.equal(adminContract.sourceConsole.sourceControls.auditEndpoint, '/api/source-ops/audit');
 

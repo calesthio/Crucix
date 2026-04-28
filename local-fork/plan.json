@@ -995,7 +995,7 @@
           {
             "id": "effort-36.2",
             "title": "Add an explicit local admin nonce or CSRF-style confirmation token for `/api/settings/operator` and `/api/settings/import` so browser-originated local writes are not relying on network locality alone",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-36.3",
@@ -1246,9 +1246,9 @@
     ]
   },
   "cycleState": {
-    "sequence": 158,
+    "sequence": 159,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-28-cycle-158"
+    "lastCompletedCycleId": "2026-04-28-cycle-159"
   },
   "backlog": [
     {
@@ -1257,6 +1257,20 @@
       "status": "pending",
       "source": "cycle-158",
       "reason": "Settings writes now fail safely on stale revision tokens, but the admin surface still only reports the conflict text. A follow-on slice should surface current-vs-stale revision detail and offer a bounded reload or diff-friendly recovery path."
+    },
+    {
+      "id": "backlog-2026-04-28-extend-local-admin-write-auth",
+      "title": "Extend local admin write-auth nonce coverage to other debug-side mutation endpoints",
+      "status": "pending",
+      "source": "cycle-159",
+      "reason": "This cycle hardened `/api/settings/operator` and `/api/settings/import`, but other local-only mutation endpoints like source controls, workflow source actions, and runtime control still rely on locality plus route gating. A follow-on slice should decide which of those need the same nonce boundary for consistency."
+    },
+    {
+      "id": "backlog-2026-04-28-restart-safe-helper-portability",
+      "title": "Harden restart-safe helper portability when `lsof` is unavailable",
+      "status": "pending",
+      "source": "cycle-159",
+      "reason": "Local runtime rollout exposed a real packaging gap: `restart-safe` failed with `spawn lsof ENOENT`, so helper verification should degrade gracefully or use a portable fallback instead of hard-failing on hosts without `lsof` in PATH."
     }
   ]
 }

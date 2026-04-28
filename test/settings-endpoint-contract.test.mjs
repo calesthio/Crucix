@@ -242,6 +242,10 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(admin.admin.boundaries.requiresLocalRequest, true);
     assert.equal(admin.admin.controls.auditEndpoint, '/api/settings/audit');
     assert.equal(admin.admin.controls.concurrencyHeader, 'If-Match');
+    assert.equal(admin.admin.controls.writeAuthHeader, 'X-Crucix-Local-Admin-Nonce');
+    assert.equal(admin.admin.controls.writeAuthBodyField, 'localAdminNonce');
+    assert.equal(admin.admin.writeAuth.required, true);
+    assert.equal(typeof admin.admin.writeAuth.token, 'string');
     assert.equal(admin.admin.controls.runtimeHistoryDiagnosticsEndpoint, '/api/runtime-history/diagnostics');
     assert.equal(admin.admin.backup.bundleVersion, 'settings-state-bundle-v1');
     assert.equal(Array.isArray(admin.admin.auditTrail), true);

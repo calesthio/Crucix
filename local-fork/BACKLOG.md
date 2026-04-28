@@ -57,3 +57,6 @@ New items can be added here when they do not yet belong in the active roadmap.
 
 
 - `backlog-2026-04-28-settings-concurrency-conflict-ux` — add clearer admin-surface stale-write recovery UX for settings concurrency conflicts so operators can reload or reconcile after a bounded 409 instead of only seeing a raw failure string.
+
+- `backlog-2026-04-28-extend-local-admin-write-auth` — extend local admin write-auth nonce coverage to other debug-side mutation endpoints so source controls, review workflow source actions, and runtime control can be evaluated for the same anti-CSRF-style boundary instead of relying on locality alone.
+- `backlog-2026-04-28-restart-safe-helper-portability` — harden restart-safe helper portability when `lsof` is unavailable so local runtime rotation can fall back cleanly instead of failing on host packaging gaps.

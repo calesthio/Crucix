@@ -3,6 +3,7 @@
 // Serves the Jarvis dashboard, runs sweep cycle, pushes live updates via SSE
 
 import express from 'express';
+import { randomUUID } from 'crypto';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -37,6 +38,9 @@ const AGENT_ANALYSIS_VALIDATION_SCRIPT = join(ROOT, 'scripts/agent-analysis-vali
 const OPENSKY_STATE_PATH = join(ROOT, 'runs', 'cache', 'opensky-state.json');
 const OPERATOR_SETTINGS_PATH = process.env.OPERATOR_SETTINGS_PATH || join(ROOT, 'runs', 'operator-settings.json');
 const RUNTIME_CONTROL_LOG_PATH = join(ROOT, 'logs', 'runtime-control.log');
+const LOCAL_ADMIN_WRITE_HEADER = 'X-Crucix-Local-Admin-Nonce';
+const LOCAL_ADMIN_WRITE_BODY_FIELD = 'localAdminNonce';
+const LOCAL_ADMIN_WRITE_TOKEN = randomUUID();
 
 // Ensure directories exist
 for (const dir of [RUNS_DIR, MEMORY_DIR, join(MEMORY_DIR, 'cold'), join(ROOT, 'logs')]) {
@@ -606,6 +610,54 @@ function buildSettingsConcurrencyState(settings = {}) {
       'Use either If-Match with the advertised ETag or include expectedRevision/expectedEtag in the JSON body.',
     ],
   };
+}
+
+function buildLocalAdminWriteAuthState() {
+  return {
+    required: true,
+    header: LOCAL_ADMIN_WRITE_HEADER,
+    bodyField: LOCAL_ADMIN_WRITE_BODY_FIELD,
+    token: LOCAL_ADMIN_WRITE_TOKEN,
+    notes: [
+      'Local admin writes require a process-scoped nonce in addition to local-network restrictions and revision concurrency tokens.',
+      'The nonce is intentionally only exposed on local admin surfaces so cross-origin browser requests cannot synthesize successful write calls with locality alone.',
+    ],
+  };
+}
+
+function resolveLocalAdminWriteToken(req) {
+  const headerToken = String(req.get(LOCAL_ADMIN_WRITE_HEADER) || '').trim();
+  const bodyToken = String(req.body?.[LOCAL_ADMIN_WRITE_BODY_FIELD] || '').trim();
+  return {
+    provided: Boolean(headerToken || bodyToken),
+    token: headerToken || bodyToken || null,
+  };
+}
+
+function assertLocalAdminWriteToken(req) {
+  const provided = resolveLocalAdminWriteToken(req);
+  if (!provided.provided) {
+    const error = new Error('local admin write token required');
+    error.statusCode = 428;
+    error.payload = {
+      ok: false,
+      error: 'local-admin-write-token-required',
+      detail: 'Local admin writes must include the current local admin nonce.',
+      writeAuth: buildLocalAdminWriteAuthState(),
+    };
+    throw error;
+  }
+  if (provided.token !== LOCAL_ADMIN_WRITE_TOKEN) {
+    const error = new Error('local admin write token invalid');
+    error.statusCode = 403;
+    error.payload = {
+      ok: false,
+      error: 'local-admin-write-token-invalid',
+      detail: 'The provided local admin nonce does not match the active runtime token.',
+    };
+    throw error;
+  }
+  return provided;
 }
 
 function resolveExpectedSettingsRevision(req) {
@@ -6187,6 +6239,8 @@ function buildAdminSettingsContract(snapshot = null) {
         writeEndpoint: '/api/settings/operator',
         auditEndpoint: '/api/settings/audit',
         concurrencyHeader: 'If-Match',
+        writeAuthHeader: LOCAL_ADMIN_WRITE_HEADER,
+        writeAuthBodyField: LOCAL_ADMIN_WRITE_BODY_FIELD,
         runtimeControlEndpoint: '/api/runtime/control',
         runtimeHistoryDiagnosticsEndpoint: '/api/runtime-history/diagnostics',
       },
@@ -6200,6 +6254,7 @@ function buildAdminSettingsContract(snapshot = null) {
         bundleVersion: 'settings-state-bundle-v1',
       },
       auditTrail: settingsAdminAuditSnapshot(12),
+      writeAuth: buildLocalAdminWriteAuthState(),
     },
     notes: [
       ...operator.notes,
@@ -6305,6 +6360,7 @@ app.get('/api/runtime-history/diagnostics', requireDebugAccess, (req, res) => {
 
 app.put('/api/settings/operator', requireDebugAccess, (req, res) => {
   try {
+    assertLocalAdminWriteToken(req);
     const expected = resolveExpectedSettingsRevision(req);
     const saved = mergeOperatorSettingsPatch(req.body || {}, { expected });
     const audit = recordSettingsAdminAudit({
@@ -6490,6 +6546,7 @@ app.post('/api/review-workflow/action', requireDebugAccess, (req, res) => {
 
 app.post('/api/settings/import', requireDebugAccess, (req, res) => {
   try {
+    assertLocalAdminWriteToken(req);
     const expected = resolveExpectedSettingsRevision(req);
     const imported = importSettingsStateBundle(req.body || {}, { expected });
     const audit = recordSettingsAdminAudit({
