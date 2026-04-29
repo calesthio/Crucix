@@ -18,7 +18,7 @@ async function sleep(ms){ await new Promise(r => setTimeout(r, ms)); }
 async function killOwnedListeners() {
   let listeners = [];
   try {
-    listeners = await listPortListeners(port);
+    listeners = await listPortListeners(port, { repoRoot });
   } catch (error) {
     if (String(error.message || '').includes('status 1')) return { previousListeners: [], transition: { status: 'cleared', previousPids: [], livePids: [] } };
     throw error;
@@ -39,7 +39,7 @@ async function killOwnedListeners() {
   const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
     await sleep(500);
-    const remaining = await listPortListeners(port).catch(() => []);
+    const remaining = await listPortListeners(port, { repoRoot }).catch(() => []);
     const transition = evaluateRestartTransition(owned, remaining, { repoRoot });
     if (transition.status === 'cleared') return { previousListeners: owned, transition };
     if (transition.status === 'replacement-detected') {
@@ -50,7 +50,7 @@ async function killOwnedListeners() {
       fail(`Port ${port} became owned by a non-Crucix listener during restart: ${transition.foreign.map(item => `${item.command}:${item.pid}`).join(', ')}`);
     }
   }
-  const remaining = await listPortListeners(port).catch(() => []);
+  const remaining = await listPortListeners(port, { repoRoot }).catch(() => []);
   const transition = evaluateRestartTransition(owned, remaining, { repoRoot });
   fail(`Port ${port} still has original listener PID(s) after waiting for shutdown: ${(transition.retainedPids || []).join(', ') || 'unknown'}.`);
 }
@@ -80,7 +80,7 @@ async function main() {
     replacementMode = 'helper-started';
   }
   const health = await waitForHealth({ url: healthUrl, timeoutMs: 45000, intervalMs: 1000 });
-  const listeners = await listPortListeners(port).catch(() => []);
+  const listeners = await listPortListeners(port, { repoRoot }).catch(() => []);
   const previousPids = new Set((restartState.previousListeners || []).map(item => Number(item.pid)).filter(Boolean));
   const match = pid ? (listeners.find(item => item.pid === pid) || listeners[0] || null) : (listeners[0] || null);
   const livePid = Number(match?.pid) || null;
@@ -88,7 +88,9 @@ async function main() {
   if (!rotationProved) fail(`Health check passed but PID rotation was not proved. Previous PID(s): ${[...previousPids].join(', ') || 'none'}, live PID: ${livePid || 'unknown'}.`);
   log(`Health check passed for ${healthUrl}.`);
   log(`Live listener PID ${livePid || pid} on port ${port}.`);
-  const result = { ok: true, port, startedPid: pid, livePid, replacementMode, rotationProved, healthStatus: health?.status || null, lastSweep: health?.lastSweep || null };
+  const listenerLookup = match?.lookup || (listeners[0]?.lookup ?? null);
+  if (listenerLookup === 'ps-fallback') log('Listener verification used ps fallback because lsof was unavailable on this host.');
+  const result = { ok: true, port, startedPid: pid, livePid, replacementMode, rotationProved, listenerLookup, healthStatus: health?.status || null, lastSweep: health?.lastSweep || null };
   appendRuntimeRestartAudit(runtimeRestartAuditPath, {
     action: 'restart-safe',
     phase: 'completed',
@@ -103,6 +105,7 @@ async function main() {
     livePid,
     replacementMode,
     rotationProved,
+    listenerLookup,
     healthStatus: health?.status || null,
     lastSweep: health?.lastSweep || null,
   });

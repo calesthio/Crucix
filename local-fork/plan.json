@@ -1270,12 +1270,12 @@
       {
         "id": "epic-56",
         "title": "Restart-safe helper portability hardening",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-56.1",
             "title": "Harden restart-safe helper portability when lsof is unavailable so local runtime rotation can fall back cleanly instead of failing on host packaging gaps",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -1347,9 +1347,9 @@
     ]
   },
   "cycleState": {
-    "sequence": 172,
+    "sequence": 173,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-28-cycle-172"
+    "lastCompletedCycleId": "2026-04-29-cycle-173"
   },
   "backlog": [
     {
@@ -1369,7 +1369,7 @@
     {
       "id": "backlog-2026-04-28-restart-safe-helper-portability",
       "title": "Harden restart-safe helper portability when `lsof` is unavailable",
-      "status": "pending",
+      "status": "completed",
       "source": "cycle-159",
       "reason": "Local runtime rollout exposed a real packaging gap: `restart-safe` failed with `spawn lsof ENOENT`, so helper verification should degrade gracefully or use a portable fallback instead of hard-failing on hosts without `lsof` in PATH."
     }

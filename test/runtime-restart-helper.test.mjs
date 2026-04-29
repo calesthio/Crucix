@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendRuntimeRestartAudit, classifyListenerOwnership, evaluateRestartTransition, loadRuntimeRestartAudit, parseLsofLines } from '../lib/runtime-restart.mjs';
+import { appendRuntimeRestartAudit, classifyListenerOwnership, evaluateRestartTransition, loadRuntimeRestartAudit, parseLsofLines, resolveLsofPath } from '../lib/runtime-restart.mjs';
 
 test('parseLsofLines extracts listener rows', () => {
   const rows = parseLsofLines(`COMMAND   PID      USER   FD   TYPE DEVICE SIZE/OFF NODE NAME\nnode    94748 rightclaw   12u  IPv6 0x1      0t0  TCP *:3117 (LISTEN)\n`);
@@ -37,6 +37,11 @@ test('appendRuntimeRestartAudit retains newest bounded runtime action outcomes f
   assert.equal(loaded.history[1].action, 'restart-safe');
   assert.equal(loaded.history[1].phase, 'queued');
   assert.equal(JSON.parse(readFileSync(path, 'utf8')).history.length, 2);
+});
+
+test('resolveLsofPath returns an absolute path or null without throwing', async () => {
+  const resolved = await resolveLsofPath();
+  assert.equal(resolved === null || resolved.startsWith('/'), true);
 });
 
 test('evaluateRestartTransition recognizes cleared, replacement, waiting, and foreign listener states', () => {
