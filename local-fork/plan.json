@@ -1323,12 +1323,12 @@
       {
         "id": "epic-60",
         "title": "Headless layout-budget measurement thresholds",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-60.1",
             "title": "Add true headless-browser layout-budget measurements and threshold assertions so future regressions can verify computed topbar, map, and overflow ratios directly instead of relying only on served-page contract coverage",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -1347,9 +1347,9 @@
     ]
   },
   "cycleState": {
-    "sequence": 177,
+    "sequence": 178,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-29-cycle-177"
+    "lastCompletedCycleId": "2026-04-29-cycle-178"
   },
   "backlog": []
 }
