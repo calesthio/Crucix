@@ -1236,6 +1236,66 @@ function summarizeClusterReviewMetrics(clusters = []) {
   };
 }
 
+function shouldPromoteTelegramCorroborationMerge(a = {}, b = {}) {
+  const aSource = inferRuntimeSourceAttribution((a.items || [])[0] || {});
+  const bSource = inferRuntimeSourceAttribution((b.items || [])[0] || {});
+  const sources = new Set([aSource, bSource]);
+  if (!sources.has('Telegram') || !sources.has('GDELT')) return false;
+  if ((a.items?.length || 0) !== 1 || (b.items?.length || 0) !== 1) return false;
+  const aItem = (a.items || [])[0] || {};
+  const bItem = (b.items || [])[0] || {};
+  const urgentCandidate = [aItem, bItem].find(item => item?.type === 'telegram' && item?.placementBasis === 'telegram-urgent');
+  const newsCandidate = urgentCandidate === aItem ? bItem : aItem;
+  if (!urgentCandidate || !newsCandidate) return false;
+  const similarity = titleSimilarity(urgentCandidate.title || a.headline || '', newsCandidate.title || b.headline || '');
+  return similarity >= 0.5;
+}
+
+function mergeClusterPair(primary = {}, secondary = {}) {
+  const secondaryDate = secondary.latestDate || null;
+  for (const item of secondary.items || []) {
+    primary.items.push(item);
+    primary.sourceSet.add(item.source);
+  }
+  if (secondaryDate && secondaryDate > (primary.latestDate || '')) primary.latestDate = secondaryDate;
+  if ((secondary.items?.length || 0) > (primary.items?.length || 0)) {
+    primary.headline = secondary.headline || primary.headline;
+    primary.summary = secondary.summary || primary.summary;
+  }
+  if ((primary.placementBasis || '') !== 'telegram-urgent' && (secondary.placementBasis || '') === 'telegram-urgent') {
+    primary.lat = secondary.lat;
+    primary.lon = secondary.lon;
+    primary.placementPrecision = secondary.placementPrecision;
+    primary.placementBasis = secondary.placementBasis;
+    primary.placementClass = secondary.placementClass;
+  }
+  primary.llmConfidence = primary.llmConfidence === 'high' || secondary.llmConfidence === 'high'
+    ? 'high'
+    : (primary.llmConfidence || secondary.llmConfidence || null);
+  primary.storyKey = normalizeStoryKey(`${primary.storyKey || ''} ${secondary.storyKey || ''}`);
+  return primary;
+}
+
+function mergeTelegramCorroboratedClusters(groups = new Map()) {
+  const clusters = Array.from(groups.values());
+  const consumed = new Set();
+  const merged = [];
+  for (let i = 0; i < clusters.length; i++) {
+    if (consumed.has(clusters[i].id)) continue;
+    const base = clusters[i];
+    for (let j = i + 1; j < clusters.length; j++) {
+      const candidate = clusters[j];
+      if (consumed.has(candidate.id)) continue;
+      if ((base.region || '') !== (candidate.region || '')) continue;
+      if (!shouldPromoteTelegramCorroborationMerge(base, candidate)) continue;
+      mergeClusterPair(base, candidate);
+      consumed.add(candidate.id);
+    }
+    merged.push(base);
+  }
+  return merged;
+}
+
 export async function buildNewsClusters(news = [], llmProvider = null, options = {}) {
   const { hints: llmHints, debug: llmDebug } = await consolidateNewsWithLLM(news, llmProvider, options);
   const hintMap = new Map(llmHints.filter(x => Number.isInteger(x?.idx)).map(x => [x.idx, x]));
@@ -1268,7 +1328,7 @@ export async function buildNewsClusters(news = [], llmProvider = null, options =
     cluster.sourceSet.add(item.source);
     if ((item.date || '') > (cluster.latestDate || '')) cluster.latestDate = item.date;
   });
-  const clusters = Array.from(groups.values()).map(cluster => {
+  const clusters = mergeTelegramCorroboratedClusters(groups).map(cluster => {
     const offset = stableClusterOffset(cluster.id, cluster.items.length);
     const quality = classifyClusterQuality(cluster);
     const sourceProvenance = summarizeClusterSources(cluster);

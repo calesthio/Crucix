@@ -121,3 +121,43 @@ test('buildNewsClusters prefers exact Telegram coordinates over generic regional
   assert.ok(Math.abs(clusters[0].lat - 38.9) < 3);
   assert.ok(Math.abs(clusters[0].lon + 77) < 3);
 });
+
+test('buildNewsClusters merges urgent Telegram map candidates with matching RSS corroboration in-region', async () => {
+  const news = [
+    {
+      title: 'Secret Service confirms shooting near White House complex during correspondents dinner lockdown',
+      source: 'OSINT ALERTS',
+      type: 'telegram',
+      date: '2026-04-28T18:20:00Z',
+      url: null,
+      lat: 38.9,
+      lon: -77,
+      region: 'White House',
+      placementPrecision: 'subregion',
+      placementBasis: 'telegram-urgent',
+      placementClass: 'inferred-subregion',
+    },
+    {
+      title: 'White House shooting prompts Secret Service lockdown during correspondents dinner',
+      source: 'Reuters',
+      type: 'rss',
+      date: '2026-04-28T18:24:00Z',
+      url: 'https://example.com/reuters/white-house',
+      lat: 38.89,
+      lon: -77.03,
+      region: 'White House',
+      placementPrecision: 'source-native',
+      placementBasis: 'source-native',
+      placementClass: 'source-native',
+    },
+  ];
+
+  const { clusters, qualitySummary } = await buildNewsClusters(news, null, { mode: 'off' });
+  assert.equal(clusters.length, 1);
+  assert.equal(clusters[0].storyCount, 2);
+  assert.equal(clusters[0].sourceCount, 2);
+  assert.equal(clusters[0].placementBasis, 'telegram-urgent');
+  assert.equal(clusters[0].sourceProvenance.topSources.some(item => item.runtimeSource === 'Telegram'), true);
+  assert.equal(clusters[0].sourceProvenance.topSources.some(item => item.runtimeSource === 'GDELT'), true);
+  assert.equal(qualitySummary.reviewMetrics.suspiciousNearDuplicateCount, 0);
+});
