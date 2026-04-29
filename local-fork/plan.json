@@ -1343,13 +1343,32 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-62",
+        "title": "Sweep-state closure honesty after publish",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-62.1",
+            "title": "Close primary sweep state before deferred LLM enrichments so /api/health does not keep advertising an in-progress sweep after data is already published",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 179,
+    "sequence": 180,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-29-cycle-179"
+    "lastCompletedCycleId": "2026-04-29-cycle-180"
   },
-  "backlog": []
+  "backlog": [
+    {
+      "id": "backlog-62-a",
+      "title": "Investigate why the live runtime can still retain `sweepInProgress: true` and the original `sweepStartedAt` after publish, even when `lastSweep` and deferred analysis completion telemetry advance",
+      "status": "pending",
+      "notes": "Observed on cycle 180 after shipping earlier sweep-state closure hardening. Likely needs deeper tracing of overlapping startup preview enrichment versus initial sweep lifecycle bookkeeping."
+    }
+  ]
 }

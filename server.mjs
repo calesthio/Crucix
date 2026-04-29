@@ -4144,6 +4144,20 @@ function completeRuntimeJob(jobKey, { completedAt = new Date().toISOString(), du
   };
 }
 
+function finalizeSweepCycle(success = true, nowIso = new Date().toISOString()) {
+  const activePhase = runtimeJobState.phase;
+  sweepInProgress = false;
+  sweepStartedAt = null;
+  if (success) {
+    if (activePhase && activePhase !== 'idle' && activePhase !== 'llm-analysis-refinement' && activePhase !== 'llm-ideas-refinement') {
+      completeRuntimePhase(activePhase, nowIso);
+    }
+  } else if (activePhase && activePhase !== 'idle' && activePhase !== 'llm-analysis-refinement' && activePhase !== 'llm-ideas-refinement') {
+    completeRuntimePhase(activePhase, nowIso);
+  }
+  syncSnapshotRuntimeFreshness(currentData);
+}
+
 function getRuntimeJobsSnapshot() {
   return {
     synthesis: { ...runtimeJobTelemetry.synthesis },
@@ -7427,6 +7441,9 @@ async function runSweepCycle() {
     if (delta?.summary) console.log(`[Crucix] Delta: ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical, direction: ${delta.summary.direction}`);
     console.log(`[Crucix] Next sweep at ${new Date(Date.now() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()}`);
 
+    completeRuntimeJob('synthesis', { completedAt: new Date().toISOString(), durationMs: Date.now() - new Date(sweepStartedAt).getTime(), outcome: 'completed' });
+    finalizeSweepCycle(true);
+
     if (llmProvider?.isConfigured) {
       enrichIdeasAndPublish(synthesized, delta).catch(err => {
         console.error('[Crucix] Deferred ideas enrichment failed:', err.message);
@@ -7435,20 +7452,13 @@ async function runSweepCycle() {
         console.error('[Crucix] Deferred agent analysis enrichment failed:', err.message);
       });
     }
-
-    completeRuntimeJob('synthesis', { completedAt: new Date().toISOString(), durationMs: Date.now() - new Date(sweepStartedAt).getTime(), outcome: 'completed' });
-    if (runtimeJobState.phase === 'synthesis') completeRuntimePhase('synthesis');
   } catch (err) {
     console.error('[Crucix] Sweep failed:', err.message);
     completeRuntimeJob('synthesis', { completedAt: new Date().toISOString(), durationMs: sweepStartedAt ? (Date.now() - new Date(sweepStartedAt).getTime()) : null, outcome: /timeout|timed out|abort/i.test(err.message || '') ? 'timed-out' : 'failed', error: err.message || null, timedOut: /timeout|timed out|abort/i.test(err.message || '') });
     failRuntimePhase(err.message || 'sweep-failed');
     broadcast({ type: 'sweep_error', error: err.message });
   } finally {
-    const activePhase = runtimeJobState.phase;
-    sweepInProgress = false;
-    sweepStartedAt = null;
-    if (activePhase && activePhase !== 'idle' && activePhase !== 'llm-analysis-refinement' && activePhase !== 'llm-ideas-refinement') completeRuntimePhase(activePhase);
-    syncSnapshotRuntimeFreshness(currentData);
+    if (sweepInProgress || sweepStartedAt) finalizeSweepCycle(false);
   }
 }
 
