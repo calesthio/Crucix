@@ -119,7 +119,7 @@ test('browser-rendered admin preset flows clone, import, delete, and persist cor
       let settings = await waitFor(`${baseUrl}/api/settings`, payload => payload?.layout?.controls?.customPresets?.focusdeckbrowser?.label === 'Focus Deck Browser', 30000);
       assert.equal(settings.layout.controls.customPresets.focusdeckbrowser.description, 'Browser-created custom preset');
 
-      await runBrowser(session, 'eval', `window.__presetImportPayload = { id:'importedopsdeck', label:'Imported Ops Deck', profile:'custom', description:'Imported through browser regression flow.', visualsMode:'lite', mapMode:'flat', displayMode:'desktop', defaultRegion:'europe', activeLayer:'osint', panels:{ reviewQueue:{ collapsed:false, pinned:true, priority:2, size:'wide' } } }; const originalCreateElement = document.createElement.bind(document); document.createElement = function(tag){ const el = originalCreateElement(tag); if (String(tag).toLowerCase() === 'input') { const file = new File([JSON.stringify(window.__presetImportPayload)], 'imported-ops-deck.json', { type:'application/json' }); Object.defineProperty(el, 'files', { configurable:true, value:[file] }); el.click = () => setTimeout(() => el.dispatchEvent(new Event('change')), 0); } return el; }; 'ok'`);
+      await runBrowser(session, 'eval', `window.__presetImportPayload = { id:'importedopsdeck', label:'Imported Ops Deck', profile:'custom', description:'Imported through browser regression flow.', visualsMode:'lite', mapMode:'flat', displayMode:'desktop', densityMode:'dense', topbarMode:'compact', defaultRegion:'europe', activeLayer:'osint', panels:{ reviewQueue:{ collapsed:false, pinned:true, priority:2, size:'wide' } } }; const originalCreateElement = document.createElement.bind(document); document.createElement = function(tag){ const el = originalCreateElement(tag); if (String(tag).toLowerCase() === 'input') { const file = new File([JSON.stringify(window.__presetImportPayload)], 'imported-ops-deck.json', { type:'application/json' }); Object.defineProperty(el, 'files', { configurable:true, value:[file] }); el.click = () => setTimeout(() => el.dispatchEvent(new Event('change')), 0); } return el; }; 'ok'`);
       await runBrowser(session, 'click', '#importPresetBtn');
       await waitForStatus(session, /Imported custom preset Imported Ops Deck/i);
       assert.equal(await runBrowser(session, 'get', 'value', '#workspacePreset'), 'importedopsdeck');
@@ -127,6 +127,8 @@ test('browser-rendered admin preset flows clone, import, delete, and persist cor
       await runBrowser(session, 'click', '#saveBtn');
       settings = await waitFor(`${baseUrl}/api/settings`, payload => payload?.layout?.controls?.customPresets?.importedopsdeck?.label === 'Imported Ops Deck', 30000);
       assert.equal(settings.layout.controls.customPresets.importedopsdeck.activeLayer, 'osint');
+      assert.equal(settings.layout.controls.customPresets.importedopsdeck.densityMode, 'dense');
+      assert.equal(settings.layout.controls.customPresets.importedopsdeck.topbarMode, 'compact');
       assert.equal(settings.layout.controls.customPresets.importedopsdeck.panels.reviewQueue.priority, 2);
 
       await runBrowser(session, 'eval', `window.confirm = () => true; 'ok'`);

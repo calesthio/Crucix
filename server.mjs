@@ -385,6 +385,8 @@ function normalizeCustomWorkspacePresets(input = {}) {
   const allowedMapModes = ['auto', 'flat', 'globe'];
   const allowedDisplayModes = ['auto', 'narrow', 'desktop', 'wallboard'];
   const allowedVisualsModes = ['full', 'lite'];
+  const allowedDensityModes = ['balanced', 'dense', 'briefing'];
+  const allowedTopbarModes = ['standard', 'compact', 'briefing'];
   const allowedPanelSizes = ['compact', 'normal', 'wide'];
   return Object.fromEntries(Object.entries(input && typeof input === 'object' ? input : {}).map(([key, value]) => {
     const id = normalizeToken(key).slice(0, 48);
@@ -396,6 +398,8 @@ function normalizeCustomWorkspacePresets(input = {}) {
       displayMode: allowedDisplayModes.includes(value?.displayMode) ? value.displayMode : 'desktop',
       mapMode: allowedMapModes.includes(value?.mapMode) ? value.mapMode : 'auto',
       visualsMode: allowedVisualsModes.includes(value?.visualsMode) ? value.visualsMode : 'full',
+      densityMode: allowedDensityModes.includes(value?.densityMode) ? value.densityMode : 'balanced',
+      topbarMode: allowedTopbarModes.includes(value?.topbarMode) ? value.topbarMode : 'standard',
       defaultRegion: allowedRegions.includes(value?.defaultRegion) ? value.defaultRegion : 'world',
       activeLayer: allowedLayers.includes(value?.activeLayer) ? value.activeLayer : null,
       panels: Object.fromEntries(Object.entries(value?.panels && typeof value.panels === 'object' ? value.panels : {}).map(([panelId, panelValue]) => [panelId, {
@@ -418,6 +422,8 @@ function operatorSettingsDefaults() {
         visualsMode: 'full',
         mapMode: 'auto',
         displayMode: 'auto',
+        densityMode: 'balanced',
+        topbarMode: 'standard',
         defaultRegion: 'world',
         activeLayer: null,
         workspacePreset: 'operator',
@@ -497,6 +503,8 @@ function normalizeOperatorSettings(input = {}) {
   const allowedMapModes = ['auto', 'flat', 'globe'];
   const allowedDisplayModes = ['auto', 'narrow', 'desktop', 'wallboard'];
   const allowedVisualsModes = ['full', 'lite'];
+  const allowedDensityModes = ['balanced', 'dense', 'briefing'];
+  const allowedTopbarModes = ['standard', 'compact', 'briefing'];
   const allowedLlmModes = ['auto', 'off', 'force'];
   const allowedAnalysisDetails = ['standard', 'compact', 'expanded'];
   const allowedTippingProbabilities = ['HIGH', 'MEDIUM', 'LOW'];
@@ -523,6 +531,8 @@ function normalizeOperatorSettings(input = {}) {
         visualsMode: allowedVisualsModes.includes(layout.visualsMode) ? layout.visualsMode : defaults.preferences.layout.visualsMode,
         mapMode: allowedMapModes.includes(layout.mapMode) ? layout.mapMode : defaults.preferences.layout.mapMode,
         displayMode: allowedDisplayModes.includes(layout.displayMode) ? layout.displayMode : defaults.preferences.layout.displayMode,
+        densityMode: allowedDensityModes.includes(layout.densityMode) ? layout.densityMode : defaults.preferences.layout.densityMode,
+        topbarMode: allowedTopbarModes.includes(layout.topbarMode) ? layout.topbarMode : defaults.preferences.layout.topbarMode,
         defaultRegion: allowedRegions.includes(layout.defaultRegion) ? layout.defaultRegion : defaults.preferences.layout.defaultRegion,
         activeLayer: allowedLayers.includes(layout.activeLayer) ? layout.activeLayer : null,
         workspacePreset: [...builtInWorkspacePresetLibrary.map(item => item.id), ...Object.keys(normalizeCustomWorkspacePresets(layout.customPresets))].includes(layout.workspacePreset) ? layout.workspacePreset : defaults.preferences.layout.workspacePreset,
@@ -5615,6 +5625,8 @@ function buildOperatorSettingsContract(snapshot = null) {
         mobileFlatMapDefault: operatorSettings.preferences.layout.mapMode !== 'globe',
         mapMode: operatorSettings.preferences.layout.mapMode,
         displayMode: operatorSettings.preferences.layout.displayMode,
+        densityMode: operatorSettings.preferences.layout.densityMode,
+        topbarMode: operatorSettings.preferences.layout.topbarMode,
         availableDisplayModes: ['auto', 'narrow', 'desktop', 'wallboard'],
         defaultRegion: operatorSettings.preferences.layout.defaultRegion,
         activeLayer: operatorSettings.preferences.layout.activeLayer,

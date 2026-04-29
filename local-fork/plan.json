@@ -1335,21 +1335,21 @@
       {
         "id": "epic-61",
         "title": "Admin preset presentation controls",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-61.1",
             "title": "Extend local admin preset authoring so custom presets can explicitly edit densityMode and topbarMode instead of inheriting only built-in presentation defaults",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 178,
+    "sequence": 179,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-29-cycle-178"
+    "lastCompletedCycleId": "2026-04-29-cycle-179"
   },
   "backlog": []
 }
