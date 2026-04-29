@@ -141,6 +141,10 @@ test('booted server serves runtime-backed dashboard and operator pages with inje
     assert.match(dashboardHtml, /currentDensityMode/i);
     assert.match(dashboardHtml, /data-density-mode/i);
     assert.match(dashboardHtml, /data-topbar-mode/i);
+    assert.match(dashboardHtml, /dashboardSaveStatus/i);
+    assert.match(dashboardHtml, /LAYOUT SAVE/i);
+    assert.match(dashboardHtml, /LOCAL ONLY/i);
+    assert.match(dashboardHtml, /PERSISTED/i);
     assert.match(dashboardHtml, /Wallboard virtualization active/i);
     assert.match(dashboardHtml, /Reset Layout/i);
     assert.equal(health.runtimeIdentity.port, BASE_PORT);

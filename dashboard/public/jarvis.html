@@ -124,6 +124,10 @@ body[data-topbar-mode="briefing"] .region-btn,body[data-topbar-mode="briefing"] 
 .top-right{display:flex;align-items:center;gap:10px}
 .meta-pill{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:0.06em;padding:5px 10px;border:1px solid var(--border)}
 .meta-pill .v{color:var(--text);font-weight:500}
+.meta-pill.save-status-saving{border-color:rgba(68,204,255,0.35);color:#9fdcff}
+.meta-pill.save-status-saved{border-color:rgba(100,240,200,0.35);color:var(--accent)}
+.meta-pill.save-status-local-only{border-color:rgba(255,180,120,0.45);color:#ffcc9a}
+.meta-pill.save-status-idle{opacity:.8}
 .alert-badge{padding:5px 12px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;border:1px solid rgba(255,95,99,0.4);color:#fff;background:linear-gradient(135deg,rgba(255,95,99,0.2),rgba(255,95,99,0.08))}
 .guide-btn{padding:5px 12px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;border:1px solid rgba(68,204,255,0.28);color:var(--accent2);background:rgba(68,204,255,0.07);cursor:pointer;transition:all 0.2s}
 .guide-btn:hover{border-color:rgba(68,204,255,0.5);background:rgba(68,204,255,0.12);color:#d9f7ff}
@@ -493,6 +497,8 @@ let persistedPreferenceWriteInFlight = null;
 let pendingPersistedPreferencePatch = null;
 let cachedDashboardAdminState = null;
 let cachedDashboardAdminStatePromise = null;
+let dashboardPreferenceStatus = { state:'idle', label:'SYNC READY', title:'Dashboard layout changes will try to persist through the supported local admin write boundary.' };
+let dashboardPreferenceStatusTimer = null;
 
 const sensorLayerMeta = {
   air: { key:'air', label:'Air Activity' },
@@ -521,6 +527,34 @@ function mergePersistedOperatorSettings(patch = {}){
     ...patch,
     layout: nextLayout,
   });
+}
+function getDashboardPreferenceStatusMarkup(){
+  const status = dashboardPreferenceStatus || {};
+  const state = status.state || 'idle';
+  const label = cleanText(status.label || 'SYNC READY');
+  const title = cleanText(status.title || 'Dashboard layout changes will try to persist through the supported local admin write boundary.');
+  return `<span class="meta-pill save-status-${state}" id="dashboardSaveStatus" title="${title}">LAYOUT SAVE <span class="v">${label}</span></span>`;
+}
+function renderDashboardPreferenceStatus(){
+  const el = document.getElementById('dashboardSaveStatus');
+  if (!el) return;
+  el.outerHTML = getDashboardPreferenceStatusMarkup();
+}
+function setDashboardPreferenceStatus(state, label, title, { clearAfterMs = 0 } = {}){
+  dashboardPreferenceStatus = { state: state || 'idle', label: label || 'SYNC READY', title: title || '' };
+  if (dashboardPreferenceStatusTimer) {
+    clearTimeout(dashboardPreferenceStatusTimer);
+    dashboardPreferenceStatusTimer = null;
+  }
+  renderDashboardPreferenceStatus();
+  if (clearAfterMs > 0) {
+    dashboardPreferenceStatusTimer = setTimeout(() => {
+      dashboardPreferenceStatusTimer = null;
+      if (dashboardPreferenceStatus.state === state && dashboardPreferenceStatus.label === label) {
+        setDashboardPreferenceStatus('idle', 'SYNC READY', 'Dashboard layout changes will try to persist through the supported local admin write boundary.');
+      }
+    }, clearAfterMs);
+  }
 }
 async function loadDashboardAdminState(force = false){
   if (!force && cachedDashboardAdminState) return cachedDashboardAdminState;
@@ -559,6 +593,7 @@ async function flushPersistOperatorPreferences(){
   if (persistedPreferenceWriteInFlight || !pendingPersistedPreferencePatch) return persistedPreferenceWriteInFlight;
   const patch = pendingPersistedPreferencePatch;
   pendingPersistedPreferencePatch = null;
+  setDashboardPreferenceStatus('saving', 'SAVING…', 'Layout changes are applied locally and are being saved durably through the local admin write boundary.');
   persistedPreferenceWriteInFlight = (async () => {
     const adminState = await loadDashboardAdminState();
     const concurrency = adminState?.concurrency || {};
@@ -592,6 +627,7 @@ async function flushPersistOperatorPreferences(){
       writeAuth: writeAuth,
     };
     mergePersistedOperatorSettings(patch);
+    setDashboardPreferenceStatus('saved', 'PERSISTED', 'Layout changes were saved durably through the supported local admin write boundary.', { clearAfterMs: 4000 });
     return result;
   })()
     .catch(async err => {
@@ -624,9 +660,12 @@ async function flushPersistOperatorPreferences(){
         writeAuth,
       };
       mergePersistedOperatorSettings(patch);
+      setDashboardPreferenceStatus('saved', 'PERSISTED', 'Layout changes were saved durably after refreshing dashboard write-auth state.', { clearAfterMs: 4000 });
       return result;
     })
     .catch(err => {
+      const detail = String(err?.message || 'Persistence unavailable');
+      setDashboardPreferenceStatus('local-only', 'LOCAL ONLY', `Layout changes stayed in this dashboard session only. Durable save failed: ${detail}`);
       console.warn('Crucix dashboard preference persistence failed', err);
       return null;
     })
@@ -639,6 +678,7 @@ async function flushPersistOperatorPreferences(){
 function persistOperatorPreferences(patch){
   mergePersistedOperatorSettings(patch);
   queuePersistOperatorPreferences(patch);
+  setDashboardPreferenceStatus('saving', 'PENDING', 'Layout changes are applied locally first and are queued for a durable save through the local admin write boundary.');
   if (persistedPreferenceWriteTimer) clearTimeout(persistedPreferenceWriteTimer);
   persistedPreferenceWriteTimer = setTimeout(() => {
     persistedPreferenceWriteTimer = null;
@@ -1077,6 +1117,7 @@ function renderTopbar(){
       <span class="meta-pill">${t('dashboard.sources','SOURCES')} <span class="v">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</span></span>
       <span class="meta-pill">LAYOUT <span class="v">${layoutBadge}</span></span>
       <span class="meta-pill">PRESET <span class="v">${String(currentWorkspacePreset || 'operator').toUpperCase()}</span></span>
+      ${getDashboardPreferenceStatusMarkup()}
       ${D.delta?.summary ? `<span class="meta-pill">${t('dashboard.delta','DELTA')} <span class="v">${D.delta.summary.direction==='risk-off'?'&#x25B2; '+t('dashboard.riskOff','RISK-OFF'):D.delta.summary.direction==='risk-on'?'&#x25BC; '+t('dashboard.riskOn','RISK-ON'):'&#x25C6; '+t('dashboard.mixed','MIXED')}</span></span>` : ''}
       <button class="guide-btn" onclick="openSettings()">${t('dashboard.settingsBtn','Operator')}</button>
       <button class="guide-btn" onclick="openDiagnostics()">${t('dashboard.diagnosticsBtn','Diagnostics')}</button>
