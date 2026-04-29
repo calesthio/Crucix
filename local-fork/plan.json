@@ -192,7 +192,7 @@
       {
         "id": "epic-7",
         "title": "Agent analysis, outlook, and accountable tipping points",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-7.1",
@@ -239,7 +239,7 @@
       {
         "id": "epic-8",
         "title": "Source health policy, failure classification, and runtime maintenance",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-8.1",
@@ -266,7 +266,7 @@
       {
         "id": "epic-9",
         "title": "Operator briefing guardrails and externalized debug posture",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-9.1",
@@ -283,7 +283,7 @@
       {
         "id": "epic-10",
         "title": "Geocoding precision and cluster-review quality operations",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-10.1",
@@ -305,7 +305,7 @@
       {
         "id": "epic-11",
         "title": "Persistent cluster-review diagnostics and operator accountability",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-11.1",
@@ -332,7 +332,7 @@
       {
         "id": "epic-12",
         "title": "Trend-memory backfill and historical compatibility",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-12.1",
@@ -344,7 +344,7 @@
       {
         "id": "epic-13",
         "title": "Freshness policy deployment validation",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-13.1",
@@ -356,7 +356,7 @@
       {
         "id": "epic-14",
         "title": "Local fork planning hygiene",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-14.1",
@@ -368,7 +368,7 @@
       {
         "id": "epic-15",
         "title": "Sweep lifecycle integrity and runtime freshness",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-15.1",
@@ -390,7 +390,7 @@
       {
         "id": "epic-16",
         "title": "Dashboard rendering resilience and visual truthfulness",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-16.1",
@@ -412,7 +412,7 @@
       {
         "id": "epic-17",
         "title": "Macro card data hygiene and display safety",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-17.1",
@@ -434,7 +434,7 @@
       {
         "id": "epic-18",
         "title": "LLM state coherence and operator messaging",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-18.1",
@@ -456,7 +456,7 @@
       {
         "id": "epic-19",
         "title": "Operator review queue usability",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-19.1",
@@ -478,7 +478,7 @@
       {
         "id": "epic-20",
         "title": "LLM operator-state contract hardening",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-20.1",
@@ -500,7 +500,7 @@
       {
         "id": "epic-21",
         "title": "Operator review queue direct actions",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-21.1",
@@ -512,7 +512,7 @@
       {
         "id": "epic-22",
         "title": "Realistic queue fixtures and prioritization validation",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-22.1",
@@ -916,7 +916,7 @@
       {
         "id": "epic-34",
         "title": "Contract validation and payload integrity expansion",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-34.1",
@@ -958,7 +958,7 @@
       {
         "id": "epic-35",
         "title": "Critical event alerting, corroboration, and proactive operator notification",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-35.1",
@@ -985,7 +985,7 @@
       {
         "id": "epic-36",
         "title": "Settings safety, preset lifecycle, map-event surfacing, and dashboard performance hardening",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-36.1",
@@ -1299,12 +1299,12 @@
       {
         "id": "epic-58",
         "title": "Admin preset browser regression coverage",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-58.1",
             "title": "Add browser-level regression coverage for admin preset clone, import, and delete flows so the operator-editable preset authoring path stays honest when future UI work touches the local control plane",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
@@ -1347,31 +1347,9 @@
     ]
   },
   "cycleState": {
-    "sequence": 175,
+    "sequence": 176,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-29-cycle-175"
+    "lastCompletedCycleId": "2026-04-29-cycle-176"
   },
-  "backlog": [
-    {
-      "id": "backlog-2026-04-28-settings-concurrency-conflict-ux",
-      "title": "Add clearer admin-surface stale-write recovery UX for settings concurrency conflicts",
-      "status": "completed",
-      "source": "cycle-158",
-      "reason": "Settings writes now fail safely on stale revision tokens, but the admin surface still only reports the conflict text. A follow-on slice should surface current-vs-stale revision detail and offer a bounded reload or diff-friendly recovery path."
-    },
-    {
-      "id": "backlog-2026-04-28-extend-local-admin-write-auth",
-      "title": "Extend local admin write-auth nonce coverage to other debug-side mutation endpoints",
-      "status": "completed",
-      "source": "cycle-159",
-      "reason": "This cycle hardened `/api/settings/operator` and `/api/settings/import`, but other local-only mutation endpoints like source controls, workflow source actions, and runtime control still rely on locality plus route gating. A follow-on slice should decide which of those need the same nonce boundary for consistency."
-    },
-    {
-      "id": "backlog-2026-04-28-restart-safe-helper-portability",
-      "title": "Harden restart-safe helper portability when `lsof` is unavailable",
-      "status": "completed",
-      "source": "cycle-159",
-      "reason": "Local runtime rollout exposed a real packaging gap: `restart-safe` failed with `spawn lsof ENOENT`, so helper verification should degrade gracefully or use a portable fallback instead of hard-failing on hosts without `lsof` in PATH."
-    }
-  ]
+  "backlog": []
 }
