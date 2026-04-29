@@ -488,6 +488,11 @@ let currentDensityMode = 'balanced';
 let currentTopbarMode = 'standard';
 let panelPreferences = JSON.parse(JSON.stringify(persistedOperatorSettings.layout?.panels || {}));
 let panelRenderBudgetTelemetry = {};
+let persistedPreferenceWriteTimer = null;
+let persistedPreferenceWriteInFlight = null;
+let pendingPersistedPreferencePatch = null;
+let cachedDashboardAdminState = null;
+let cachedDashboardAdminStatePromise = null;
 
 const sensorLayerMeta = {
   air: { key:'air', label:'Air Activity' },
@@ -503,12 +508,142 @@ const sensorLayerMeta = {
 };
 
 function isLayerActive(layer){ return !activeLayer || activeLayer === layer; }
+function mergePersistedOperatorSettings(patch = {}){
+  const nextLayout = patch.layout ? {
+    ...(persistedOperatorSettings.layout || {}),
+    ...patch.layout,
+    performance: { ...(persistedOperatorSettings.layout?.performance || {}), ...(patch.layout?.performance || {}) },
+    panels: { ...(persistedOperatorSettings.layout?.panels || {}), ...(patch.layout?.panels || {}) },
+    customPresets: { ...(persistedOperatorSettings.layout?.customPresets || {}), ...(patch.layout?.customPresets || {}) },
+  } : persistedOperatorSettings.layout;
+  Object.assign(persistedOperatorSettings, {
+    ...persistedOperatorSettings,
+    ...patch,
+    layout: nextLayout,
+  });
+}
+async function loadDashboardAdminState(force = false){
+  if (!force && cachedDashboardAdminState) return cachedDashboardAdminState;
+  if (!force && cachedDashboardAdminStatePromise) return cachedDashboardAdminStatePromise;
+  cachedDashboardAdminStatePromise = fetch('/api/settings/admin')
+    .then(async res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      cachedDashboardAdminState = {
+        concurrency: data?.persistence?.concurrency || {},
+        writeAuth: data?.admin?.writeAuth || {},
+      };
+      return cachedDashboardAdminState;
+    })
+    .finally(() => {
+      cachedDashboardAdminStatePromise = null;
+    });
+  return cachedDashboardAdminStatePromise;
+}
+function queuePersistOperatorPreferences(patch){
+  pendingPersistedPreferencePatch = {
+    ...(pendingPersistedPreferencePatch || {}),
+    ...patch,
+    layout: patch.layout || pendingPersistedPreferencePatch?.layout
+      ? {
+          ...(pendingPersistedPreferencePatch?.layout || {}),
+          ...(patch.layout || {}),
+          performance: { ...(pendingPersistedPreferencePatch?.layout?.performance || {}), ...(patch.layout?.performance || {}) },
+          panels: { ...(pendingPersistedPreferencePatch?.layout?.panels || {}), ...(patch.layout?.panels || {}) },
+          customPresets: { ...(pendingPersistedPreferencePatch?.layout?.customPresets || {}), ...(patch.layout?.customPresets || {}) },
+        }
+      : undefined,
+  };
+}
+async function flushPersistOperatorPreferences(){
+  if (persistedPreferenceWriteInFlight || !pendingPersistedPreferencePatch) return persistedPreferenceWriteInFlight;
+  const patch = pendingPersistedPreferencePatch;
+  pendingPersistedPreferencePatch = null;
+  persistedPreferenceWriteInFlight = (async () => {
+    const adminState = await loadDashboardAdminState();
+    const concurrency = adminState?.concurrency || {};
+    const writeAuth = adminState?.writeAuth || {};
+    const payload = {
+      expectedRevision: concurrency.revision,
+      expectedEtag: concurrency.etag,
+      localAdminNonce: writeAuth.token || '',
+      preferences: patch,
+    };
+    const res = await fetch('/api/settings/operator', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': concurrency.etag || '',
+        'X-Crucix-Local-Admin-Nonce': writeAuth.token || '',
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      if (res.status === 409 || res.status === 403) {
+        cachedDashboardAdminState = null;
+      }
+      let body = null;
+      try { body = await res.json(); } catch {}
+      throw new Error(body?.detail || body?.error || `HTTP ${res.status}`);
+    }
+    const result = await res.json();
+    cachedDashboardAdminState = {
+      concurrency: result?.concurrency || result?.persistence?.concurrency || concurrency,
+      writeAuth: writeAuth,
+    };
+    mergePersistedOperatorSettings(patch);
+    return result;
+  })()
+    .catch(async err => {
+      if (!patch || !String(err?.message || '').match(/HTTP 403|HTTP 409|nonce|revision|etag/i)) throw err;
+      const adminState = await loadDashboardAdminState(true);
+      const concurrency = adminState?.concurrency || {};
+      const writeAuth = adminState?.writeAuth || {};
+      const retry = await fetch('/api/settings/operator', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'If-Match': concurrency.etag || '',
+          'X-Crucix-Local-Admin-Nonce': writeAuth.token || '',
+        },
+        body: JSON.stringify({
+          expectedRevision: concurrency.revision,
+          expectedEtag: concurrency.etag,
+          localAdminNonce: writeAuth.token || '',
+          preferences: patch,
+        }),
+      });
+      if (!retry.ok) {
+        let body = null;
+        try { body = await retry.json(); } catch {}
+        throw new Error(body?.detail || body?.error || `HTTP ${retry.status}`);
+      }
+      const result = await retry.json();
+      cachedDashboardAdminState = {
+        concurrency: result?.concurrency || result?.persistence?.concurrency || concurrency,
+        writeAuth,
+      };
+      mergePersistedOperatorSettings(patch);
+      return result;
+    })
+    .catch(err => {
+      console.warn('Crucix dashboard preference persistence failed', err);
+      return null;
+    })
+    .finally(async () => {
+      persistedPreferenceWriteInFlight = null;
+      if (pendingPersistedPreferencePatch) await flushPersistOperatorPreferences();
+    });
+  return persistedPreferenceWriteInFlight;
+}
 function persistOperatorPreferences(patch){
-  fetch('/api/settings/operator', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ preferences: patch }),
-  }).catch(() => {});
+  mergePersistedOperatorSettings(patch);
+  queuePersistOperatorPreferences(patch);
+  if (persistedPreferenceWriteTimer) clearTimeout(persistedPreferenceWriteTimer);
+  persistedPreferenceWriteTimer = setTimeout(() => {
+    persistedPreferenceWriteTimer = null;
+    flushPersistOperatorPreferences().catch(() => {});
+  }, 180);
 }
 function getPanelPref(id){
   return { collapsed:false, pinned:false, priority:50, size:'normal', ...(panelPreferences[id] || {}) };

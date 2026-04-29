@@ -1287,7 +1287,7 @@
           {
             "id": "effort-57.1",
             "title": "Restore bounded persistence for dashboard-side panel, map, and workspace controls after the local-admin nonce rollout so operator tweaks do not silently fail across reloads",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-57.2",
@@ -1347,22 +1347,22 @@
     ]
   },
   "cycleState": {
-    "sequence": 173,
+    "sequence": 174,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-29-cycle-173"
+    "lastCompletedCycleId": "2026-04-29-cycle-174"
   },
   "backlog": [
     {
       "id": "backlog-2026-04-28-settings-concurrency-conflict-ux",
       "title": "Add clearer admin-surface stale-write recovery UX for settings concurrency conflicts",
-      "status": "pending",
+      "status": "completed",
       "source": "cycle-158",
       "reason": "Settings writes now fail safely on stale revision tokens, but the admin surface still only reports the conflict text. A follow-on slice should surface current-vs-stale revision detail and offer a bounded reload or diff-friendly recovery path."
     },
     {
       "id": "backlog-2026-04-28-extend-local-admin-write-auth",
       "title": "Extend local admin write-auth nonce coverage to other debug-side mutation endpoints",
-      "status": "pending",
+      "status": "completed",
       "source": "cycle-159",
       "reason": "This cycle hardened `/api/settings/operator` and `/api/settings/import`, but other local-only mutation endpoints like source controls, workflow source actions, and runtime control still rely on locality plus route gating. A follow-on slice should decide which of those need the same nonce boundary for consistency."
     },

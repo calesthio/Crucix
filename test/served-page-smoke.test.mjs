@@ -133,6 +133,10 @@ test('booted server serves runtime-backed dashboard and operator pages with inje
     assert.equal(dashboardRuntime.workspacePresetLibrary.some(item => item.id === 'executive-briefing' && item.densityMode === 'briefing' && item.topbarMode === 'briefing'), true);
     assert.equal(['auto', 'off', 'on'].includes(dashboardRuntime.operatorSettings.layout.performance.wallboardVirtualization), true);
     assert.match(dashboardHtml, /fetch\('\/api\/data'/i);
+    assert.match(dashboardHtml, /fetch\('\/api\/settings\/admin'/i);
+    assert.match(dashboardHtml, /X-Crucix-Local-Admin-Nonce/i);
+    assert.match(dashboardHtml, /expectedRevision/i);
+    assert.match(dashboardHtml, /persistedPreferenceWriteTimer/i);
     assert.match(dashboardHtml, /panelRenderBudgetTelemetry/i);
     assert.match(dashboardHtml, /currentDensityMode/i);
     assert.match(dashboardHtml, /data-density-mode/i);
