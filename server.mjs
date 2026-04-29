@@ -4158,6 +4158,25 @@ function finalizeSweepCycle(success = true, nowIso = new Date().toISOString()) {
   syncSnapshotRuntimeFreshness(currentData);
 }
 
+function shouldDeferStartupPreviewAnalysis() {
+  return Boolean(
+    sweepInProgress ||
+    runtimeJobTelemetry?.synthesis?.active ||
+    runtimeJobTelemetry?.analysis?.active ||
+    (runtimeJobState.phase && runtimeJobState.phase !== 'idle')
+  );
+}
+
+function shouldPublishSnapshotUpdate(targetSnapshot, liveSnapshot = currentData) {
+  if (!targetSnapshot) return false;
+  if (!liveSnapshot || liveSnapshot === targetSnapshot) return true;
+  const targetTimestamp = targetSnapshot?.meta?.timestamp || null;
+  const liveTimestamp = liveSnapshot?.meta?.timestamp || null;
+  if (!liveTimestamp) return true;
+  if (!targetTimestamp) return false;
+  return new Date(targetTimestamp).getTime() >= new Date(liveTimestamp).getTime();
+}
+
 function getRuntimeJobsSnapshot() {
   return {
     synthesis: { ...runtimeJobTelemetry.synthesis },
@@ -7252,7 +7271,8 @@ async function enrichIdeasAndPublish(synthesized, delta) {
   return synthesized;
 }
 
-async function enrichAgentAnalysisAndPublish(synthesized) {
+async function enrichAgentAnalysisAndPublish(synthesized, options = {}) {
+  const mode = options.mode || 'sweep';
   if (!llmProvider?.isConfigured) {
     synthesized.agentAnalysis = buildAgentAnalysis(synthesized, synthesized.agentAnalysis);
     synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({
@@ -7275,8 +7295,10 @@ async function enrichAgentAnalysisAndPublish(synthesized) {
     refinementStartedAt: startedAt,
   });
   processCriticalEventQueue(synthesized);
-  currentData = synthesized;
-  broadcast({ type: 'analysis_update', data: currentData });
+  if (shouldPublishSnapshotUpdate(synthesized)) {
+    currentData = synthesized;
+    broadcast({ type: 'analysis_update', data: currentData });
+  }
 
   try {
     console.log(`[Crucix] Generating LLM agent analysis (${attemptId})...`);
@@ -7332,9 +7354,13 @@ async function enrichAgentAnalysisAndPublish(synthesized) {
   }
 
   processCriticalEventQueue(synthesized);
-  currentData = synthesized;
-  broadcast({ type: 'analysis_update', data: currentData });
-  await processOperationalAlerts(currentData);
+  if (shouldPublishSnapshotUpdate(synthesized)) {
+    currentData = synthesized;
+    broadcast({ type: 'analysis_update', data: currentData });
+    await processOperationalAlerts(currentData);
+  } else if (mode === 'startup-preview') {
+    console.log('[Crucix] Startup preview analysis finished after fresher sweep data published, skipping stale publish');
+  }
   return synthesized;
 }
 
@@ -7537,9 +7563,13 @@ async function start() {
         console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');
         broadcast({ type: 'update', data: currentData });
         if (llmProvider?.isConfigured) {
-          enrichAgentAnalysisAndPublish(data).catch(err => {
-            console.error('[Crucix] Startup agent analysis enrichment failed:', err.message);
-          });
+          if (shouldDeferStartupPreviewAnalysis()) {
+            console.log('[Crucix] Startup preview analysis skipped because active sweep or refinement is already in flight');
+          } else {
+            enrichAgentAnalysisAndPublish(data, { mode: 'startup-preview' }).catch(err => {
+              console.error('[Crucix] Startup agent analysis enrichment failed:', err.message);
+            });
+          }
         }
       }).catch(() => {
         console.log('[Crucix] Existing snapshot synth failed — waiting for fresh sweep');

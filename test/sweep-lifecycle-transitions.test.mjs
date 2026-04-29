@@ -23,6 +23,7 @@ function buildHarness(overrides = {}) {
     console: { log() {}, warn() {}, error() {} },
     Date,
     JSON,
+    app: { get() {}, post() {}, use() {}, listen() {} },
     RUNS_DIR: '/tmp/crucix-runs',
     join: (...parts) => parts.join('/'),
     config: { refreshIntervalMinutes: 15, review: { sweepWatchdogTimeoutMinutes: 45, sweepWatchdogPollSeconds: 30 } },
@@ -53,6 +54,7 @@ function buildHarness(overrides = {}) {
       analysis: { active: false, attemptCount: 0, retryCount: 0, cancellationCount: 0, lastAttemptId: null, lastStartedAt: null, lastCompletedAt: null, lastDurationMs: null, lastOutcome: null, lastError: null, lastTimedOut: false, timeoutMs: 90000 },
     },
     llmProvider: { isConfigured: false, model: 'test-model' },
+    agentAnalysisRefinementSeq: 0,
     telegramAlerter: { isConfigured: false, evaluateAndAlert() { throw new Error('should not alert'); } },
     discordAlerter: { isConfigured: false, evaluateAndAlert() { throw new Error('should not alert'); } },
     fullBriefing: async () => ({ meta: { timestamp: '2026-04-24T22:20:00.000Z' } }),
@@ -75,6 +77,7 @@ function buildHarness(overrides = {}) {
     buildAgentAnalysisMeta: overridesMeta => ({ source: 'deterministic', ...overridesMeta }),
     buildOperatorSourceOps: () => ({ inventory: { total: 1 } }),
     buildNoiseSuppressionTelemetrySnapshot: () => ({ version: 'noise-suppression-history-trend-v1', summary: {}, bucketCounts: {}, candidateCounts: {} }),
+    generateLLMAgentAnalysis: async () => ({ analysis: null, meta: { error: 'parse-failed' } }),
     processCriticalEventQueue: () => {},
     getSourceQueueSummary: () => ({ activeCount: 0, sources: [] }),
     enrichIdeasAndPublish: async () => {},
@@ -99,8 +102,11 @@ function buildHarness(overrides = {}) {
   vm.runInContext(`
     ${extractChunk('const SWEEP_WATCHDOG_TIMEOUT_MS =', 'function loadJsonFile(path, fallback) {')}
     ${extractChunk('function markRuntimePhase(phase, nowIso = new Date().toISOString()) {', 'function syncSnapshotRuntimeFreshness(snapshot = null) {')}
+    ${extractChunk('function shouldDeferStartupPreviewAnalysis() {', 'function shouldPublishSnapshotUpdate(targetSnapshot, liveSnapshot = currentData) {')}
+    ${extractChunk('function shouldPublishSnapshotUpdate(targetSnapshot, liveSnapshot = currentData) {', 'function getRuntimeJobsSnapshot() {')}
+    ${extractChunk('async function enrichAgentAnalysisAndPublish(synthesized, options = {}) {', '// === Sweep Cycle ===')}
     ${extractChunk('async function runSweepCycle() {', '// === Startup ===')}
-    globalThis.__cycleHarness = { runSweepCycle, getSweepWatchdogSnapshot, runSweepWatchdog, getRuntimeJobsSnapshot };
+    globalThis.__cycleHarness = { runSweepCycle, getSweepWatchdogSnapshot, runSweepWatchdog, getRuntimeJobsSnapshot, shouldDeferStartupPreviewAnalysis, shouldPublishSnapshotUpdate, enrichAgentAnalysisAndPublish };
   `, context);
   return { context, writes, broadcasts, syncCalls, memoryPrunes };
 }
@@ -197,4 +203,48 @@ test('runSweepCycle closes primary sweep state before deferred enrichments settl
   ideasResolve();
   analysisResolve();
   await Promise.all([ideasPromise, analysisPromise]);
+});
+
+test('startup preview analysis is deferred while a sweep is already active', () => {
+  const { context } = buildHarness({
+    sweepInProgress: true,
+    runtimeJobState: {
+      phase: 'briefing',
+      phaseStartedAt: '2026-04-24T22:00:00.000Z',
+      lastCompletedPhase: null,
+      lastCompletedAt: null,
+      lastFailurePhase: null,
+      lastFailureAt: null,
+      lastFailureReason: null,
+      lastRecoveryPhase: null,
+      lastRecoveryAt: null,
+      lastRecoveryReason: null,
+    },
+    runtimeJobTelemetry: {
+      synthesis: { active: true, attemptCount: 1, retryCount: 0, cancellationCount: 0, lastAttemptId: 'sweep-0001', lastStartedAt: '2026-04-24T22:00:00.000Z', lastCompletedAt: null, lastDurationMs: null, lastOutcome: null, lastError: null, lastTimedOut: false, timeoutMs: 2700000 },
+      ideas: { active: false, attemptCount: 0, retryCount: 0, cancellationCount: 0, lastAttemptId: null, lastStartedAt: null, lastCompletedAt: null, lastDurationMs: null, lastOutcome: null, lastError: null, lastTimedOut: false, timeoutMs: 90000 },
+      analysis: { active: false, attemptCount: 0, retryCount: 0, cancellationCount: 0, lastAttemptId: null, lastStartedAt: null, lastCompletedAt: null, lastDurationMs: null, lastOutcome: null, lastError: null, lastTimedOut: false, timeoutMs: 90000 },
+    },
+  });
+  assert.equal(context.__cycleHarness.shouldDeferStartupPreviewAnalysis(), true);
+});
+
+test('startup preview analysis does not overwrite fresher sweep data when it finishes later', async () => {
+  const { context, broadcasts } = buildHarness({
+    llmProvider: { isConfigured: true, model: 'test-model' },
+    currentData: {
+      meta: { timestamp: '2026-04-24T22:30:00.000Z' },
+      agentAnalysis: { status: 'ready', confidenceLabel: 'low', freshness: {}, horizons: [], outlook: [], risks: [], tippingPoints: [], caveats: [], iMessageSummary: [] },
+      agentAnalysisMeta: { refinementState: 'completed' },
+    },
+    generateLLMAgentAnalysis: async () => ({ analysis: null, meta: { error: 'parse-failed' } }),
+  });
+  const stalePreview = {
+    meta: { timestamp: '2026-04-24T22:10:00.000Z' },
+    agentAnalysis: { status: 'ready', confidenceLabel: 'low', freshness: {}, horizons: [], outlook: [], risks: [], tippingPoints: [], caveats: [], iMessageSummary: [] },
+    agentAnalysisMeta: { refinementState: 'queued' },
+  };
+  await context.__cycleHarness.enrichAgentAnalysisAndPublish(stalePreview, { mode: 'startup-preview' });
+  assert.equal(context.currentData.meta.timestamp, '2026-04-24T22:30:00.000Z');
+  assert.equal(broadcasts.length, 0);
 });

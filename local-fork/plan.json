@@ -1355,20 +1355,38 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-63",
+        "title": "Sweep lifecycle retained-state follow-up",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-63.1",
+            "title": "Investigate and fix retained sweepInProgress and stale sweepStartedAt after publish when startup preview and deferred analysis overlap",
+            "status": "pending"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 180,
+    "sequence": 181,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-29-cycle-180"
+    "lastCompletedCycleId": "2026-04-29-cycle-181"
   },
   "backlog": [
     {
       "id": "backlog-62-a",
       "title": "Investigate why the live runtime can still retain `sweepInProgress: true` and the original `sweepStartedAt` after publish, even when `lastSweep` and deferred analysis completion telemetry advance",
-      "status": "pending",
+      "status": "promoted",
       "notes": "Observed on cycle 180 after shipping earlier sweep-state closure hardening. Likely needs deeper tracing of overlapping startup preview enrichment versus initial sweep lifecycle bookkeeping."
+    },
+    {
+      "id": "backlog-63-a",
+      "title": "Trace the post-publish path that can leave the live runtime stuck in `synthesis` with `sweepInProgress: true` even after startup preview analysis is skipped",
+      "status": "pending",
+      "notes": "Observed on cycle 181. The new startup-preview overlap guard landed and startup logs confirm preview analysis was skipped while the initial sweep was active, but live `/api/health` still showed `runtimeControl.sweep.currentPhase: synthesis`, retained `sweepStartedAt`, and `sweepInProgress: true` after `lastSweep` and `publishedAt` advanced. Likely a separate post-publish or finalization path outside the original startup-preview overlap hypothesis."
     }
   ]
 }
