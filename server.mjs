@@ -7133,6 +7133,7 @@ app.get('/api/health', (req, res) => {
   const criticalEventQueue = buildCriticalEventQueueContract(currentData || null);
   const criticalEventRouting = buildCriticalEventRoutingContract(currentData || null);
   const sdrCorroboration = buildSdrCorroborationContract(currentData || null);
+  const runtimeControl = buildRuntimeControlContract(currentData || null);
   const responseStatus = shuttingDown ? 503 : 200;
   res.status(responseStatus).json({
     status: shuttingDown ? 'shutting-down' : 'ok',
@@ -7150,16 +7151,20 @@ app.get('/api/health', (req, res) => {
       cwd: ROOT,
       startedAt: new Date(startTime).toISOString(),
     },
-    runtimeControl: buildRuntimeControlContract(currentData || null),
+    runtimeControl,
     uptime: Math.floor((Date.now() - startTime) / 1000),
+    runtimePhase: runtimeControl.sweep.currentPhase,
+    runtimePhaseStartedAt: runtimeControl.sweep.currentPhaseStartedAt,
     lastSweep: lastSweepTime,
     nextSweep: lastSweepTime
       ? new Date(new Date(lastSweepTime).getTime() + config.refreshIntervalMinutes * 60000).toISOString()
       : null,
     sweepInProgress,
     sweepStartedAt,
-    sweepWatchdog: getSweepWatchdogSnapshot(),
-    lastSuccess: buildRuntimeControlContract(currentData || null).lastSuccess,
+    rawSweepCompletedAt: runtimeControl.lastSuccess.rawSweepCompletedAt,
+    rawSnapshotPersistedAt: runtimeControl.lastSuccess.rawSnapshotPersistedAt,
+    sweepWatchdog: runtimeControl.sweep.watchdog,
+    lastSuccess: runtimeControl.lastSuccess,
     sourcesOk: currentData?.meta?.sourcesOk || 0,
     sourcesFailed: currentData?.meta?.sourcesFailed || 0,
     sourceHealthSummary: currentData?.healthSummary || null,

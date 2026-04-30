@@ -4,7 +4,7 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 
 ## Candidate backlog items
 
-- `backlog-64-b` Expose startup sweep phase timestamps and publish-handoff timing directly on `/api/health` top-level fields, and reconcile why `runtimePhase` can stay `null` while runtime-control state already knows the sweep is in progress.
+None currently.
 
 Recent promotions:
 - Noise-suppression pressure alert acknowledge/snooze controls plus recent audit visibility was promoted into `local-fork/plan.json` as Epic 29, effort 29.9 on 2026-04-26.
@@ -39,6 +39,7 @@ Recent promotions:
 New items can be added here when they do not yet belong in the active roadmap.
 
 Recent promotions:
+- Health-contract startup phase visibility work was promoted into `local-fork/plan.json` on 2026-04-30 during cycle 184 execution as `epic-65 / effort-65.1`.
 - Startup synthesis honesty and raw-vs-published sweep timing work was promoted into `local-fork/plan.json` on 2026-04-30 during cycle 183 execution as `epic-64 / effort-64.1`.
 - Post-publish retained sweep-state tracing was promoted into `local-fork/plan.json` on 2026-04-30 during cycle 182 execution as the active `epic-63 / effort-63.1` slice.
 - Settings concurrency conflict UX was promoted into `local-fork/plan.json` as Epic 54, effort 54.1 on 2026-04-28.

@@ -1379,13 +1379,25 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-65",
+        "title": "Health contract phase visibility for startup sweep tracing",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-65.1",
+            "title": "Expose runtime phase and raw-to-publish timing directly on /api/health so startup sweep state is visible without requiring nested runtime-control inspection",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 183,
+    "sequence": 184,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-30-cycle-183"
+    "lastCompletedCycleId": "2026-04-30-cycle-184"
   },
   "backlog": [
     {

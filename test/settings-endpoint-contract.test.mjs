@@ -95,9 +95,16 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(typeof health.runtimeControl.jobs.synthesis.attemptCount, 'number');
     assert.equal(typeof health.runtimeControl.jobs.ideas.timeoutMs, 'number');
     assert.equal(typeof health.runtimeControl.jobs.analysis.timeoutMs, 'number');
+    assert.equal(typeof health.runtimePhase, 'string');
     assert.equal(typeof health.sweepWatchdog.phase, 'string');
+    assert.equal(health.runtimePhase, health.runtimeControl.sweep.currentPhase);
+    assert.equal(health.runtimePhaseStartedAt, health.runtimeControl.sweep.currentPhaseStartedAt);
     assert.equal('recoveryClassification' in health.sweepWatchdog, true);
     assert.equal('publishedAt' in health.lastSuccess, true);
+    assert.equal('rawSweepCompletedAt' in health.lastSuccess, true);
+    assert.equal('rawSnapshotPersistedAt' in health.lastSuccess, true);
+    assert.equal(health.rawSweepCompletedAt, health.lastSuccess.rawSweepCompletedAt);
+    assert.equal(health.rawSnapshotPersistedAt, health.lastSuccess.rawSnapshotPersistedAt);
     assert.equal(typeof health.llmProviderReadiness?.status, 'string');
     assert.equal(health.noiseSuppressionTelemetry.version, 'noise-suppression-history-v2');
     assert.equal(typeof health.noiseSuppressionTelemetry.decayTelemetry.agedOutSuggestionCount, 'number');
