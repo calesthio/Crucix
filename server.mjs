@@ -3821,6 +3821,9 @@ function buildIMessengerBrief(snapshot = {}) {
 
   if (topSuspect) {
     lines.push(`Top suspect [${topSuspect.id}]: ${topSuspect.signal} (${topSuspect.confidence}, ${signalProvenanceLabel(topSuspect)})`);
+    if (topSuspect.synopsis) {
+      lines.push(`Synopsis: ${topSuspect.synopsis}`);
+    }
   }
 
   if (tgUrgent.length) {

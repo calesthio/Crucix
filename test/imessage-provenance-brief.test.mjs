@@ -46,7 +46,13 @@ test('iMessage brief includes operator-facing evidence provenance labels', () =>
       { signal: 'Confirmed maritime disruption', confidence: 'high', sourceHealth: 'hard-data', evidenceSource: 'mixed' },
     ],
     suspectSignals: [
-      { signal: 'Telegram chatter spike', confidence: 'medium', sourceHealth: 'osint-only', evidenceSource: 'telegram' },
+      {
+        signal: 'Telegram chatter spike',
+        confidence: 'medium',
+        sourceHealth: 'osint-only',
+        evidenceSource: 'telegram',
+        synopsis: 'Iranian missile base reportedly destroyed by U.S./Israeli forces.',
+      },
     ],
     tg: { urgent: [{ text: 'x' }] },
     agentAnalysis: { iMessageSummary: ['Status: ready'] },
@@ -55,6 +61,7 @@ test('iMessage brief includes operator-facing evidence provenance labels', () =>
   assert.match(text, /Provenance: 1 carried-forward, 1 cached\/fallback, 1 degraded, 2 failed sources/);
   assert.match(text, /Top corroborated \[corroborated-confirmed-maritime-disruption-0\]: Confirmed maritime disruption \(high, hard-data corroboration\)/);
   assert.match(text, /Top suspect \[suspect-telegram-chatter-spike-0\]: Telegram chatter spike \(medium, osint-only signal\)/);
+  assert.match(text, /Synopsis: Iranian missile base reportedly destroyed by U\.S\.\/Israeli forces\./);
 });
 
 test('iMessage brief uses coherent News LLM wording for partial fallback runs', () => {

@@ -1427,13 +1427,25 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-69",
+        "title": "Clustered OSINT alert synopsis surfacing",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-69.1",
+            "title": "Add a highly succinct synopsis line for clustered OSINT suspect alerts so alert surfaces can explain the gist of the traffic without dropping the directional caveat",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 187,
+    "sequence": 188,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-30-cycle-187"
+    "lastCompletedCycleId": "2026-04-30-cycle-188"
   },
   "backlog": [
     {

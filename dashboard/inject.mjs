@@ -309,6 +309,43 @@ function buildCorroboratedSignals({ tg = {}, thermal = [], air = [], maritime = 
   return corroborated;
 }
 
+function buildOsintSynopsis(posts = []) {
+  if (!Array.isArray(posts) || !posts.length) return null;
+
+  const ranked = posts
+    .filter(post => typeof post?.text === 'string' && post.text.trim())
+    .slice()
+    .sort((a, b) => {
+      const aTs = Date.parse(a?.date || 0) || 0;
+      const bTs = Date.parse(b?.date || 0) || 0;
+      if (bTs !== aTs) return bTs - aTs;
+      return (b?.views || 0) - (a?.views || 0);
+    });
+
+  const text = ranked[0]?.text;
+  if (!text) return null;
+
+  let cleaned = String(text)
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/@[A-Za-z0-9_]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[^\p{L}\p{N}]+/u, '')
+    .replace(/^(it is reported(?:,)? that|it is reported|reportedly|reports indicate that|it appears that)\s+/i, '');
+
+  if (!cleaned) return null;
+
+  const sentence = cleaned.match(/^(.{30,220}?[.!?])(?:\s|$)/)?.[1] || cleaned;
+  let synopsis = sentence.trim();
+
+  if (synopsis.length > 160) {
+    synopsis = `${synopsis.slice(0, 157).replace(/\s+\S*$/, '').trim()}...`;
+  }
+
+  if (synopsis && !/[.!?…]$/.test(synopsis)) synopsis += '.';
+  return synopsis || null;
+}
+
 function buildSuspectSignals({ yfQuotes = {}, health = [], airMeta = null, nuke = [], nukeSignals = [], energy = {}, metals = {}, markets = {}, tg = {}, thermal = [], air = [], chokepoints = [], maritime = {}, nowTs = null }) {
   const suspects = [];
 
@@ -393,6 +430,7 @@ function buildSuspectSignals({ yfQuotes = {}, health = [], airMeta = null, nuke 
       thermalTotal,
       airTotal,
       freshestTs: urgentPosts.map(p => p.date).filter(Boolean).sort().pop() || nowTs,
+      synopsis: buildOsintSynopsis(urgentPosts),
     });
   }
 
@@ -409,6 +447,7 @@ function buildSuspectSignals({ yfQuotes = {}, health = [], airMeta = null, nuke 
       evidenceSource: 'Telegram',
       sourceHealth: 'osint-only',
       freshestTs: blockadePosts.map(p => p.date).filter(Boolean).sort().pop() || nowTs,
+      synopsis: buildOsintSynopsis(blockadePosts),
       evidence: (maritime?.disruptionChecks || []).flatMap(check => (check.headlines || []).map(h => ({
         title: h.title,
         url: h.link,
@@ -438,6 +477,7 @@ function buildSuspectSignals({ yfQuotes = {}, health = [], airMeta = null, nuke 
         evidenceSource: 'Telegram',
         sourceHealth: 'osint-only',
         freshestTs: kineticRegionalPosts.map(p => p.date).filter(Boolean).sort().pop() || nowTs,
+        synopsis: buildOsintSynopsis(kineticRegionalPosts),
       });
     }
   }
@@ -447,6 +487,7 @@ function buildSuspectSignals({ yfQuotes = {}, health = [], airMeta = null, nuke 
       urgentPosts: conflictPosts.length,
       thermalTotal,
       thermalNight,
+      synopsis: buildOsintSynopsis(conflictPosts),
     });
   }
 
