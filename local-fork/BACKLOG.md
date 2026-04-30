@@ -4,7 +4,7 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 
 ## Candidate backlog items
 
-- `backlog-64-a` Add bounded stage-level timing or timeout instrumentation around startup sweep synthesis and publish handoff so hangs after `fullBriefing` are attributable before watchdog recovery.
+- `backlog-64-b` Expose startup sweep phase timestamps and publish-handoff timing directly on `/api/health` top-level fields, and reconcile why `runtimePhase` can stay `null` while runtime-control state already knows the sweep is in progress.
 
 Recent promotions:
 - Noise-suppression pressure alert acknowledge/snooze controls plus recent audit visibility was promoted into `local-fork/plan.json` as Epic 29, effort 29.9 on 2026-04-26.
@@ -39,6 +39,7 @@ Recent promotions:
 New items can be added here when they do not yet belong in the active roadmap.
 
 Recent promotions:
+- Startup synthesis honesty and raw-vs-published sweep timing work was promoted into `local-fork/plan.json` on 2026-04-30 during cycle 183 execution as `epic-64 / effort-64.1`.
 - Post-publish retained sweep-state tracing was promoted into `local-fork/plan.json` on 2026-04-30 during cycle 182 execution as the active `epic-63 / effort-63.1` slice.
 - Settings concurrency conflict UX was promoted into `local-fork/plan.json` as Epic 54, effort 54.1 on 2026-04-28.
 - Extended local admin write-auth boundary work was promoted into `local-fork/plan.json` as Epic 55, effort 55.1 on 2026-04-28.

@@ -1359,33 +1359,33 @@
       {
         "id": "epic-63",
         "title": "Sweep lifecycle retained-state follow-up",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-63.1",
             "title": "Investigate and fix retained sweepInProgress and stale sweepStartedAt after publish when startup preview and deferred analysis overlap",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       },
       {
         "id": "epic-64",
         "title": "Initial-sweep publish honesty and synthesis-phase tracing",
-        "status": "pending",
+        "status": "completed",
         "efforts": [
           {
             "id": "effort-64.1",
             "title": "Separate raw sweep completion from snapshot publish success and trace the startup synthesize path so health does not imply a published update while the initial sweep is still stuck in synthesis",
-            "status": "pending"
+            "status": "completed"
           }
         ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 182,
+    "sequence": 183,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-30-cycle-182"
+    "lastCompletedCycleId": "2026-04-30-cycle-183"
   },
   "backlog": [
     {

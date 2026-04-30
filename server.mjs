@@ -49,7 +49,9 @@ for (const dir of [RUNS_DIR, MEMORY_DIR, join(MEMORY_DIR, 'cold'), join(ROOT, 'l
 
 // === State ===
 let currentData = null;    // Current synthesized dashboard data
-let lastSweepTime = null;  // Timestamp of last sweep
+let lastSweepTime = null;  // Timestamp of last published snapshot
+let lastBriefingCompletedAt = null; // Timestamp when raw source collection finished
+let lastRawSnapshotPersistedAt = null; // Timestamp when runs/latest.json was updated
 let sweepStartedAt = null; // Timestamp when current/last sweep started
 let sweepInProgress = false;
 let runtimeJobState = {
@@ -5959,6 +5961,8 @@ function buildRuntimeControlContract(snapshot = null) {
     },
     lastSuccess: {
       publishedAt: lastSweepTime,
+      rawSweepCompletedAt: lastBriefingCompletedAt,
+      rawSnapshotPersistedAt: lastRawSnapshotPersistedAt,
       snapshotTimestamp: snapshot?.meta?.timestamp || null,
       sourcesOk: snapshot?.meta?.sourcesOk ?? null,
       sourcesFailed: snapshot?.meta?.sourcesFailed ?? null,
@@ -7388,14 +7392,15 @@ async function runSweepCycle() {
   try {
     // 1. Run the full briefing sweep
     const rawData = await fullBriefing();
+    lastBriefingCompletedAt = new Date().toISOString();
     markRuntimePhase('synthesis');
 
     // 2. Save to runs/latest.json
     writeFileSync(join(RUNS_DIR, 'latest.json'), JSON.stringify(rawData, null, 2));
-    lastSweepTime = new Date().toISOString();
+    lastRawSnapshotPersistedAt = new Date().toISOString();
 
     // 3. Synthesize into dashboard format
-    console.log('[Crucix] Synthesizing dashboard data...');
+    console.log(`[Crucix] Synthesizing dashboard data... raw completed at ${lastBriefingCompletedAt}`);
     const synthesized = await synthesize(rawData);
     const clusterReviewStats = recordClusterReviewStats(synthesized);
     const clusterPressureStats = recordClusterPressureStats(synthesized);
@@ -7442,6 +7447,7 @@ async function runSweepCycle() {
 
     processCriticalEventQueue(synthesized);
     currentData = synthesized;
+    lastSweepTime = new Date().toISOString();
     broadcast({ type: 'update', data: currentData });
     const operationalAlertsPromise = processOperationalAlerts(currentData).catch(err => {
       console.error('[Crucix] Operational alert processing failed (non-fatal):', err?.message || err);

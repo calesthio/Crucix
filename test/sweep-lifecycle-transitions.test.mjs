@@ -34,6 +34,8 @@ function buildHarness(overrides = {}) {
     loadNoiseSuppressionHistory() { return { version: 'noise-suppression-history-v2', updatedAt: null, lastSweepAt: null, retentionMs: 14 * 24 * 60 * 60 * 1000, halfLifeMs: 5 * 24 * 60 * 60 * 1000, duplicateBursts: {}, repetitiveLowValueEvents: {}, sourceRuleHits: {}, telemetry: { lastPrunedAt: null, pruningActive: false, buckets: {}, summary: { totalEntries: 0, retainedEntries: 0, expiredEntriesRemoved: 0, overflowEntriesRemoved: 0 } } }; },
     currentData: null,
     lastSweepTime: null,
+    lastBriefingCompletedAt: null,
+    lastRawSnapshotPersistedAt: null,
     sweepStartedAt: null,
     sweepInProgress: false,
     runtimeJobState: {
@@ -225,6 +227,35 @@ test('runSweepCycle closes primary sweep state before operational alert processi
   assert.equal(context.runtimeJobState.phase, 'idle');
   releaseAlerts();
   await runPromiseHolder.promise;
+});
+
+test('runSweepCycle does not mark last published sweep until snapshot publish succeeds', async () => {
+  let releaseSynthesis;
+  const synthPromise = new Promise(resolve => { releaseSynthesis = resolve; });
+  const oldPublishedAt = '2026-04-24T20:00:00.000Z';
+  const { context } = buildHarness({
+    lastSweepTime: oldPublishedAt,
+    synthesize: async raw => {
+      await synthPromise;
+      return {
+        meta: { sourcesOk: 28, sourcesQueried: 29, timestamp: raw.meta?.timestamp || '2026-04-24T22:20:00.000Z' },
+        news: [],
+        newsFeed: [],
+        evidenceSummary: {},
+        healthSummary: {},
+      };
+    },
+  });
+  const runPromise = context.__cycleHarness.runSweepCycle();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(context.lastBriefingCompletedAt != null, true);
+  assert.equal(context.lastRawSnapshotPersistedAt != null, true);
+  assert.equal(context.lastSweepTime, oldPublishedAt);
+  assert.equal(context.currentData, null);
+  releaseSynthesis();
+  await runPromise;
+  assert.notEqual(context.lastSweepTime, oldPublishedAt);
+  assert.equal(context.currentData?.meta?.sourcesOk, 28);
 });
 
 test('startup preview analysis is deferred while a sweep is already active', () => {
