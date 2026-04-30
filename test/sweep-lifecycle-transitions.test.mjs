@@ -240,6 +240,7 @@ test('runSweepCycle does not mark last published sweep until snapshot publish su
   const { context } = buildHarness({
     lastSweepTime: oldPublishedAt,
     lastPublishedSnapshotTimestamp: oldPublishedSnapshotTimestamp,
+    fullBriefing: async () => ({ meta: { timestamp: candidateTimestamp } }),
     synthesize: async raw => {
       await synthPromise;
       return {
@@ -265,6 +266,31 @@ test('runSweepCycle does not mark last published sweep until snapshot publish su
   assert.equal(context.lastPublishedSnapshotTimestamp, candidateTimestamp);
   assert.equal(context.candidateSnapshotTimestamp, null);
   assert.equal(context.currentData?.meta?.sourcesOk, 28);
+});
+
+test('runSweepCycle stamps candidate snapshot timestamp from briefing completion when raw payload omits meta timestamp', async () => {
+  let releaseSynthesis;
+  const synthPromise = new Promise(resolve => { releaseSynthesis = resolve; });
+  const { context } = buildHarness({
+    fullBriefing: async () => ({ meta: {} }),
+    synthesize: async raw => {
+      await synthPromise;
+      return {
+        meta: { sourcesOk: 28, sourcesQueried: 29, timestamp: raw.meta?.timestamp || '2026-04-24T22:20:00.000Z' },
+        news: [],
+        newsFeed: [],
+        evidenceSummary: {},
+        healthSummary: {},
+      };
+    },
+  });
+  const runPromise = context.__cycleHarness.runSweepCycle();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(context.lastBriefingCompletedAt != null, true);
+  assert.equal(context.candidateSnapshotTimestamp, context.lastBriefingCompletedAt);
+  releaseSynthesis();
+  await runPromise;
+  assert.equal(context.candidateSnapshotTimestamp, null);
 });
 
 test('startup preview analysis is deferred while a sweep is already active', () => {

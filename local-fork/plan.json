@@ -1415,13 +1415,25 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-68",
+        "title": "Candidate snapshot timestamp fallback stamping",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-68.1",
+            "title": "Populate candidate snapshot timestamp from briefing completion when raw sweep payloads omit meta.timestamp, and expose the timestamp source for operator honesty",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 186,
+    "sequence": 187,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-30-cycle-186"
+    "lastCompletedCycleId": "2026-04-30-cycle-187"
   },
   "backlog": [
     {

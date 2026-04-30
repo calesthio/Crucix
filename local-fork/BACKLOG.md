@@ -4,7 +4,7 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 
 ## Candidate backlog items
 
-- `backlog-67-a` Ensure `candidateSnapshotTimestamp` is populated even when the raw sweep payload lacks `meta.timestamp`, either by stamping a candidate timestamp at briefing completion or by exposing a separate explicit candidate-generation timestamp so in-flight startup work is not represented as `null`.
+None currently.
 
 Recent promotions:
 - Noise-suppression pressure alert acknowledge/snooze controls plus recent audit visibility was promoted into `local-fork/plan.json` as Epic 29, effort 29.9 on 2026-04-26.
@@ -39,6 +39,7 @@ Recent promotions:
 New items can be added here when they do not yet belong in the active roadmap.
 
 Recent promotions:
+- Candidate snapshot timestamp fallback stamping work was promoted into `local-fork/plan.json` on 2026-04-30 during cycle 187 execution as `epic-68 / effort-68.1`.
 - Published-versus-candidate snapshot timestamp honesty work was promoted into `local-fork/plan.json` on 2026-04-30 during cycle 186 execution as `epic-67 / effort-67.1`.
 - Startup synthesis latency visibility and handoff timing work was promoted into `local-fork/plan.json` on 2026-04-30 during cycle 185 execution as `epic-66 / effort-66.1`.
 - Health-contract startup phase visibility work was promoted into `local-fork/plan.json` on 2026-04-30 during cycle 184 execution as `epic-65 / effort-65.1`.

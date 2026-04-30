@@ -5977,6 +5977,7 @@ function buildRuntimeControlContract(snapshot = null) {
       publishedAt: lastSweepTime,
       publishedSnapshotTimestamp: lastPublishedSnapshotTimestamp,
       candidateSnapshotTimestamp,
+      candidateTimestampSource: candidateSnapshotTimestamp ? (candidateSnapshotTimestamp === lastBriefingCompletedAt ? 'briefing-completed-at' : 'raw-meta-timestamp') : null,
       rawSweepCompletedAt: lastBriefingCompletedAt,
       rawSnapshotPersistedAt: lastRawSnapshotPersistedAt,
       rawToPersistLatencyMs,
@@ -7418,8 +7419,8 @@ async function runSweepCycle() {
   try {
     // 1. Run the full briefing sweep
     const rawData = await fullBriefing();
-    candidateSnapshotTimestamp = rawData?.meta?.timestamp || null;
     lastBriefingCompletedAt = new Date().toISOString();
+    candidateSnapshotTimestamp = rawData?.meta?.timestamp || lastBriefingCompletedAt;
     markRuntimePhase('synthesis');
 
     // 2. Save to runs/latest.json

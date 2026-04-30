@@ -105,6 +105,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal('publishedAt' in health.lastSuccess, true);
     assert.equal('publishedSnapshotTimestamp' in health.lastSuccess, true);
     assert.equal('candidateSnapshotTimestamp' in health.lastSuccess, true);
+    assert.equal('candidateTimestampSource' in health.lastSuccess, true);
     assert.equal('rawSweepCompletedAt' in health.lastSuccess, true);
     assert.equal('rawSnapshotPersistedAt' in health.lastSuccess, true);
     assert.equal('rawToPersistLatencyMs' in health.lastSuccess, true);
