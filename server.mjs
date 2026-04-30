@@ -7443,7 +7443,9 @@ async function runSweepCycle() {
     processCriticalEventQueue(synthesized);
     currentData = synthesized;
     broadcast({ type: 'update', data: currentData });
-    await processOperationalAlerts(currentData);
+    const operationalAlertsPromise = processOperationalAlerts(currentData).catch(err => {
+      console.error('[Crucix] Operational alert processing failed (non-fatal):', err?.message || err);
+    });
 
     // 6. Alert evaluation — Telegram + Discord (LLM with rule-based fallback, multi-tier, semantic dedup)
     if (delta?.summary?.totalChanges > 0) {
@@ -7469,6 +7471,8 @@ async function runSweepCycle() {
 
     completeRuntimeJob('synthesis', { completedAt: new Date().toISOString(), durationMs: Date.now() - new Date(sweepStartedAt).getTime(), outcome: 'completed' });
     finalizeSweepCycle(true);
+
+    await operationalAlertsPromise;
 
     if (llmProvider?.isConfigured) {
       enrichIdeasAndPublish(synthesized, delta).catch(err => {

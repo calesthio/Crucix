@@ -1367,13 +1367,25 @@
             "status": "pending"
           }
         ]
+      },
+      {
+        "id": "epic-64",
+        "title": "Initial-sweep publish honesty and synthesis-phase tracing",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-64.1",
+            "title": "Separate raw sweep completion from snapshot publish success and trace the startup synthesize path so health does not imply a published update while the initial sweep is still stuck in synthesis",
+            "status": "pending"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 181,
+    "sequence": 182,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-29-cycle-181"
+    "lastCompletedCycleId": "2026-04-30-cycle-182"
   },
   "backlog": [
     {
@@ -1385,8 +1397,14 @@
     {
       "id": "backlog-63-a",
       "title": "Trace the post-publish path that can leave the live runtime stuck in `synthesis` with `sweepInProgress: true` even after startup preview analysis is skipped",
+      "status": "promoted",
+      "notes": "Observed on cycle 181. The new startup-preview overlap guard landed and startup logs confirm preview analysis was skipped while the initial sweep was active, but live `/api/health` still showed `runtimeControl.sweep.currentPhase: synthesis`, retained `sweepStartedAt`, and `sweepInProgress: true` after `lastSweep` and `publishedAt` advanced. Likely a separate post-publish or finalization path outside the original startup-preview overlap hypothesis. Promoted into the active roadmap on 2026-04-30 for cycle 182 execution."
+    },
+    {
+      "id": "backlog-64-a",
+      "title": "Add bounded stage-level timing or timeout instrumentation around startup sweep synthesis and publish handoff so hangs after fullBriefing are attributable before watchdog recovery",
       "status": "pending",
-      "notes": "Observed on cycle 181. The new startup-preview overlap guard landed and startup logs confirm preview analysis was skipped while the initial sweep was active, but live `/api/health` still showed `runtimeControl.sweep.currentPhase: synthesis`, retained `sweepStartedAt`, and `sweepInProgress: true` after `lastSweep` and `publishedAt` advanced. Likely a separate post-publish or finalization path outside the original startup-preview overlap hypothesis."
+      "notes": "Cycle 182 live validation showed the restarted runtime remained in phase `synthesis` with stale `/api/data` while `lastSweep` advanced, which suggests a deeper startup-sweep hang and misleading last-success semantics rather than only a post-publish retained gate."
     }
   ]
 }

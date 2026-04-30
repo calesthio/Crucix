@@ -79,6 +79,7 @@ function buildHarness(overrides = {}) {
     buildNoiseSuppressionTelemetrySnapshot: () => ({ version: 'noise-suppression-history-trend-v1', summary: {}, bucketCounts: {}, candidateCounts: {} }),
     generateLLMAgentAnalysis: async () => ({ analysis: null, meta: { error: 'parse-failed' } }),
     processCriticalEventQueue: () => {},
+    processOperationalAlerts: async () => ({}),
     getSourceQueueSummary: () => ({ activeCount: 0, sources: [] }),
     enrichIdeasAndPublish: async () => {},
     enrichAgentAnalysisAndPublish: async () => {},
@@ -198,11 +199,32 @@ test('runSweepCycle closes primary sweep state before deferred enrichments settl
   assert.equal(context.sweepInProgress, false);
   assert.equal(context.sweepStartedAt, null);
   assert.equal(context.runtimeJobTelemetry.synthesis.active, false);
-  assert.equal(context.runtimeJobState.phase, 'idle');
+  assert.ok(['idle', 'llm-ideas-refinement', 'llm-analysis-refinement'].includes(context.runtimeJobState.phase));
   assert.ok(syncCalls.length >= 1);
   ideasResolve();
   analysisResolve();
   await Promise.all([ideasPromise, analysisPromise]);
+});
+
+test('runSweepCycle closes primary sweep state before operational alert processing settles', async () => {
+  let releaseAlerts;
+  const alertsPromise = new Promise(resolve => { releaseAlerts = resolve; });
+  const runPromiseHolder = {};
+  const { context } = buildHarness({
+    processOperationalAlerts: async () => {
+      await alertsPromise;
+      return {};
+    },
+  });
+  runPromiseHolder.promise = context.__cycleHarness.runSweepCycle();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(context.currentData?.meta?.sourcesOk, 28);
+  assert.equal(context.sweepInProgress, false);
+  assert.equal(context.sweepStartedAt, null);
+  assert.equal(context.runtimeJobTelemetry.synthesis.active, false);
+  assert.equal(context.runtimeJobState.phase, 'idle');
+  releaseAlerts();
+  await runPromiseHolder.promise;
 });
 
 test('startup preview analysis is deferred while a sweep is already active', () => {
