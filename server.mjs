@@ -234,21 +234,28 @@ if (discordAlerter.isConfigured) {
 
 // === Express Server ===
 const app = express();
+app.use(express.json());
 app.use(express.static(join(ROOT, 'dashboard/public')));
 
-// Serve loading page until first sweep completes, then the dashboard with injected locale
+// Serve loading page until first sweep completes, then the dashboard with injected live data
 app.get('/', (req, res) => {
   if (!currentData) {
     res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
   } else {
     const htmlPath = join(ROOT, 'dashboard/public/jarvis.html');
     let html = readFileSync(htmlPath, 'utf-8');
-    
-    // Inject locale data into the HTML
+
+    // Inject locale data
     const locale = getLocale();
     const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
     html = html.replace('</head>', `${localeScript}\n</head>`);
-    
+
+    // Inject current live data — replaces the static D variable baked into the file.
+    // This ensures the page always loads with up-to-date data on first paint,
+    // regardless of how stale the hardcoded fallback in jarvis.html is.
+    const safeData = JSON.stringify(currentData).replace(/<\/script>/gi, '<\\/script>');
+    html = html.replace(/^(let|const) D = .*;$/m, `let D = ${safeData};`);
+
     res.type('html').send(html);
   }
 });
@@ -278,6 +285,57 @@ app.get('/api/health', (req, res) => {
     refreshIntervalMinutes: config.refreshIntervalMinutes,
     language: currentLanguage,
   });
+});
+
+// API: interactive AI chat (uses live sweep data as context)
+app.post('/api/chat', async (req, res) => {
+  if (!llmProvider?.isConfigured) {
+    return res.status(503).json({ error: 'LLM not configured. Set LLM_PROVIDER and credentials in .env' });
+  }
+  const { message, history = [] } = req.body || {};
+  if (!message?.trim()) return res.status(400).json({ error: 'message is required' });
+
+  // Compact current sweep data into chat context
+  let contextBlock = '';
+  if (currentData) {
+    const snap = [];
+    const ts = new Date(currentData.meta?.timestamp).toUTCString();
+    snap.push(`Data as of: ${ts}`);
+    if (currentData.energy) snap.push(`Energy: WTI=$${currentData.energy.wti}, Brent=$${currentData.energy.brent}, NatGas=$${currentData.energy.natgas}`);
+    if (currentData.metals?.gold != null) snap.push(`Metals: Gold=$${currentData.metals.gold} (${currentData.metals.goldChangePct >= 0 ? '+' : ''}${currentData.metals.goldChangePct ?? 0}%), Silver=$${currentData.metals.silver}`);
+    const vix = currentData.fred?.find(f => f.id === 'VIXCLS');
+    const t10y2y = currentData.fred?.find(f => f.id === 'T10Y2Y');
+    const hy = currentData.fred?.find(f => f.id === 'BAMLH0A0HYM2');
+    if (vix || t10y2y || hy) snap.push(`Market: VIX=${vix?.value ?? '--'}, 10Y-2Y Spread=${t10y2y?.value ?? '--'}, HY Spread=${hy?.value ?? '--'}`);
+    const mktIdxs = (currentData.market || []).slice(0, 6).map(m => `${m.symbol}=${m.price}(${m.changePercent >= 0 ? '+' : ''}${m.changePercent}%)`).join(', ');
+    if (mktIdxs) snap.push(`Live markets: ${mktIdxs}`);
+    if (currentData.tg?.urgent?.length) snap.push(`Urgent OSINT (${currentData.tg.urgent.length}): ${currentData.tg.urgent.slice(0, 3).map(p => p.text?.substring(0, 80)).join(' | ')}`);
+    const totalConflict = currentData.acled?.totalEvents || 0;
+    if (totalConflict) snap.push(`Conflict events (ACLED): ${totalConflict}`);
+    if (currentData.delta?.summary) {
+      const ds = currentData.delta.summary;
+      snap.push(`Last sweep delta: direction=${ds.direction}, ${ds.totalChanges} changes, ${ds.criticalChanges} critical`);
+    }
+    if (currentData.ideas?.length) snap.push(`Current trade ideas: ${currentData.ideas.slice(0, 3).map(i => `${i.type} ${i.ticker} (${i.confidence})`).join(', ')}`);
+    contextBlock = `\n\nLive intelligence snapshot:\n${snap.join('\n')}`;
+  }
+
+  const systemPrompt = `You are a geopolitical and financial intelligence analyst with access to real-time OSINT data from 27 sources including satellite fire detection, conflict events, economic indicators, flight tracking, radiation monitoring, and social sentiment.
+
+Answer questions grounded in the provided data snapshot. Be specific, cite data points when relevant. For trade projections, provide analysis with entry rationale, risks, and time horizon. Note when information is uncertain or OSINT-derived rather than confirmed.${contextBlock}`;
+
+  const messages = [
+    ...history.map(h => ({ role: h.role, content: h.content })),
+    { role: 'user', content: message },
+  ];
+
+  try {
+    const result = await llmProvider.chat(messages, systemPrompt, { maxTokens: 2048, timeout: 60000 });
+    res.json({ response: result.text, usage: result.usage });
+  } catch (err) {
+    console.error('[Chat] LLM error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // API: available locales
@@ -445,6 +503,14 @@ async function start() {
     // Try to load existing data first for instant display (await so dashboard shows immediately)
     try {
       const existing = JSON.parse(readFileSync(join(RUNS_DIR, 'latest.json'), 'utf8'));
+      // If cached data is older than 6 hours, clear OSINT sources so stale Telegram/GDELT
+      // posts don't appear in the news feed before the fresh sweep completes.
+      const cacheAgeMs = Date.now() - new Date(existing.crucix?.timestamp || 0).getTime();
+      if (cacheAgeMs > 6 * 60 * 60 * 1000 && existing.sources) {
+        console.log(`[Crucix] Cached data is ${Math.round(cacheAgeMs / 3600000)}h old — clearing stale OSINT sources`);
+        existing.sources.Telegram = null;
+        existing.sources.GDELT = null;
+      }
       const data = await synthesize(existing);
       currentData = data;
       console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');

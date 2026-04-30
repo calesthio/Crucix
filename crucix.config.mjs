@@ -7,10 +7,14 @@ export default {
   refreshIntervalMinutes: parseInt(process.env.REFRESH_INTERVAL_MINUTES) || 15,
 
   llm: {
-    provider: process.env.LLM_PROVIDER || null, // anthropic | openai | gemini | codex | openrouter | minimax | mistral | ollama | grok
+    provider: process.env.LLM_PROVIDER || null, // anthropic | openai | gemini | codex | openrouter | minimax | mistral | ollama | grok | bedrock
     apiKey: process.env.LLM_API_KEY || null,
     model: process.env.LLM_MODEL || null,
     baseUrl: process.env.OLLAMA_BASE_URL || null,
+    // Bedrock-specific
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || null,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || null,
+    region: process.env.AWS_REGION || 'us-east-1',
   },
 
   telegram: {
