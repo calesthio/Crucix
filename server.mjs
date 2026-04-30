@@ -5915,6 +5915,7 @@ function buildOperatorSettingsContract(snapshot = null) {
 
 function buildRuntimeControlContract(snapshot = null) {
   const watchdog = getSweepWatchdogSnapshot();
+  const nowMs = Date.now();
   const cwd = typeof ROOT === 'string' ? ROOT : (typeof process?.cwd === 'function' ? process.cwd() : null);
   const port = config?.port ?? null;
   const startedAt = typeof startTime === 'number' ? new Date(startTime).toISOString() : null;
@@ -5935,6 +5936,16 @@ function buildRuntimeControlContract(snapshot = null) {
   const restartAudit = typeof getRuntimeRestartAuditState === 'function'
     ? getRuntimeRestartAuditState()
     : { version: 'runtime-restart-audit-v1', updatedAt: null, history: [] };
+  const currentPhaseElapsedMs = watchdog.phaseStartedAt ? Math.max(0, nowMs - new Date(watchdog.phaseStartedAt).getTime()) : null;
+  const rawSweepCompletedAtMs = lastBriefingCompletedAt ? new Date(lastBriefingCompletedAt).getTime() : null;
+  const rawSnapshotPersistedAtMs = lastRawSnapshotPersistedAt ? new Date(lastRawSnapshotPersistedAt).getTime() : null;
+  const publishedAtMs = lastSweepTime ? new Date(lastSweepTime).getTime() : null;
+  const rawToPersistLatencyMs = Number.isFinite(rawSweepCompletedAtMs) && Number.isFinite(rawSnapshotPersistedAtMs)
+    ? Math.max(0, rawSnapshotPersistedAtMs - rawSweepCompletedAtMs)
+    : null;
+  const rawToPublishLatencyMs = Number.isFinite(rawSweepCompletedAtMs) && Number.isFinite(publishedAtMs)
+    ? Math.max(0, publishedAtMs - rawSweepCompletedAtMs)
+    : null;
   return {
     version: 'runtime-control-v1',
     process: {
@@ -5949,6 +5960,7 @@ function buildRuntimeControlContract(snapshot = null) {
       startedAt: sweepStartedAt,
       currentPhase: watchdog.phase,
       currentPhaseStartedAt: watchdog.phaseStartedAt,
+      currentPhaseElapsedMs,
       lastCompletedPhase: watchdog.lastCompletedPhase,
       lastCompletedAt: watchdog.lastCompletedAt,
       lastFailurePhase: watchdog.lastFailurePhase,
@@ -5963,6 +5975,8 @@ function buildRuntimeControlContract(snapshot = null) {
       publishedAt: lastSweepTime,
       rawSweepCompletedAt: lastBriefingCompletedAt,
       rawSnapshotPersistedAt: lastRawSnapshotPersistedAt,
+      rawToPersistLatencyMs,
+      rawToPublishLatencyMs,
       snapshotTimestamp: snapshot?.meta?.timestamp || null,
       sourcesOk: snapshot?.meta?.sourcesOk ?? null,
       sourcesFailed: snapshot?.meta?.sourcesFailed ?? null,
@@ -7155,6 +7169,7 @@ app.get('/api/health', (req, res) => {
     uptime: Math.floor((Date.now() - startTime) / 1000),
     runtimePhase: runtimeControl.sweep.currentPhase,
     runtimePhaseStartedAt: runtimeControl.sweep.currentPhaseStartedAt,
+    runtimePhaseElapsedMs: runtimeControl.sweep.currentPhaseElapsedMs,
     lastSweep: lastSweepTime,
     nextSweep: lastSweepTime
       ? new Date(new Date(lastSweepTime).getTime() + config.refreshIntervalMinutes * 60000).toISOString()
@@ -7163,6 +7178,8 @@ app.get('/api/health', (req, res) => {
     sweepStartedAt,
     rawSweepCompletedAt: runtimeControl.lastSuccess.rawSweepCompletedAt,
     rawSnapshotPersistedAt: runtimeControl.lastSuccess.rawSnapshotPersistedAt,
+    rawToPersistLatencyMs: runtimeControl.lastSuccess.rawToPersistLatencyMs,
+    rawToPublishLatencyMs: runtimeControl.lastSuccess.rawToPublishLatencyMs,
     sweepWatchdog: runtimeControl.sweep.watchdog,
     lastSuccess: runtimeControl.lastSuccess,
     sourcesOk: currentData?.meta?.sourcesOk || 0,

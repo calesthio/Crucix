@@ -1391,13 +1391,25 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-66",
+        "title": "Startup synthesis latency visibility and handoff timing",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-66.1",
+            "title": "Expose active phase elapsed time plus raw-to-persist and raw-to-publish latency on the health contract so startup synthesis hangs are directly measurable",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 184,
+    "sequence": 185,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-30-cycle-184"
+    "lastCompletedCycleId": "2026-04-30-cycle-185"
   },
   "backlog": [
     {

@@ -4,7 +4,7 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 
 ## Candidate backlog items
 
-None currently.
+- `backlog-66-a` Separate `lastSuccess.snapshotTimestamp` from stale previously-published `currentData` during an in-flight startup sweep, or add an explicit `publishedSnapshotTimestamp` versus `candidateSnapshotTimestamp` split so `/api/health` cannot suggest a fresh snapshot timestamp while `publishedAt` is still null.
 
 Recent promotions:
 - Noise-suppression pressure alert acknowledge/snooze controls plus recent audit visibility was promoted into `local-fork/plan.json` as Epic 29, effort 29.9 on 2026-04-26.
@@ -39,6 +39,7 @@ Recent promotions:
 New items can be added here when they do not yet belong in the active roadmap.
 
 Recent promotions:
+- Startup synthesis latency visibility and handoff timing work was promoted into `local-fork/plan.json` on 2026-04-30 during cycle 185 execution as `epic-66 / effort-66.1`.
 - Health-contract startup phase visibility work was promoted into `local-fork/plan.json` on 2026-04-30 during cycle 184 execution as `epic-65 / effort-65.1`.
 - Startup synthesis honesty and raw-vs-published sweep timing work was promoted into `local-fork/plan.json` on 2026-04-30 during cycle 183 execution as `epic-64 / effort-64.1`.
 - Post-publish retained sweep-state tracing was promoted into `local-fork/plan.json` on 2026-04-30 during cycle 182 execution as the active `epic-63 / effort-63.1` slice.
