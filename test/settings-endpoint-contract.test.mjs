@@ -103,6 +103,8 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(health.runtimePhaseElapsedMs === null || typeof health.runtimePhaseElapsedMs === 'number', true);
     assert.equal('recoveryClassification' in health.sweepWatchdog, true);
     assert.equal('publishedAt' in health.lastSuccess, true);
+    assert.equal('publishedSnapshotTimestamp' in health.lastSuccess, true);
+    assert.equal('candidateSnapshotTimestamp' in health.lastSuccess, true);
     assert.equal('rawSweepCompletedAt' in health.lastSuccess, true);
     assert.equal('rawSnapshotPersistedAt' in health.lastSuccess, true);
     assert.equal('rawToPersistLatencyMs' in health.lastSuccess, true);
@@ -111,6 +113,7 @@ test('booted operator and admin settings surfaces stay role-separated with local
     assert.equal(health.rawSnapshotPersistedAt, health.lastSuccess.rawSnapshotPersistedAt);
     assert.equal(health.rawToPersistLatencyMs, health.lastSuccess.rawToPersistLatencyMs);
     assert.equal(health.rawToPublishLatencyMs, health.lastSuccess.rawToPublishLatencyMs);
+    assert.equal(health.lastSuccess.snapshotTimestamp, health.lastSuccess.publishedSnapshotTimestamp);
     assert.equal(typeof health.llmProviderReadiness?.status, 'string');
     assert.equal(health.noiseSuppressionTelemetry.version, 'noise-suppression-history-v2');
     assert.equal(typeof health.noiseSuppressionTelemetry.decayTelemetry.agedOutSuggestionCount, 'number');

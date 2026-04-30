@@ -50,6 +50,8 @@ for (const dir of [RUNS_DIR, MEMORY_DIR, join(MEMORY_DIR, 'cold'), join(ROOT, 'l
 // === State ===
 let currentData = null;    // Current synthesized dashboard data
 let lastSweepTime = null;  // Timestamp of last published snapshot
+let lastPublishedSnapshotTimestamp = null; // Snapshot timestamp of the last published dashboard payload
+let candidateSnapshotTimestamp = null; // Snapshot timestamp currently being prepared but not yet published
 let lastBriefingCompletedAt = null; // Timestamp when raw source collection finished
 let lastRawSnapshotPersistedAt = null; // Timestamp when runs/latest.json was updated
 let sweepStartedAt = null; // Timestamp when current/last sweep started
@@ -5973,11 +5975,13 @@ function buildRuntimeControlContract(snapshot = null) {
     },
     lastSuccess: {
       publishedAt: lastSweepTime,
+      publishedSnapshotTimestamp: lastPublishedSnapshotTimestamp,
+      candidateSnapshotTimestamp,
       rawSweepCompletedAt: lastBriefingCompletedAt,
       rawSnapshotPersistedAt: lastRawSnapshotPersistedAt,
       rawToPersistLatencyMs,
       rawToPublishLatencyMs,
-      snapshotTimestamp: snapshot?.meta?.timestamp || null,
+      snapshotTimestamp: lastPublishedSnapshotTimestamp,
       sourcesOk: snapshot?.meta?.sourcesOk ?? null,
       sourcesFailed: snapshot?.meta?.sourcesFailed ?? null,
       ideasSource: snapshot?.ideasSource || null,
@@ -7414,6 +7418,7 @@ async function runSweepCycle() {
   try {
     // 1. Run the full briefing sweep
     const rawData = await fullBriefing();
+    candidateSnapshotTimestamp = rawData?.meta?.timestamp || null;
     lastBriefingCompletedAt = new Date().toISOString();
     markRuntimePhase('synthesis');
 
@@ -7469,6 +7474,8 @@ async function runSweepCycle() {
 
     processCriticalEventQueue(synthesized);
     currentData = synthesized;
+    lastPublishedSnapshotTimestamp = synthesized?.meta?.timestamp || candidateSnapshotTimestamp || null;
+    candidateSnapshotTimestamp = null;
     lastSweepTime = new Date().toISOString();
     broadcast({ type: 'update', data: currentData });
     const operationalAlertsPromise = processOperationalAlerts(currentData).catch(err => {
@@ -7511,6 +7518,7 @@ async function runSweepCycle() {
       });
     }
   } catch (err) {
+    candidateSnapshotTimestamp = null;
     console.error('[Crucix] Sweep failed:', err.message);
     completeRuntimeJob('synthesis', { completedAt: new Date().toISOString(), durationMs: sweepStartedAt ? (Date.now() - new Date(sweepStartedAt).getTime()) : null, outcome: /timeout|timed out|abort/i.test(err.message || '') ? 'timed-out' : 'failed', error: err.message || null, timedOut: /timeout|timed out|abort/i.test(err.message || '') });
     failRuntimePhase(err.message || 'sweep-failed');
@@ -7592,6 +7600,7 @@ async function start() {
         });
         processCriticalEventQueue(data);
         currentData = data;
+        lastPublishedSnapshotTimestamp = data?.meta?.timestamp || existing?.meta?.timestamp || null;
         console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');
         broadcast({ type: 'update', data: currentData });
         if (llmProvider?.isConfigured) {

@@ -34,6 +34,8 @@ function buildHarness(overrides = {}) {
     loadNoiseSuppressionHistory() { return { version: 'noise-suppression-history-v2', updatedAt: null, lastSweepAt: null, retentionMs: 14 * 24 * 60 * 60 * 1000, halfLifeMs: 5 * 24 * 60 * 60 * 1000, duplicateBursts: {}, repetitiveLowValueEvents: {}, sourceRuleHits: {}, telemetry: { lastPrunedAt: null, pruningActive: false, buckets: {}, summary: { totalEntries: 0, retainedEntries: 0, expiredEntriesRemoved: 0, overflowEntriesRemoved: 0 } } }; },
     currentData: null,
     lastSweepTime: null,
+    lastPublishedSnapshotTimestamp: null,
+    candidateSnapshotTimestamp: null,
     lastBriefingCompletedAt: null,
     lastRawSnapshotPersistedAt: null,
     sweepStartedAt: null,
@@ -233,12 +235,15 @@ test('runSweepCycle does not mark last published sweep until snapshot publish su
   let releaseSynthesis;
   const synthPromise = new Promise(resolve => { releaseSynthesis = resolve; });
   const oldPublishedAt = '2026-04-24T20:00:00.000Z';
+  const oldPublishedSnapshotTimestamp = '2026-04-24T19:55:00.000Z';
+  const candidateTimestamp = '2026-04-24T22:20:00.000Z';
   const { context } = buildHarness({
     lastSweepTime: oldPublishedAt,
+    lastPublishedSnapshotTimestamp: oldPublishedSnapshotTimestamp,
     synthesize: async raw => {
       await synthPromise;
       return {
-        meta: { sourcesOk: 28, sourcesQueried: 29, timestamp: raw.meta?.timestamp || '2026-04-24T22:20:00.000Z' },
+        meta: { sourcesOk: 28, sourcesQueried: 29, timestamp: raw.meta?.timestamp || candidateTimestamp },
         news: [],
         newsFeed: [],
         evidenceSummary: {},
@@ -251,10 +256,14 @@ test('runSweepCycle does not mark last published sweep until snapshot publish su
   assert.equal(context.lastBriefingCompletedAt != null, true);
   assert.equal(context.lastRawSnapshotPersistedAt != null, true);
   assert.equal(context.lastSweepTime, oldPublishedAt);
+  assert.equal(context.lastPublishedSnapshotTimestamp, oldPublishedSnapshotTimestamp);
+  assert.equal(context.candidateSnapshotTimestamp, candidateTimestamp);
   assert.equal(context.currentData, null);
   releaseSynthesis();
   await runPromise;
   assert.notEqual(context.lastSweepTime, oldPublishedAt);
+  assert.equal(context.lastPublishedSnapshotTimestamp, candidateTimestamp);
+  assert.equal(context.candidateSnapshotTimestamp, null);
   assert.equal(context.currentData?.meta?.sourcesOk, 28);
 });
 

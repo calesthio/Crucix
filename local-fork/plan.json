@@ -1403,13 +1403,25 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-67",
+        "title": "Published versus candidate snapshot timestamp honesty",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-67.1",
+            "title": "Split published snapshot timestamp from the in-flight candidate snapshot timestamp on the health contract so startup sweeps do not blur stale published data with pending work",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 185,
+    "sequence": 186,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-30-cycle-185"
+    "lastCompletedCycleId": "2026-04-30-cycle-186"
   },
   "backlog": [
     {
