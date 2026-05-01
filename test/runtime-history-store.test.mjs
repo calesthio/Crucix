@@ -106,6 +106,21 @@ test('MemoryManager persists runtime history and signal state into sqlite-backed
     assert.equal(sourcePerformanceHistory.snapshots[0].runtimeBucketDrift.totalDriftCount, 1);
     assert.equal(sourcePerformanceHistory.deltaViews[0].summaryDelta.runtimeBucketDrift.totalDriftCount, -1);
 
+    const cachedReadProbe = new MemoryManager(runsDir);
+    const originalGetAllRuns = cachedReadProbe.runtimeHistoryStore.getAllRuns.bind(cachedReadProbe.runtimeHistoryStore);
+    let getAllRunsCalls = 0;
+    cachedReadProbe.runtimeHistoryStore.getAllRuns = () => {
+      getAllRunsCalls += 1;
+      return originalGetAllRuns();
+    };
+    cachedReadProbe.getTrendSummary([24]);
+    cachedReadProbe.getSourceHealthHistory();
+    cachedReadProbe.getReviewPressureHistory();
+    cachedReadProbe.getLlmFailureHistory();
+    cachedReadProbe.getSourcePerformanceHistory();
+    cachedReadProbe.getNoiseSuppressionTelemetryHistory();
+    assert.equal(getAllRunsCalls, 1);
+
     const diagnostics = reloaded.runtimeHistoryStore.getDiagnostics({ sampleLimit: 2 });
     assert.equal(diagnostics.version, 'runtime-history-diagnostics-v1');
     assert.equal(diagnostics.integrity.mode, 'quick_check(1)');

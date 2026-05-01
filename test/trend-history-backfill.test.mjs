@@ -13,12 +13,15 @@ test('legacy compact runs are normalized without zeroing new trend fields', () =
     const coldDir = join(memoryDir, 'cold');
     mkdirSync(coldDir, { recursive: true });
 
+    const hotTimestamp = new Date(Date.now() - (2 * 60 * 60 * 1000)).toISOString();
+    const coldTimestamp = new Date(Date.now() - (18 * 60 * 60 * 1000)).toISOString();
+
     writeFileSync(join(memoryDir, 'hot.json'), JSON.stringify({
       runs: [
         {
-          timestamp: '2026-04-24T20:50:00.000Z',
+          timestamp: hotTimestamp,
           data: {
-            meta: { timestamp: '2026-04-24T20:50:00.000Z' },
+            meta: { timestamp: hotTimestamp },
             tg: { posts: 100, urgentCount: 8, urgent: [] },
             healthSummary: { total: 28, ok: 23, degraded: 1, stale: 0, failed: 4 },
             clusterReviewStats: { trackedRegionCount: 5, chronicFailureCount: 2, recentFailureCount: 1 },
@@ -33,11 +36,11 @@ test('legacy compact runs are normalized without zeroing new trend fields', () =
       signalStates: {},
     }, null, 2));
 
-    writeFileSync(join(coldDir, '2026-04-24.json'), JSON.stringify([
+    writeFileSync(join(coldDir, `${coldTimestamp.slice(0, 10)}.json`), JSON.stringify([
       {
-        timestamp: '2026-04-24T05:00:00.000Z',
+        timestamp: coldTimestamp,
         data: {
-          meta: { timestamp: '2026-04-24T05:00:00.000Z' },
+          meta: { timestamp: coldTimestamp },
           tg: { posts: 80, urgent: [{ text: 'legacy urgent' }] },
           news: { count: 12 },
           newsClusters: [],
