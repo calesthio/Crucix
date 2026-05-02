@@ -1439,13 +1439,25 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-70",
+        "title": "Runtime history cache reuse for sweep summaries",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-70.1",
+            "title": "Cache reconstructed persisted runtime history across trend and summary builders so one sweep does not repeatedly reload and normalize the full SQLite and cold-history corpus",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 188,
+    "sequence": 189,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-04-30-cycle-188"
+    "lastCompletedCycleId": "2026-05-01-cycle-189"
   },
   "backlog": [
     {
