@@ -14,6 +14,7 @@ import { synthesize, generateIdeas } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider } from './lib/llm/index.mjs';
 import { generateLLMIdeas } from './lib/llm/ideas.mjs';
+import { translateDashboard, check as checkTranslator } from './lib/translation/index.mjs';
 import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
 
@@ -380,6 +381,17 @@ async function runSweepCycle() {
     memory.pruneAlertedSignals();
 
     currentData = synthesized;
+
+    // 7. Bilingual translation via MiniMax-M2.7 (only when CRUCIX_LANG=zh)
+    if (process.env.CRUCIX_LANG === 'zh' && llmProvider?.isConfigured) {
+      try {
+        const langStart = Date.now();
+        await translateDashboard(currentData);
+        console.log(`[Crucix] Translation done in ${Date.now() - langStart}ms`);
+      } catch (transErr) {
+        console.warn('[Crucix] Translation failed (non-fatal):', transErr.message);
+      }
+    }
 
     // 6. Push to all connected browsers
     broadcast({ type: 'update', data: currentData });
