@@ -1,0 +1,360 @@
+{
+  "meta": {
+    "code": "zh",
+    "name": "中文",
+    "nativeName": "中文"
+  },
+  "dashboard": {
+    "title": "CRUCIX — 情报终端",
+    "bootTitle": "CRUCIX 情报引擎",
+    "bootSubtitle": "本地版 Palantir · 31 个情报源",
+    "waitingForSweep": "等待首次扫描完成...",
+    "sourcesOk": "情报源正常",
+    "lastSweep": "最近扫描",
+    "nextSweep": "下次扫描",
+    "sweep": "扫描",
+    "sources": "情报源",
+    "delta": "变化",
+    "highAlert": "高度警报",
+    "riskOff": "风险规避",
+    "riskOn": "风险偏好",
+    "mixed": "混合信号",
+    "terminalActive": "终端活跃",
+    "perf": "性能",
+    "perfLow": "低",
+    "perfHigh": "高",
+    "guideBtn": "信号含义说明"
+  },
+  "boot": {
+    "initializing": "正在初始化 CRUCIX 引擎 v2.1.0",
+    "connecting": "正在连接 {count} 个开源情报源...",
+    "sourceGroup1": "OPENSKY · FIRMS · KIWISDR · 船运",
+    "sourceGroup2": "FRED · BLS · EIA · 财政部 · GSCPI",
+    "sourceGroup3": "Telegram · Safecast · EPA · WHO · OFAC",
+    "sourceGroup4": "GDELT · NOAA · 专利 · Bluesky · Reddit",
+    "sourceGroup5": "USGS · ECB · CVE · Copernicus · CelesTrak",
+    "sweepComplete": "扫描完成 — {ok}/{total} 个情报源正常",
+    "ok": "正常",
+    "acledLayer": "冲突数据图层",
+    "events": "事件",
+    "degraded": "降级",
+    "flightCorridors": "空中走廊",
+    "active": "活跃",
+    "dualProjection": "双投影",
+    "ready": "就绪",
+    "intelligenceSynthesis": "情报综合"
+  },
+  "panels": {
+    "sensorGrid": "传感器网格",
+    "tradeIdeas": "交易思路",
+    "osintFeed": "开源情报流",
+    "osintStream": "开源情报流",
+    "nuclearWatch": "核武监控",
+    "newsTicker": "新闻滚动",
+    "sweepDelta": "扫描变化",
+    "macroMarkets": "宏观+市场",
+    "healthAlerts": "健康警报",
+    "riskGauges": "风险仪表",
+    "crossSourceSignals": "跨域信号",
+    "signalCore": "信号核心",
+    "seismicWatch": "地震监控",
+    "cyberWatch": "网络监控",
+    "spaceWatch": "太空监控",
+    "europeAlerts": "欧洲警报",
+    "ecbIndicators": "欧洲央行指标"
+  },
+  "layers": {
+    "airActivity": "空中活动",
+    "thermalSpikes": "热异常",
+    "sdrCoverage": "SDR 覆盖",
+    "maritimeWatch": "海运监控",
+    "nuclearSites": "核设施",
+    "conflictEvents": "冲突事件",
+    "healthWatch": "健康监控",
+    "worldNews": "全球新闻",
+    "osintFeed": "开源情报",
+    "theaters": "战区",
+    "nightDet": "夜视探测",
+    "online": "在线",
+    "chokepoints": "咽喉要道",
+    "monitors": "监控点",
+    "fatalities": "伤亡",
+    "whoAlerts": "世卫警报",
+    "rssGeolocated": "定位新闻",
+    "earthquakes": "地震",
+    "seismicEvents": "地震事件",
+    "cyberVulns": "网络漏洞",
+    "spaceActivity": "太空活动",
+    "europeEmergency": "欧洲紧急",
+    "orbital": "轨道卫星"
+  },
+  "map": {
+    "worldNews": "全球新闻",
+    "healthAlert": "健康警报",
+    "chokepoint": "咽喉要道",
+    "nuclearSite": "核设施",
+    "osintEvent": "情报事件",
+    "thermalDetection": "热源探测",
+    "aircraft": "飞行器",
+    "rssGeolocated": "定位新闻",
+    "airTraffic": "空中交通",
+    "thermalFire": "火灾热源",
+    "conflict": "冲突",
+    "sdrReceiver": "SDR 接收器",
+    "scrollToZoom": "滚动缩放",
+    "globeMode": "地球模式",
+    "flatMode": "地图模式",
+    "earthquake": "地震",
+    "disaster": "灾害",
+    "weatherAlert": "天气警报",
+    "epaRadNet": "辐射监测",
+    "spaceStation": "空间站",
+    "gdeltEvent": "GDELT 事件"
+  },
+  "ideas": {
+    "confidence": "置信度",
+    "horizon": "时间窗口",
+    "risk": "风险",
+    "signals": "信号",
+    "rationale": "逻辑",
+    "aiEnhanced": "AI 增强",
+    "llmOff": "规则引擎生成",
+    "pending": "等待分析",
+    "llmNotConfigured": "未配置 AI",
+    "llmHelp": "配置 AI 提供商以启用智能交易思路",
+    "disclosure": "免责声明"
+  },
+  "regions": {
+    "world": "全球",
+    "americas": "美洲",
+    "europe": "欧洲",
+    "middleEast": "中东",
+    "asiaPacific": "亚太",
+    "africa": "非洲"
+  },
+  "badges": {
+    "radiation": "辐射",
+    "live": "实时",
+    "delayed": "延迟",
+    "items": "项目",
+    "urgent": "紧急",
+    "worldview": "世界观",
+    "hotMetrics": "热点指标",
+    "stress": "压力",
+    "sweeping": "扫描中",
+    "europe": "欧洲",
+    "orbital": "轨道"
+  },
+  "delta": {
+    "baseline": "基准",
+    "escalation": "升级",
+    "deescalation": "降级",
+    "stable": "稳定",
+    "newSignals": "新信号",
+    "resolved": "已解决",
+    "noChanges": "无变化",
+    "changes": "变化",
+    "critical": "危急",
+    "new": "新增"
+  },
+  "metrics": {
+    "wtiCrude": "WTI 原油",
+    "brent": "布伦特原油",
+    "natGas": "天然气",
+    "vix": "VIX 恐慌指数",
+    "fedFunds": "美联储利率",
+    "gscpi": "全球供应链压力",
+    "cpiMom": "CPI 月环比",
+    "unemployment": "失业率",
+    "hySpread": "高收益利差",
+    "usdIndex": "美元指数",
+    "joblessClaims": "初请失业金",
+    "mortgage30y": "30 年抵押贷款利率",
+    "m2Supply": "M2 货币供应",
+    "natDebt": "国债",
+    "wti5day": "WTI 5 日变化",
+    "indexes": "指数",
+    "crypto": "加密货币",
+    "energyMacro": "能源+宏观",
+    "vsPrior": "vs 前值",
+    "ecbRate": "欧央行利率",
+    "eurusd": "欧元/美元",
+    "euM3": "欧元区 M3",
+    "euHicp": "欧元区 HICP",
+    "earthquakes7d": "7 日地震",
+    "criticalCves": "严重漏洞",
+    "spaceObjects": "太空物体",
+    "starlink": "星链卫星",
+    "europeAlerts": "欧洲警报"
+  },
+  "signalMetrics": {
+    "incidentTempo": "事件频率",
+    "airTheaters": "空中战区",
+    "thermalSpikes": "热异常",
+    "sdrNodes": "SDR 节点",
+    "chokepoints": "咽喉要道",
+    "whoAlerts": "世卫警报"
+  },
+  "nuclear": {
+    "allSitesNormal": "全部站点正常",
+    "anomalyDetected": "检测到异常",
+    "noData": "无数据"
+  },
+  "seismic": {
+    "noRecentQuakes": "近期无显著地震",
+    "majorQuake": "大型地震",
+    "tsunamiRisk": "海啸风险",
+    "mag": "震级"
+  },
+  "cyber": {
+    "noAlerts": "无警报",
+    "criticalAlert": "严重警报",
+    "cvss": "CVSS",
+    "critical": "严重"
+  },
+  "space": {
+    "noActivity": "无活动",
+    "launchDetected": "检测到发射",
+    "objectsTracked": "追踪中",
+    "newLast30d": "30 日内新增",
+    "satellites": "卫星",
+    "recentLaunches": "近期发射",
+    "totalTracked": "总追踪数",
+    "byCountry": "按国家",
+    "constellations": "星座",
+    "launches": "发射"
+  },
+  "europe": {
+    "noAlerts": "无欧洲警报",
+    "activeAlerts": "活跃警报",
+    "fires": "火灾",
+    "floods": "洪水",
+    "types": "类型"
+  },
+  "time": {
+    "justNow": "刚刚",
+    "hoursAgo": "{n} 小时前",
+    "daysAgo": "{n} 天前"
+  },
+  "bot": {
+    "commands": {
+      "status": "状态",
+      "sweep": "扫描",
+      "brief": "简报",
+      "portfolio": "持仓",
+      "alerts": "警报",
+      "mute": "静音",
+      "unmute": "取消静音",
+      "help": "帮助"
+    },
+    "messages": {
+      "alertsMuted": "警报已静音",
+      "useUnmute": "使用 /unmute 恢复",
+      "alertsResumed": "警报已恢复",
+      "sweepTriggered": "已触发扫描",
+      "sweepInProgress": "扫描进行中...",
+      "noDataYet": "暂无数据",
+      "noRecentAlerts": "近期无警报",
+      "recentAlerts": "近期警报",
+      "commandsTip": "输入 /help 查看所有命令",
+      "commandFailed": "命令执行失败",
+      "portfolioNotAvailable": "暂无持仓数据"
+    },
+    "status": {
+      "title": "系统状态",
+      "uptime": "运行时间",
+      "lastSweep": "最近扫描",
+      "nextSweep": "下次扫描",
+      "sweepInProgress": "扫描中",
+      "yes": "是",
+      "no": "否",
+      "sources": "情报源",
+      "failed": "失败",
+      "llm": "AI 分析",
+      "enabled": "已启用",
+      "disabled": "已禁用",
+      "sseClients": "Dashboard 连接",
+      "dashboard": "Dashboard",
+      "pending": "等待中",
+      "never": "从未"
+    },
+    "brief": {
+      "title": "情报简报",
+      "direction": "方向",
+      "changes": "变化",
+      "criticalChanges": "重大变化",
+      "osint": "开源情报",
+      "urgentSignals": "紧急信号",
+      "totalPosts": "情报帖子总数",
+      "topIdeas": "重点思路"
+    },
+    "alertTiers": {
+      "flash": "紧急",
+      "priority": "重要",
+      "routine": "常规"
+    }
+  },
+  "alerts": {
+    "tiers": {
+      "flash": {
+        "label": "紧急",
+        "description": "立即行动"
+      },
+      "priority": {
+        "label": "重要",
+        "description": "需关注"
+      },
+      "routine": {
+        "label": "常规",
+        "description": "例行监控"
+      }
+    },
+    "confidence": {
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    },
+    "fields": {
+      "direction": "方向",
+      "confidence": "置信度",
+      "crossCorrelation": "跨域关联",
+      "action": "建议",
+      "signals": "信号",
+      "monitor": "监控"
+    },
+    "messages": {
+      "alertsMuted": "警报已静音",
+      "mutedUntil": "静音至 {time}",
+      "useUnmuteToResume": "使用 /unmute 取消静音",
+      "alertsResumed": "警报已恢复",
+      "willReceiveNext": "下次有新警报时通知你"
+    },
+    "ruleBasedHeadlines": {
+      "nuclearAnomaly": "核监测异常",
+      "crossDomainSignals": "跨域信号关联",
+      "escalatingSignals": "信号升级中",
+      "osintSurge": "开源情报激增",
+      "signalChangeDetected": "检测到信号变化"
+    }
+  },
+  "discord": {
+    "commands": {
+      "status": "状态",
+      "sweep": "扫描",
+      "brief": "简报",
+      "portfolio": "持仓",
+      "alerts": "警报",
+      "mute": "静音",
+      "unmute": "取消静音",
+      "muteHoursOption": "静音时长（小时）"
+    }
+  },
+  "llm": {
+    "systemPrompt": "你是 Crucix 情报助手。当前的 UI 语言为中文。"
+  },
+  "api": {
+    "errors": {
+      "noDataYet": "暂无数据，请等待首次扫描完成"
+    }
+  }
+}
