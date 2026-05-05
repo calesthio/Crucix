@@ -1451,13 +1451,25 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-71",
+        "title": "Dashboard 3D dependency lazy loading and Safari memory-pressure mitigation",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-71.1",
+            "title": "Defer loading three.js and globe.gl until globe mode is actually requested, and default Safari sessions to lite visuals so flat-mode dashboard loads stop paying the 3D memory cost up front",
+            "status": "completed"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 189,
+    "sequence": 190,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-05-01-cycle-189"
+    "lastCompletedCycleId": "2026-05-05-cycle-190"
   },
   "backlog": [
     {

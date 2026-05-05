@@ -9,8 +9,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://d3js.org/topojson.v3.min.js"></script>
-<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-<script src="https://unpkg.com/globe.gl@2.33.0"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -479,9 +477,12 @@ let globeFailureReason = null;
 let softwareGlobeMode = false;
 let worldAtlasData = null;
 let flightsVisible = true;
+let globeLibraryLoadPromise = null;
 const persistedOperatorSettings = window.__CRUCIX_RUNTIME__?.operatorSettings || {};
 const persistedPerformanceSettings = persistedOperatorSettings.layout?.performance || {};
-let lowPerfMode = (persistedOperatorSettings.layout?.visualsMode === 'lite') || localStorage.getItem('crucix_low_perf') === 'true';
+const userAgent = navigator.userAgent || '';
+const isSafariBrowser = /Safari/i.test(userAgent) && !/Chrome|CriOS|Chromium|Edg|OPR|Firefox|FxiOS/i.test(userAgent);
+let lowPerfMode = (persistedOperatorSettings.layout?.visualsMode === 'lite') || localStorage.getItem('crucix_low_perf') === 'true' || isSafariBrowser;
 let isFlat = false;
 let currentRegion = persistedOperatorSettings.layout?.defaultRegion || 'world';
 let activeLayer = persistedOperatorSettings.layout?.activeLayer || null;
@@ -1002,6 +1003,47 @@ function canUse3D(){
   return !globeFailed && typeof Globe === 'function' && typeof THREE !== 'undefined';
 }
 
+function loadExternalScript(src){
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[data-crucix-src="${src}"]`);
+    if (existing) {
+      if (existing.dataset.loaded === 'true') {
+        resolve();
+        return;
+      }
+      existing.addEventListener('load', () => resolve(), { once:true });
+      existing.addEventListener('error', () => reject(new Error(`load failed: ${src}`)), { once:true });
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.dataset.crucixSrc = src;
+    script.addEventListener('load', () => {
+      script.dataset.loaded = 'true';
+      resolve();
+    }, { once:true });
+    script.addEventListener('error', () => reject(new Error(`load failed: ${src}`)), { once:true });
+    document.head.appendChild(script);
+  });
+}
+
+async function ensure3DLibs(){
+  if (typeof Globe === 'function' && typeof THREE !== 'undefined') return true;
+  if (!globeLibraryLoadPromise) {
+    globeLibraryLoadPromise = (async () => {
+      await loadExternalScript('https://unpkg.com/three@0.160.0/build/three.min.js');
+      await loadExternalScript('https://unpkg.com/globe.gl@2.33.0');
+      return true;
+    })().catch(err => {
+      globeLibraryLoadPromise = null;
+      throw err;
+    });
+  }
+  await globeLibraryLoadPromise;
+  return typeof Globe === 'function' && typeof THREE !== 'undefined';
+}
+
 async function loadWorldAtlas(){
   if(worldAtlasData) return worldAtlasData;
   const response = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
@@ -1216,26 +1258,30 @@ function initMap(){
   bindMapLifecycleEvents();
   renderMapLegend();
   updateMapModeControls();
-  if(isFlat || !canUse3D()){
+  if(isFlat){
     if(globe && typeof globe.pauseAnimation === 'function') globe.pauseAnimation();
-    softwareGlobeMode = !isFlat;
+    softwareGlobeMode = false;
     document.getElementById('globeViz').style.display = 'none';
     document.getElementById('flatMapSvg').style.display = 'block';
-    if(!flatSvg) initFlatMap(softwareGlobeMode ? 'globe' : 'flat');
-    else { flatG.selectAll('*').remove(); drawFlatMap(softwareGlobeMode ? 'globe' : 'flat'); }
+    if(!flatSvg) initFlatMap('flat');
+    else { flatG.selectAll('*').remove(); drawFlatMap('flat'); }
     updateMapModeControls();
     setMapLoading(false);
     return;
   }
   setMapLoading(true, 'Initializing 3D Globe');
-  requestAnimationFrame(() => {
-    try {
-      initGlobe();
-      updateMapModeControls();
-      setMapLoading(false);
-    } catch (err) {
-      markGlobeUnavailable((err && err.message) ? '3D INIT FAILED · FLAT MODE' : '3D LOAD FAILED · FLAT MODE');
-    }
+  ensure3DLibs().then(() => {
+    requestAnimationFrame(() => {
+      try {
+        initGlobe();
+        updateMapModeControls();
+        setMapLoading(false);
+      } catch (err) {
+        markGlobeUnavailable((err && err.message) ? '3D INIT FAILED · FLAT MODE' : '3D LOAD FAILED · FLAT MODE');
+      }
+    });
+  }).catch(err => {
+    markGlobeUnavailable((err && err.message) ? '3D LIB LOAD FAILED · FLAT MODE' : '3D LOAD FAILED · FLAT MODE');
   });
 }
 
@@ -1487,38 +1533,45 @@ const flatRegionBounds = {
 function toggleMapMode(){
   isFlat = !isFlat;
   persistOperatorPreferences({ layout: { mapMode: isFlat ? 'flat' : 'globe' } });
-  softwareGlobeMode = !isFlat && !canUse3D();
   updateMapModeControls();
   const globeEl = document.getElementById('globeViz');
   const flatEl = document.getElementById('flatMapSvg');
   if(isFlat){
+    softwareGlobeMode = false;
     if(globe && typeof globe.pauseAnimation === 'function') globe.pauseAnimation();
     globeEl.style.display = 'none';
     flatEl.style.display = 'block';
     setMapLoading(false);
     if(!flatSvg) initFlatMap('flat');
     else { flatG.selectAll('*').remove(); drawFlatMap('flat'); }
-  } else if(softwareGlobeMode) {
-    globeEl.style.display = 'none';
-    flatEl.style.display = 'block';
-    setMapLoading(true, 'Initializing Software Globe');
-    requestAnimationFrame(() => {
-      if(!flatSvg) initFlatMap('globe');
-      else { flatG.selectAll('*').remove(); drawFlatMap('globe'); }
-      setMapLoading(false);
-    });
   } else {
     flatEl.style.display = 'none';
     setMapLoading(true, 'Initializing 3D Globe');
-    requestAnimationFrame(() => {
-      try {
-        initGlobe();
-        if(globe && typeof globe.resumeAnimation === 'function') globe.resumeAnimation();
-        globeEl.style.display = 'block';
-        setMapLoading(false);
-      } catch {
-        markGlobeUnavailable('WEBGL UNAVAILABLE · SOFTWARE GLOBE ACTIVE');
+    ensure3DLibs().then(() => {
+      softwareGlobeMode = !canUse3D();
+      if(softwareGlobeMode) {
+        globeEl.style.display = 'none';
+        flatEl.style.display = 'block';
+        setMapLoading(true, 'Initializing Software Globe');
+        requestAnimationFrame(() => {
+          if(!flatSvg) initFlatMap('globe');
+          else { flatG.selectAll('*').remove(); drawFlatMap('globe'); }
+          setMapLoading(false);
+        });
+        return;
       }
+      requestAnimationFrame(() => {
+        try {
+          initGlobe();
+          if(globe && typeof globe.resumeAnimation === 'function') globe.resumeAnimation();
+          globeEl.style.display = 'block';
+          setMapLoading(false);
+        } catch {
+          markGlobeUnavailable('WEBGL UNAVAILABLE · SOFTWARE GLOBE ACTIVE');
+        }
+      });
+    }).catch(() => {
+      markGlobeUnavailable('3D LIB LOAD FAILED · SOFTWARE GLOBE ACTIVE');
     });
   }
 }
