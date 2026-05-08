@@ -5,6 +5,7 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 ## Candidate backlog items
 
 - Evaluate NDJSON or SQLite-backed social-lead history once operator-driven X intake grows beyond the bounded JSON store used in the first intake slice, so audit depth and query flexibility improve without overloading a single recent-state file.
+- Add an explicit social-leads policy artifact and endpoint before enabling browser-assisted X retrieval, so operator-visible guardrails, request budgets, and audit trails exist before any real browser-backed X collection runs.
 
 Recent promotions:
 - Social-lead intake, verification, and LLM-hardening roadmap for integrating high-value social-media claims into Crucix was promoted into `local-fork/plan.json` as `epic-72` through `epic-77` on 2026-05-08, then refined the same day so `epic-72` became an explicit first-class X acquisition strategy covering bounded retrieval tiers, provider-guardrail policy, and formal API decision gates. Supporting docs live in `docs/social-leads-llm-pipeline-design.md` and `local-fork/artifacts/2026-05-08-social-leads-backlog.md`.

@@ -39,10 +39,28 @@ test('createSocialLead preserves immutable raw evidence alongside normalized con
   assert.equal(lead.source.platform, 'x');
   assert.equal(lead.source.capturedAt, '2026-05-08T16:00:00Z');
   assert.equal(lead.source.acquisitionTier, 'manual-text');
+  assert.equal(lead.source.requestedAcquisitionTier, 'manual-text');
+  assert.equal(lead.source.acquisitionDetail.retrievalStatus, 'provided-by-operator');
   assert.equal(lead.rawEvidence.rawText, 'US struck Bandar Abbas');
   assert.deepEqual(lead.rawEvidence.quotedThreadText, ['Source says vessels were hit']);
   assert.match(lead.content.normalizedText, /US struck Bandar Abbas/);
   assert.match(lead.content.normalizedText, /Source says vessels were hit/);
+});
+
+test('createSocialLead allows URL-only placeholder capture when a higher retrieval tier degrades gracefully', () => {
+  const lead = createSocialLead({
+    platform: 'x',
+    postUrl: 'https://x.com/example/status/3',
+    acquisitionTier: 'public-fetch',
+    authorHandle: 'gamma',
+  });
+
+  assert.equal(lead.status, 'captured-with-manual-gap');
+  assert.equal(lead.source.acquisitionTier, 'manual-url');
+  assert.equal(lead.source.requestedAcquisitionTier, 'public-fetch');
+  assert.equal(lead.source.acquisitionDetail.retrievalStatus, 'manual-evidence-required');
+  assert.equal(lead.rawEvidence.rawText, null);
+  assert.match(lead.source.acquisitionDetail.nextAction, /Provide pasted post text/);
 });
 
 test('social lead store persists leads and returns bounded contract summaries', () => {
@@ -72,4 +90,6 @@ test('social lead store persists leads and returns bounded contract summaries', 
   assert.equal(contract.endpoint, '/api/social-leads');
   assert.equal(contract.intakeEndpoint, '/api/social-leads/intake');
   assert.deepEqual(contract.capabilities.firstClassPlatforms, ['x']);
+  assert.equal(contract.capabilities.acceptedAcquisitionTiers.includes('public-fetch'), true);
+  assert.equal(contract.capabilities.acquisitionCapabilities.publicFetch, false);
 });

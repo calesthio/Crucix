@@ -89,6 +89,7 @@ test('social lead endpoints accept bounded X intake and expose stored leads', as
     const dataBefore = await waitFor(dataUrl, payload => payload?.socialLeads?.version === 'social-leads-contract-v1', 30000);
     assert.equal(dataBefore.socialLeads.totalLeads, 0);
     assert.equal(dataBefore.socialLeads.capabilities.firstClassPlatforms.includes('x'), true);
+    assert.equal(dataBefore.socialLeads.capabilities.acceptedAcquisitionTiers.includes('browser-assisted'), true);
 
     const intake = await fetchJson(intakeUrl, {
       method: 'POST',
@@ -126,7 +127,27 @@ test('social lead endpoints accept bounded X intake and expose stored leads', as
     assert.equal(detail.body.lead.leadId, leads.leads[0].leadId);
     assert.equal(detail.body.lead.content.citedUrls[0], 'https://www.nbcnews.com/example');
 
-    const dataAfter = await waitFor(dataUrl, payload => payload?.socialLeads?.totalLeads >= 1, 30000);
-    assert.equal(dataAfter.socialLeads.totalLeads >= 1, true);
+    const degradedIntake = await fetchJson(intakeUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Crucix-Local-Admin-Nonce': adminWriteToken,
+      },
+      body: JSON.stringify({
+        platform: 'x',
+        postUrl: 'https://x.com/example/status/2052512609719423372',
+        authorHandle: 'gapcase',
+        acquisitionTier: 'public-fetch',
+        localAdminNonce: adminWriteToken,
+      }),
+    });
+    assert.equal(degradedIntake.status, 201);
+    assert.equal(degradedIntake.body.ok, true);
+    assert.equal(degradedIntake.body.lead.status, 'captured-with-manual-gap');
+    assert.equal(degradedIntake.body.lead.source.requestedAcquisitionTier, 'public-fetch');
+    assert.equal(degradedIntake.body.lead.source.acquisitionDetail.retrievalStatus, 'manual-evidence-required');
+
+    const dataAfter = await waitFor(dataUrl, payload => payload?.socialLeads?.totalLeads >= 2, 30000);
+    assert.equal(dataAfter.socialLeads.totalLeads >= 2, true);
   });
 });

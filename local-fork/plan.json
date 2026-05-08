@@ -1477,7 +1477,7 @@
           {
             "id": "effort-72.2",
             "title": "Implement an X acquisition ladder covering manual URL or text intake, bounded public retrieval, bounded logged-in browser retrieval, and future formal API readiness with explicit graceful degradation",
-            "status": "pending"
+            "status": "completed"
           },
           {
             "id": "effort-72.3",
@@ -1609,9 +1609,9 @@
     ]
   },
   "cycleState": {
-    "sequence": 191,
+    "sequence": 192,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-05-08-cycle-191"
+    "lastCompletedCycleId": "2026-05-08-cycle-192"
   },
   "backlog": [
     {
@@ -1643,6 +1643,12 @@
       "title": "Move social-lead persistence from the initial bounded JSON store toward NDJSON or SQLite history once X intake volume grows enough that operator audit and query needs exceed simple recent-lead snapshots",
       "status": "pending",
       "notes": "Identified during cycle 191 while shipping effort-72.1. The first slice uses a simple file-backed JSON store for speed and reliability, but higher sustained intake will likely want append-oriented history plus bounded query surfaces."
+    },
+    {
+      "id": "backlog-72-c",
+      "title": "Add an explicit social-leads policy artifact and endpoint before enabling browser-assisted X retrieval so operator-visible guardrails, budgets, and audit trails exist before any real browser-backed collection runs",
+      "status": "pending",
+      "notes": "Identified during cycle 192 while shipping the acquisition ladder contract. The code now records graceful degradation and acquisition capabilities, but browser-assisted retrieval should not be enabled until the policy surface and audit controls from effort-72.3 exist."
     }
   ]
 }
