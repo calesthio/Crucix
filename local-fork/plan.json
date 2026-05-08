@@ -1463,13 +1463,155 @@
             "status": "completed"
           }
         ]
+      },
+      {
+        "id": "epic-72",
+        "title": "X acquisition strategy, intake, and normalization",
+        "status": "in_progress",
+        "efforts": [
+          {
+            "id": "effort-72.1",
+            "title": "Add a bounded first-class X lead intake contract for URLs, pasted posts, quoted threads, screenshots with operator context, and immutable raw-evidence capture",
+            "status": "completed"
+          },
+          {
+            "id": "effort-72.2",
+            "title": "Implement an X acquisition ladder covering manual URL or text intake, bounded public retrieval, bounded logged-in browser retrieval, and future formal API readiness with explicit graceful degradation",
+            "status": "pending"
+          },
+          {
+            "id": "effort-72.3",
+            "title": "Add an explicit X provider-guardrail policy that forbids broad crawling and unattended browser scraping while enforcing rate limits, dedupe, and backoff",
+            "status": "pending"
+          },
+          {
+            "id": "effort-72.4",
+            "title": "Normalize X and other social inputs into one canonical lead envelope with acquisition metadata, thread context, citations, media refs, and safety fields",
+            "status": "pending"
+          },
+          {
+            "id": "effort-72.5",
+            "title": "Define concrete decision gates for when Crucix should remain on manual or browser-assisted X retrieval versus adopt formal account-backed or paid API access",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-73",
+        "title": "Claim extraction, rhetoric stripping, and provenance scoring",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-73.1",
+            "title": "Split dramatic social posts into atomic factual claims with actor, action, target, place, time window, and text-span anchors back to source content",
+            "status": "pending"
+          },
+          {
+            "id": "effort-73.2",
+            "title": "Resolve cited sources and repost chains so claims record firsthand, cited, derivative, commentary, or unknown provenance explicitly",
+            "status": "pending"
+          },
+          {
+            "id": "effort-73.3",
+            "title": "Add bounded source-reputation heuristics for reach, originality, repost distance, prior corrections, and operator-adjustable trust caveats",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-74",
+        "title": "Verification fanout and evidence fusion for social claims",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-74.1",
+            "title": "Fan out each atomic social claim against existing Crucix evidence and return corroborated, partially supported, contradicted, unverified, or stale-evidence-limited outcomes with references",
+            "status": "pending"
+          },
+          {
+            "id": "effort-74.2",
+            "title": "Normalize claimed geography and timing into bounded geo-time entities so region-aware and time-window-aware corroboration checks stay honest",
+            "status": "pending"
+          },
+          {
+            "id": "effort-74.3",
+            "title": "Fuse supporting, missing, and contradictory evidence into claim-level and narrative-level confidence outputs that cannot be inflated by repeated social agreement alone",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-75",
+        "title": "LLM-assisted social analysis with prompt-injection hardening",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-75.1",
+            "title": "Use LLMs only for bounded structured tasks such as claim extraction, rhetoric stripping, contradiction synopsis, and review-priority rationale with strict JSON validation and fallback",
+            "status": "pending"
+          },
+          {
+            "id": "effort-75.2",
+            "title": "Add a content-firewall layer that treats social text as inert untrusted data, flags prompt-injection attempts, and blocks tool-use or policy-override behavior inside the LLM path",
+            "status": "pending"
+          },
+          {
+            "id": "effort-75.3",
+            "title": "Expose operator-reviewable policy and configuration controls for LLM task enablement, thresholds, suspicious-pattern actions, repair attempts, and audit logging",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-76",
+        "title": "Operator workflow, brief integration, and audit for social leads",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-76.1",
+            "title": "Add a social-leads review queue with bounded actions such as watch, suppress, quarantine, mark corroborated, mark false, and include in brief",
+            "status": "pending"
+          },
+          {
+            "id": "effort-76.2",
+            "title": "Integrate social-lead outputs into operator briefs and alerts with explicit caveats so social-only claims never silently contaminate top-line confirmed reporting",
+            "status": "pending"
+          },
+          {
+            "id": "effort-76.3",
+            "title": "Persist operator overrides, post-hoc truth outcomes, and reversible audit history so social scoring can improve without mutating raw evidence",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-77",
+        "title": "Validation harness and rollout safety for social-lead workflows",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-77.1",
+            "title": "Add contract and fixture coverage for social-lead schemas, extraction outputs, verification results, and review workflow actions",
+            "status": "pending"
+          },
+          {
+            "id": "effort-77.2",
+            "title": "Add security regression fixtures for prompt injection, tool-use bait, oversized content, Unicode spoofing, malformed citations, and hostile markup payloads",
+            "status": "pending"
+          },
+          {
+            "id": "effort-77.3",
+            "title": "Roll out the social-lead pipeline behind observe-only and caveated-brief gates before any alert-level promotion",
+            "status": "pending"
+          }
+        ]
       }
     ]
   },
   "cycleState": {
-    "sequence": 190,
+    "sequence": 191,
     "activeCycleId": null,
-    "lastCompletedCycleId": "2026-05-05-cycle-190"
+    "lastCompletedCycleId": "2026-05-08-cycle-191"
   },
   "backlog": [
     {
@@ -1489,6 +1631,18 @@
       "title": "Add bounded stage-level timing or timeout instrumentation around startup sweep synthesis and publish handoff so hangs after fullBriefing are attributable before watchdog recovery",
       "status": "pending",
       "notes": "Cycle 182 live validation showed the restarted runtime remained in phase `synthesis` with stale `/api/data` while `lastSweep` advanced, which suggests a deeper startup-sweep hang and misleading last-success semantics rather than only a post-publish retained gate."
+    },
+    {
+      "id": "backlog-72-a",
+      "title": "Formalized social-lead intake, verification, and LLM-hardening roadmap for integrating high-value social-media claims into Crucix without turning social chatter into top-line truth",
+      "status": "promoted",
+      "notes": "Planned on 2026-05-08 and scheduled into epic-72 through epic-77 with supporting design docs under docs/social-leads-llm-pipeline-design.md and local-fork/artifacts/2026-05-08-social-leads-backlog.md."
+    },
+    {
+      "id": "backlog-72-b",
+      "title": "Move social-lead persistence from the initial bounded JSON store toward NDJSON or SQLite history once X intake volume grows enough that operator audit and query needs exceed simple recent-lead snapshots",
+      "status": "pending",
+      "notes": "Identified during cycle 191 while shipping effort-72.1. The first slice uses a simple file-backed JSON store for speed and reliability, but higher sustained intake will likely want append-oriented history plus bounded query surfaces."
     }
   ]
 }

@@ -22,6 +22,7 @@ import { buildSixHourBaseline } from './lib/baseline-sixhour.mjs';
 import { getFreshnessPolicy } from './lib/freshness-policy.mjs';
 import { buildSourceOpsSurface } from './lib/source-ops-runtime.mjs';
 import { appendRuntimeRestartAudit } from './lib/runtime-restart.mjs';
+import { createSocialLeadStore } from './lib/social-leads/store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -124,6 +125,7 @@ const reviewWorkflowAudit = loadReviewWorkflowAudit();
 const sourceControlAudit = loadSourceControlAudit();
 const clusterRepairActions = loadClusterRepairActions();
 const noiseSuppressionHistory = loadNoiseSuppressionHistory();
+const socialLeadStore = createSocialLeadStore({ rootDir: RUNS_DIR });
 const sweepWatchdogTelemetry = {
   recoveryCount: 0,
   lastRecoveryAt: null,
@@ -6484,6 +6486,7 @@ app.get('/api/data', async (req, res) => {
   const criticalEventQueue = buildCriticalEventQueueContract(snapshot);
   const criticalEventRouting = buildCriticalEventRoutingContract(snapshot);
   const sdrCorroboration = buildSdrCorroborationContract(snapshot);
+  const socialLeads = socialLeadStore.buildContract();
   res.json({
     ...snapshot,
     llmState,
@@ -6492,6 +6495,7 @@ app.get('/api/data', async (req, res) => {
     criticalEventQueue,
     criticalEventRouting,
     sdrCorroboration,
+    socialLeads,
     reviewWorkflow: buildReviewWorkflowContract(snapshot, { queue: reviewQueue, review }),
     sourceInventory: sourceOps.inventory,
     sourceOps,
@@ -6852,6 +6856,37 @@ app.post('/api/runtime/control', requireDebugAccess, (req, res) => {
     });
     process.kill(process.pid, 'SIGTERM');
   }, 100);
+});
+
+app.get('/api/social-leads', requireDebugAccess, (req, res) => {
+  const requestedLimit = Number.parseInt(String(req.query?.limit || '25'), 10);
+  const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(requestedLimit, 100)) : 25;
+  const leads = socialLeadStore.list({ limit });
+  res.json({
+    ...socialLeadStore.buildContract(undefined, { limit: Math.min(limit, 10) }),
+    leads,
+  });
+});
+
+app.get('/api/social-leads/:leadId', requireDebugAccess, (req, res) => {
+  const leadId = String(req.params?.leadId || '').trim();
+  const lead = socialLeadStore.get(leadId);
+  if (!lead) return res.status(404).json({ ok: false, error: 'social-lead-not-found', leadId });
+  res.json({ ok: true, lead });
+});
+
+app.post('/api/social-leads/intake', requireDebugAccess, (req, res) => {
+  try {
+    assertLocalAdminWriteToken(req);
+  } catch (error) {
+    return res.status(Number(error?.statusCode) || 428).json(error?.payload || { ok: false, error: error.message || 'local-admin-write-token-required' });
+  }
+  try {
+    const result = socialLeadStore.intake(req.body || {});
+    res.status(201).json({ ok: true, lead: result.lead, socialLeads: result.summary });
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message || 'social-lead-intake-failed' });
+  }
 });
 
 app.get('/api/brief/compact', async (req, res) => {

@@ -4,9 +4,10 @@ This file tracks worthwhile follow-on work that is not yet scheduled into the ac
 
 ## Candidate backlog items
 
-None currently.
+- Evaluate NDJSON or SQLite-backed social-lead history once operator-driven X intake grows beyond the bounded JSON store used in the first intake slice, so audit depth and query flexibility improve without overloading a single recent-state file.
 
 Recent promotions:
+- Social-lead intake, verification, and LLM-hardening roadmap for integrating high-value social-media claims into Crucix was promoted into `local-fork/plan.json` as `epic-72` through `epic-77` on 2026-05-08, then refined the same day so `epic-72` became an explicit first-class X acquisition strategy covering bounded retrieval tiers, provider-guardrail policy, and formal API decision gates. Supporting docs live in `docs/social-leads-llm-pipeline-design.md` and `local-fork/artifacts/2026-05-08-social-leads-backlog.md`.
 - Noise-suppression pressure alert acknowledge/snooze controls plus recent audit visibility was promoted into `local-fork/plan.json` as Epic 29, effort 29.9 on 2026-04-26.
 - SQLite runtime-history diagnostics or export visibility was promoted into `local-fork/plan.json` as Epic 33, effort 33.7 on 2026-04-26.
 - Deployment-packaging follow-on work such as checked example `launchd` or `systemd` service definitions plus restart-policy guidance was promoted into `local-fork/plan.json` as Epic 33, effort 33.6 on 2026-04-26.
