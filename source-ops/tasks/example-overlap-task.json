@@ -1,0 +1,26 @@
+{
+  "version": "source-ops-task-v1",
+  "taskId": "example-overlap-maritime-001",
+  "role": "overlap",
+  "objective": "Measure duplication risk and incremental corroboration value for a candidate maritime source.",
+  "scope": {
+    "targetCategory": "maritime",
+    "targetRegions": ["global"],
+    "mustCompareAgainst": ["Maritime", "OpenSky", "GDELT", "NOAA"]
+  },
+  "io": {
+    "registryPath": "source-ops/source-registry.seed.json",
+    "outputPath": "source-ops/results/overlap/example-overlap-maritime-001.json"
+  },
+  "overlap": {
+    "schemaPath": "source-ops/schemas/overlap-assessment.schema.json",
+    "rubricPath": "source-ops/overlap-rubric.json"
+  },
+  "policy": {
+    "contractMode": "file-first",
+    "productionMutationsAllowed": false,
+    "activePromotionRequiresHumanApproval": true,
+    "preProductionAutoAdvanceMax": "shadow",
+    "lifecycleTransitionPolicyPath": "source-ops/lifecycle-transition-policy.json"
+  }
+}

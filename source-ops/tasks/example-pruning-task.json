@@ -1,0 +1,26 @@
+{
+  "version": "source-ops-task-v1",
+  "taskId": "example-pruning-social-001",
+  "role": "pruning",
+  "objective": "Review a noisy social-source cohort and recommend bounded downgrade, deprecation, or retention actions.",
+  "scope": {
+    "targetCategory": "social",
+    "targetRegions": ["global"],
+    "mustCompareAgainst": ["Twitter", "Bluesky", "GDELT"]
+  },
+  "io": {
+    "registryPath": "source-ops/source-registry.seed.json",
+    "outputPath": "source-ops/results/pruning/example-pruning-social-001.json"
+  },
+  "pruning": {
+    "schemaPath": "source-ops/schemas/pruning-assessment.schema.json",
+    "rubricPath": "source-ops/pruning-rubric.json"
+  },
+  "policy": {
+    "contractMode": "file-first",
+    "productionMutationsAllowed": false,
+    "activePromotionRequiresHumanApproval": true,
+    "preProductionAutoAdvanceMax": "shadow",
+    "lifecycleTransitionPolicyPath": "source-ops/lifecycle-transition-policy.json"
+  }
+}

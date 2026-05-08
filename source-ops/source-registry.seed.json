@@ -1,0 +1,801 @@
+{
+  "version": "source-registry-v1",
+  "generatedAt": "2026-04-25T17:35:00Z",
+  "sources": [
+    {
+      "id": "acled",
+      "name": "ACLED",
+      "module": "apis/sources/acled.mjs",
+      "category": "conflict",
+      "trustClass": "high",
+      "evidenceMode": "curated-database",
+      "freshnessTargetMinutes": 1440,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "ACLED",
+          "conflict"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "ads-b",
+      "name": "ADS-B",
+      "module": "apis/sources/adsb.mjs",
+      "category": "air",
+      "trustClass": "medium",
+      "evidenceMode": "live-sensor",
+      "freshnessTargetMinutes": 20,
+      "lifecycle": "active",
+      "operatorRole": "corroborator",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "ADS-B",
+          "air"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "bls",
+      "name": "BLS",
+      "module": "apis/sources/bls.mjs",
+      "category": "macro",
+      "trustClass": "high",
+      "evidenceMode": "official-api",
+      "freshnessTargetMinutes": 4320,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "BLS",
+          "macro"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "bluesky",
+      "name": "Bluesky",
+      "module": "apis/sources/bluesky.mjs",
+      "category": "social",
+      "trustClass": "low",
+      "evidenceMode": "social",
+      "freshnessTargetMinutes": 60,
+      "lifecycle": "active",
+      "operatorRole": "exploratory",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Bluesky",
+          "social"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "cisa-kev",
+      "name": "CISA-KEV",
+      "module": "apis/sources/cisa-kev.mjs",
+      "category": "cyber",
+      "trustClass": "high",
+      "evidenceMode": "official-feed",
+      "freshnessTargetMinutes": 1440,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "CISA-KEV",
+          "cyber"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "cloudflare-radar",
+      "name": "Cloudflare-Radar",
+      "module": "apis/sources/cloudflare-radar.mjs",
+      "category": "internet",
+      "trustClass": "high",
+      "evidenceMode": "provider-telemetry",
+      "freshnessTargetMinutes": 60,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Cloudflare-Radar",
+          "internet"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "comtrade",
+      "name": "Comtrade",
+      "module": "apis/sources/comtrade.mjs",
+      "category": "trade",
+      "trustClass": "high",
+      "evidenceMode": "official-api",
+      "freshnessTargetMinutes": 10080,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Comtrade",
+          "trade"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "eia",
+      "name": "EIA",
+      "module": "apis/sources/eia.mjs",
+      "category": "energy",
+      "trustClass": "high",
+      "evidenceMode": "official-api",
+      "freshnessTargetMinutes": 1440,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "EIA",
+          "energy"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "epa",
+      "name": "EPA",
+      "module": "apis/sources/epa.mjs",
+      "category": "environment",
+      "trustClass": "high",
+      "evidenceMode": "official-sensor",
+      "freshnessTargetMinutes": 180,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "EPA",
+          "environment"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "firms",
+      "name": "FIRMS",
+      "module": "apis/sources/firms.mjs",
+      "category": "thermal",
+      "trustClass": "high",
+      "evidenceMode": "satellite",
+      "freshnessTargetMinutes": 30,
+      "lifecycle": "active",
+      "operatorRole": "anomaly-detector",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "FIRMS",
+          "thermal"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "fred",
+      "name": "FRED",
+      "module": "apis/sources/fred.mjs",
+      "category": "macro",
+      "trustClass": "high",
+      "evidenceMode": "official-api",
+      "freshnessTargetMinutes": 1440,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "FRED",
+          "macro"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "gdelt",
+      "name": "GDELT",
+      "module": "apis/sources/gdelt.mjs",
+      "category": "news",
+      "trustClass": "medium",
+      "evidenceMode": "event-database",
+      "freshnessTargetMinutes": 30,
+      "lifecycle": "active",
+      "operatorRole": "corroborator",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "expected-multi-publisher",
+        "attributionAliases": [
+          "GDELT",
+          "RSS",
+          "news"
+        ],
+        "rationale": "Aggregates many upstream publishers into one runtime attribution bucket by design."
+      }
+    },
+    {
+      "id": "gscpi",
+      "name": "GSCPI",
+      "module": "apis/sources/gscpi.mjs",
+      "category": "macro",
+      "trustClass": "high",
+      "evidenceMode": "official-dataset",
+      "freshnessTargetMinutes": 10080,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "GSCPI",
+          "macro"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "kiwisdr",
+      "name": "KiwiSDR",
+      "module": "apis/sources/kiwisdr.mjs",
+      "category": "sdr",
+      "trustClass": "medium",
+      "evidenceMode": "sensor-network",
+      "freshnessTargetMinutes": 180,
+      "lifecycle": "active",
+      "operatorRole": "corroborator",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "KiwiSDR",
+          "sdr"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "maritime",
+      "name": "Maritime",
+      "module": "apis/sources/ships.mjs",
+      "category": "maritime",
+      "trustClass": "medium",
+      "evidenceMode": "derived-osint",
+      "freshnessTargetMinutes": 60,
+      "lifecycle": "active",
+      "operatorRole": "context",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Maritime",
+          "maritime"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "noaa",
+      "name": "NOAA",
+      "module": "apis/sources/noaa.mjs",
+      "category": "weather",
+      "trustClass": "high",
+      "evidenceMode": "official-alerts",
+      "freshnessTargetMinutes": 60,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "NOAA",
+          "weather"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "ofac",
+      "name": "OFAC",
+      "module": "apis/sources/ofac.mjs",
+      "category": "sanctions",
+      "trustClass": "high",
+      "evidenceMode": "official-feed",
+      "freshnessTargetMinutes": 1440,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "OFAC",
+          "sanctions"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "opensanctions",
+      "name": "OpenSanctions",
+      "module": "apis/sources/opensanctions.mjs",
+      "category": "sanctions",
+      "trustClass": "high",
+      "evidenceMode": "curated-database",
+      "freshnessTargetMinutes": 1440,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "OpenSanctions",
+          "sanctions"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "opensky",
+      "name": "OpenSky",
+      "module": "apis/sources/opensky.mjs",
+      "category": "air",
+      "trustClass": "high",
+      "evidenceMode": "live-sensor",
+      "freshnessTargetMinutes": 20,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "OpenSky",
+          "air"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "patents",
+      "name": "Patents",
+      "module": "apis/sources/patents.mjs",
+      "category": "technology",
+      "trustClass": "high",
+      "evidenceMode": "official-api",
+      "freshnessTargetMinutes": 10080,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Patents",
+          "technology"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "reddit",
+      "name": "Reddit",
+      "module": "apis/sources/reddit.mjs",
+      "category": "social",
+      "trustClass": "low",
+      "evidenceMode": "social",
+      "freshnessTargetMinutes": 60,
+      "lifecycle": "active",
+      "operatorRole": "exploratory",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Reddit",
+          "social"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "reliefweb",
+      "name": "ReliefWeb",
+      "module": "apis/sources/reliefweb.mjs",
+      "category": "humanitarian",
+      "trustClass": "high",
+      "evidenceMode": "curated-feed",
+      "freshnessTargetMinutes": 180,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "ReliefWeb",
+          "humanitarian"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "safecast",
+      "name": "Safecast",
+      "module": "apis/sources/safecast.mjs",
+      "category": "radiation",
+      "trustClass": "medium",
+      "evidenceMode": "sensor-network",
+      "freshnessTargetMinutes": 180,
+      "lifecycle": "active",
+      "operatorRole": "corroborator",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Safecast",
+          "radiation"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "space",
+      "name": "Space",
+      "module": "apis/sources/space.mjs",
+      "category": "space",
+      "trustClass": "medium",
+      "evidenceMode": "space-track",
+      "freshnessTargetMinutes": 360,
+      "lifecycle": "active",
+      "operatorRole": "corroborator",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Space",
+          "space"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "telegram",
+      "name": "Telegram",
+      "module": "apis/sources/telegram.mjs",
+      "category": "social",
+      "trustClass": "low",
+      "evidenceMode": "social",
+      "freshnessTargetMinutes": 30,
+      "lifecycle": "active",
+      "operatorRole": "exploratory",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Telegram",
+          "social"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "treasury",
+      "name": "Treasury",
+      "module": "apis/sources/treasury.mjs",
+      "category": "macro",
+      "trustClass": "high",
+      "evidenceMode": "official-api",
+      "freshnessTargetMinutes": 1440,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Treasury",
+          "macro"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "usaspending",
+      "name": "USAspending",
+      "module": "apis/sources/usaspending.mjs",
+      "category": "procurement",
+      "trustClass": "high",
+      "evidenceMode": "official-api",
+      "freshnessTargetMinutes": 10080,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "USAspending",
+          "procurement"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "who",
+      "name": "WHO",
+      "module": "apis/sources/who.mjs",
+      "category": "health",
+      "trustClass": "high",
+      "evidenceMode": "official-feed",
+      "freshnessTargetMinutes": 360,
+      "lifecycle": "active",
+      "operatorRole": "anchor",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "WHO",
+          "health"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "yfinance",
+      "name": "YFinance",
+      "module": "apis/sources/yfinance.mjs",
+      "category": "markets",
+      "trustClass": "medium",
+      "evidenceMode": "market-feed",
+      "freshnessTargetMinutes": 20,
+      "lifecycle": "active",
+      "operatorRole": "corroborator",
+      "enabledByDefault": true,
+      "review": {
+        "status": "seeded-from-runtime-policy",
+        "provenance": "DEFAULT_SOURCE_POLICY",
+        "lastReviewedAt": null,
+        "notes": "Seeded from current Crucix runtime source policy; pending richer source-ops review."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "YFinance",
+          "markets"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    },
+    {
+      "id": "candidate-maritime-example-001",
+      "name": "Candidate Maritime Example",
+      "module": "source-ops/candidates/candidate-maritime-example-001",
+      "category": "maritime",
+      "trustClass": "medium",
+      "evidenceMode": "structured-feed",
+      "freshnessTargetMinutes": 60,
+      "lifecycle": "shadow",
+      "operatorRole": "corroborator",
+      "enabledByDefault": false,
+      "review": {
+        "status": "agent-reviewed",
+        "provenance": "source-ops/results/grading/example-grading-scorecard.json + source-ops/results/overlap/example-overlap-maritime-001.json",
+        "lastReviewedAt": "2026-04-25T16:15:00Z",
+        "notes": "Example shadow candidate retained in source-ops only. It must not influence production operator output before human approval."
+      },
+      "shadow": {
+        "productionInfluenceBlocked": true,
+        "observationMode": "source-ops-only",
+        "scorecardRef": "source-ops/results/grading/example-grading-scorecard.json",
+        "overlapRef": "source-ops/results/overlap/example-overlap-maritime-001.json",
+        "lastObservedAt": null,
+        "promotionReadiness": "shadow-ready",
+        "eligibleNextStates": [
+          "approved",
+          "rejected",
+          "deprecated"
+        ],
+        "notes": "Shadow candidate is visible only through source-ops runtime surfaces and remains excluded from production source policy."
+      },
+      "runtimeBucket": {
+        "kind": "single-publisher",
+        "attributionAliases": [
+          "Candidate Maritime Example",
+          "maritime"
+        ],
+        "rationale": "Runtime attribution is expected to represent one named source rather than a publisher bucket."
+      }
+    }
+  ]
+}

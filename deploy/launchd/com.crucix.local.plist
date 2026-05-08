@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.crucix.local</string>
+
+    <key>WorkingDirectory</key>
+    <string>/opt/crucix</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/usr/bin/env</string>
+      <string>node</string>
+      <string>server.mjs</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>NODE_ENV</key>
+      <string>production</string>
+      <key>CRUCIX_AUTO_OPEN_BROWSER</key>
+      <string>0</string>
+      <key>PORT</key>
+      <string>3117</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+      <key>SuccessfulExit</key>
+      <false/>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>/opt/crucix/logs/launchd.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/opt/crucix/logs/launchd.stderr.log</string>
+  </dict>
+</plist>

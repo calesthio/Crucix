@@ -1,0 +1,269 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "crucix/source-registry.schema.json",
+  "title": "Crucix Source Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "generatedAt",
+    "sources"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "source-registry-v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "module",
+          "category",
+          "trustClass",
+          "evidenceMode",
+          "freshnessTargetMinutes",
+          "lifecycle",
+          "operatorRole",
+          "enabledByDefault",
+          "runtimeBucket",
+          "review"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "module": {
+            "type": "string",
+            "minLength": 1
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "air",
+              "conflict",
+              "cyber",
+              "energy",
+              "environment",
+              "health",
+              "humanitarian",
+              "internet",
+              "macro",
+              "maritime",
+              "markets",
+              "news",
+              "procurement",
+              "radiation",
+              "sanctions",
+              "sdr",
+              "social",
+              "space",
+              "technology",
+              "thermal",
+              "trade",
+              "weather",
+              "other"
+            ]
+          },
+          "trustClass": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "unknown"
+            ]
+          },
+          "evidenceMode": {
+            "type": "string",
+            "minLength": 1
+          },
+          "freshnessTargetMinutes": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": [
+              "candidate",
+              "researched",
+              "graded",
+              "shadow",
+              "approved",
+              "active",
+              "degraded",
+              "deprecated",
+              "rejected"
+            ]
+          },
+          "operatorRole": {
+            "type": "string",
+            "enum": [
+              "anchor",
+              "corroborator",
+              "anomaly-detector",
+              "context",
+              "exploratory"
+            ]
+          },
+          "enabledByDefault": {
+            "type": "boolean"
+          },
+          "review": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status",
+              "provenance"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "seeded-from-runtime-policy",
+                  "agent-reviewed",
+                  "human-reviewed",
+                  "approved-for-promotion",
+                  "rejected"
+                ]
+              },
+              "provenance": {
+                "type": "string",
+                "minLength": 1
+              },
+              "lastReviewedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "notes": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "shadow": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "productionInfluenceBlocked",
+              "observationMode",
+              "scorecardRef",
+              "overlapRef"
+            ],
+            "properties": {
+              "productionInfluenceBlocked": {
+                "type": "boolean",
+                "const": true
+              },
+              "observationMode": {
+                "type": "string",
+                "enum": [
+                  "source-ops-only",
+                  "offline-compare",
+                  "shadow-compare"
+                ]
+              },
+              "scorecardRef": {
+                "type": "string",
+                "minLength": 1
+              },
+              "overlapRef": {
+                "type": "string",
+                "minLength": 1
+              },
+              "lastObservedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "promotionReadiness": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "not-ready",
+                  "research-needed",
+                  "shadow-ready",
+                  "human-review-required",
+                  null
+                ]
+              },
+              "eligibleNextStates": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "approved",
+                    "rejected",
+                    "deprecated"
+                  ]
+                }
+              },
+              "notes": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "runtimeBucket": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "attributionAliases",
+              "rationale"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "single-publisher",
+                  "expected-multi-publisher"
+                ]
+              },
+              "attributionAliases": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "rationale": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

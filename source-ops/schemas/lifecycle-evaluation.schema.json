@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "crucix/source-ops/lifecycle-evaluation.schema.json",
+  "title": "Crucix Source Lifecycle Evaluation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "candidateId",
+    "generatedAt",
+    "currentState",
+    "promotionReadiness",
+    "allowedNextStates",
+    "agentMayAdvanceCurrentState",
+    "unmetRequirements",
+    "nextAllowedState",
+    "recommendedAction",
+    "blocked",
+    "blockedReasons"
+  ],
+  "properties": {
+    "version": { "type": "string", "const": "source-lifecycle-evaluation-v1" },
+    "candidateId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "currentState": { "type": "string", "minLength": 1 },
+    "promotionReadiness": { "type": ["string", "null"] },
+    "allowedNextStates": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "agentMayAdvanceCurrentState": { "type": "boolean" },
+    "unmetRequirements": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "nextAllowedState": { "type": ["string", "null"] },
+    "recommendedAction": { "type": "string", "enum": ["human-review", "approve", "deprecate", "reject", "shadow", "grade", "research", "block"] },
+    "blocked": { "type": "boolean" },
+    "blockedReasons": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  }
+}

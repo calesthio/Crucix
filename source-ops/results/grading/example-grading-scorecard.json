@@ -1,0 +1,61 @@
+{
+  "version": "source-scorecard-v1",
+  "candidateId": "candidate-maritime-example-001",
+  "generatedAt": "2026-04-25T13:45:00Z",
+  "summary": "Candidate maritime source appears promising for coverage expansion, but still needs human review of integration burden before shadowing.",
+  "dimensionScores": [
+    {
+      "dimension": "source-reliability",
+      "score": 4,
+      "weight": 0.25,
+      "weightedScore": 1.0,
+      "reasoning": "Publisher appears stable with a documented update model and consistent access path.",
+      "evidence": ["documented feed cadence", "stable publisher identity"]
+    },
+    {
+      "dimension": "coverage-fit",
+      "score": 5,
+      "weight": 0.2,
+      "weightedScore": 1.0,
+      "reasoning": "Directly addresses the current maritime coverage gap called out in runtime needs.",
+      "evidence": ["runtime-needs gap-maritime-coverage"]
+    },
+    {
+      "dimension": "corroboration-value",
+      "score": 4,
+      "weight": 0.2,
+      "weightedScore": 0.8,
+      "reasoning": "Adds an independent maritime view rather than reusing the exact same upstream evidence path.",
+      "evidence": ["independent collection path"]
+    },
+    {
+      "dimension": "noise-discipline",
+      "score": 3,
+      "weight": 0.15,
+      "weightedScore": 0.45,
+      "reasoning": "Structured output exists, but filtering quality still needs closer validation against false positives.",
+      "evidence": ["structured fields present", "filter quality not yet proven"]
+    },
+    {
+      "dimension": "integration-cost",
+      "score": 3,
+      "weight": 0.1,
+      "weightedScore": 0.3,
+      "reasoning": "Integration looks feasible, though auth and maintenance details are not fully resolved yet.",
+      "evidence": ["partial docs", "auth review pending"]
+    },
+    {
+      "dimension": "llm-utility",
+      "score": 4,
+      "weight": 0.1,
+      "weightedScore": 0.4,
+      "reasoning": "Metadata appears rich enough to support later clustering and operator explanation paths.",
+      "evidence": ["location fields", "entity metadata"]
+    }
+  ],
+  "weightedTotal": 3.95,
+  "recommendation": "shadow",
+  "promotionReadiness": "shadow-ready",
+  "blockingIssues": ["Confirm authentication and usage terms before onboarding preparation."],
+  "confidence": "medium"
+}

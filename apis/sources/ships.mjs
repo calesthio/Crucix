@@ -4,6 +4,9 @@
 
 import { safeFetch } from '../utils/fetch.mjs';
 
+const GDELT_DOC_API = 'https://api.gdeltproject.org/api/v2/doc/doc';
+const GOOGLE_NEWS_RSS = 'https://news.google.com/rss/search';
+
 // aisstream.io requires a WebSocket connection for real-time data
 // For briefing mode, we'll use snapshot-based approaches
 
@@ -23,9 +26,113 @@ const CHOKEPOINTS = {
   capeOfGoodHope: { label: 'Cape of Good Hope', lat: -34.4, lon: 18.5, note: 'Suez alternative' },
 };
 
+function decodeHtml(text = '') {
+  return text
+    .replace(/<!\[CDATA\[|\]\]>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
+}
+
+async function fetchShippingNewsViaGdelt(query, label) {
+  const url = new URL(GDELT_DOC_API);
+  url.searchParams.set('query', `${query} sourcecountry:US OR sourcecountry:GB OR sourcecountry:QA OR sourcecountry:AE`);
+  url.searchParams.set('mode', 'artlist');
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('maxrecords', '10');
+  url.searchParams.set('sort', 'DateDesc');
+  url.searchParams.set('timespan', '7days');
+
+  const res = await safeFetch(url.toString(), {
+    timeout: 12000,
+    retries: 0,
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!res || typeof res !== 'object' || Array.isArray(res) || !Array.isArray(res.articles)) return [];
+
+  return res.articles
+    .filter(article => article?.title)
+    .slice(0, 8)
+    .map(article => ({
+      title: decodeHtml(article.title || ''),
+      link: article.url || '',
+      pubDate: article.seendate || article.socialimage || '',
+      source: article.domain || label,
+      tone: article.semantics?.tone ?? null,
+    }));
+}
+
+async function fetchShippingNewsViaGoogle(query) {
+  const url = new URL(GOOGLE_NEWS_RSS);
+  url.searchParams.set('q', query);
+  url.searchParams.set('hl', 'en-US');
+  url.searchParams.set('gl', 'US');
+  url.searchParams.set('ceid', 'US:en');
+
+  const res = await safeFetch(url.toString(), { timeout: 12000, retries: 0, headers: { Accept: 'application/rss+xml, application/xml, text/xml' } });
+  const xml = res?.rawText || '';
+  if (!xml || xml.startsWith('HTTP ')) return [];
+
+  const items = [];
+  const regex = /<item>([\s\S]*?)<\/item>/g;
+  let match;
+  while ((match = regex.exec(xml)) !== null && items.length < 8) {
+    const block = match[1];
+    const title = decodeHtml(block.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || '');
+    const link = decodeHtml(block.match(/<link>([\s\S]*?)<\/link>/i)?.[1] || '');
+    const pubDate = decodeHtml(block.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1] || '');
+    if (title) items.push({ title, link, pubDate, source: 'Google News RSS' });
+  }
+  return items;
+}
+
+async function fetchShippingNews(query, label) {
+  const gdeltItems = await fetchShippingNewsViaGdelt(query, label);
+  if (gdeltItems.length) return { items: gdeltItems, source: 'GDELT' };
+
+  const googleItems = await fetchShippingNewsViaGoogle(query);
+  return { items: googleItems, source: googleItems.length ? 'Google News RSS' : 'none' };
+}
+
+function classifyDisruption(items, label, evidenceSource = 'unknown') {
+  const disruptionTerms = ['blockade', 'seizure', 'tanker', 'shipping', 'ship', 'vessel', 'port', 'strait', 'canal', 'diversion', 'reroute', 'rerouting', 'delay', 'detention', 'insurance'];
+  const disruptionItems = items.filter(item => disruptionTerms.some(term => item.title.toLowerCase().includes(term)));
+  return {
+    label,
+    evidenceSource,
+    itemCount: items.length,
+    disruptionCount: disruptionItems.length,
+    headlines: disruptionItems.slice(0, 4),
+    disrupted: disruptionItems.length >= 2,
+  };
+}
+
 // For non-realtime briefing, use web-searchable vessel data
 export async function briefing() {
   const hasKey = !!process.env.AISSTREAM_API_KEY;
+
+  const queries = {
+    straitOfHormuz: 'Strait of Hormuz shipping tanker blockade',
+    suezCanal: 'Suez Canal shipping disruption vessel reroute',
+    babElMandeb: 'Bab el-Mandeb Red Sea shipping disruption',
+    panamaCanal: 'Panama Canal shipping congestion vessel delay',
+    taiwanStrait: 'Taiwan Strait shipping disruption vessel',
+  };
+
+  const disruptionChecks = await Promise.all(
+    Object.entries(queries).map(async ([key, query]) => {
+      const { items, source } = await fetchShippingNews(query, CHOKEPOINTS[key]?.label || key);
+      return { key, ...classifyDisruption(items, CHOKEPOINTS[key]?.label || key, source) };
+    })
+  );
+
+  const disruptionSignals = disruptionChecks
+    .filter(check => check.disrupted)
+    .map(check => `Maritime disruption chatter around ${check.label}: ${check.disruptionCount} matching headlines`);
 
   return {
     source: 'Maritime/AIS',
@@ -35,6 +142,8 @@ export async function briefing() {
       ? 'AIS stream connected — use WebSocket listener for real-time data'
       : 'Set AISSTREAM_API_KEY for real-time global vessel tracking (free at aisstream.io)',
     chokepoints: CHOKEPOINTS,
+    disruptionChecks,
+    disruptionSignals,
     monitoringCapabilities: [
       'Dark ship detection (AIS transponder shutoffs)',
       'Sanctions evasion (ship-to-ship transfers)',
@@ -43,7 +152,7 @@ export async function briefing() {
       'Chokepoint traffic anomalies',
       'Oil tanker route changes',
     ],
-    hint: 'For now, I can use web search to check maritime news and shipping disruptions',
+    hint: 'GDELT-backed maritime disruption checks are active with Google RSS fallback; AIS key upgrades this to live vessel tracking.',
   };
 }
 

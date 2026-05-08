@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRUCIX LLM Operations</title>
+<link rel="stylesheet" href="/ops-shell.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="/ops-shell.js"></script>
+<script>
+{
+const { esc, row, renderCard, mountOpsShell } = window.CRUCIX_OPS_SHELL;
+const shell = mountOpsShell({
+  activeSurface: 'llm-ops',
+  kicker: 'Crucix LLM operations',
+  title: 'Provider health and fallback operations',
+  subtitle: 'This surface exposes the active model, provider posture, forced heuristic or forced LLM modes, fallback chains, and recent failure reasons without requiring direct file inspection.',
+  loadingText: 'Loading LLM operations…',
+  contentClass: 'grid',
+  actions: [{ label: 'Raw JSON', href: '/api/llm/operations', target: '_blank', rel: 'noreferrer' }],
+});
+function renderFailure(item){return `<div class="item"><strong>${esc(item.surface || 'surface')}</strong><div>${esc(item.reason || 'unknown')}</div>${item.detail ? `<div class="mini">${esc(item.detail)}</div>` : ''}</div>`;}
+function renderTelemetrySummary(label, telemetry){ if(!telemetry) return `<div class="item"><strong>${esc(label)}</strong><div>No telemetry available.</div></div>`; const cost = telemetry.cost?.available ? `$${Number(telemetry.cost.estimatedUsd || 0).toFixed(6)}` : 'unavailable'; return `<div class="item"><strong>${esc(label)}</strong><div>${esc(`calls ${telemetry.callCount || 0}, avg latency ${telemetry.avgLatencyMs ?? 'n/a'} ms, max latency ${telemetry.maxLatencyMs ?? 'n/a'} ms, tokens ${telemetry.usage?.totalTokens || 0}, cost ${cost}`)}</div><div class="mini">${esc(`completions ${JSON.stringify(telemetry.completions || {})}`)}</div></div>`; }
+function renderReasoningSummary(reasoning){ if(!reasoning) return '<div class="item">No reasoning summary available.</div>'; return `<div class="list"><div class="item"><strong>Source mix</strong><div>${esc(`total ${reasoning.totalSources || 0}, anchors ${reasoning.anchorCount || 0}, corroborators ${reasoning.corroboratorCount || 0}, anomaly detectors ${reasoning.anomalyDetectorCount || 0}, exploratory ${reasoning.exploratoryCount || 0}`)}</div></div><div class="item"><strong>Caution roles</strong><div>${esc((reasoning.cautionRoles || []).join(', ') || 'none')}</div></div>${Array.isArray(reasoning.groundingPriority) ? `<div class="item"><strong>Grounding priority</strong><div>${esc(reasoning.groundingPriority.join(' → ') || 'n/a')}</div></div>` : ''}</div>`; }
+async function boot(){
+  try {
+    const res = await fetch('/api/llm/operations');
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    shell.status.textContent = `Loaded ${data.version} at ${new Date(data.generatedAt).toLocaleString()}`;
+    shell.content.hidden = false;
+    shell.content.innerHTML = [
+      renderCard('Provider health', 'Configured provider posture', [row('Provider', esc(data.provider?.name || 'disabled')), row('Active model', esc(data.provider?.activeModel || 'none')), row('Health', esc(data.provider?.health || 'unknown')), row('Configured', esc(String(Boolean(data.provider?.configured)))), row('Available', esc(String(Boolean(data.provider?.available)))), row('Base URL', esc(data.provider?.baseUrl || 'n/a')), row('Probe summary', esc(data.provider?.readiness?.summary || 'n/a'))].join('')),
+      renderCard('Provider readiness heartbeat', 'Active reachability and model-readiness probe', [row('Status', esc(data.provider?.readiness?.status || 'unknown')), row('Last checked', esc(data.provider?.readiness?.checkedAt || 'never')), row('In flight', esc(String(Boolean(data.provider?.readiness?.inFlight)))), row('Stale', esc(String(Boolean(data.provider?.readiness?.stale)))), row('Last latency', esc(data.provider?.readiness?.lastLatencyMs == null ? 'n/a' : `${data.provider.readiness.lastLatencyMs} ms`)), row('Probe reason', esc(data.provider?.readiness?.lastCheckedReason || 'n/a')), row('Probe type', esc(data.provider?.readiness?.lastProbeType || 'n/a')), row('Last success', esc(data.provider?.readiness?.lastSuccess?.at || 'never')), row('Success detail', esc(data.provider?.readiness?.lastSuccess?.detail || 'n/a')), row('Last failure', esc(data.provider?.readiness?.lastFailure?.at || 'never')), row('Failure reason', esc(data.provider?.readiness?.lastFailure?.reason || 'n/a')), row('Failure class', esc(data.provider?.readiness?.lastFailure?.classification || 'n/a')), row('Retryable', esc(data.provider?.readiness?.lastFailure?.retryable == null ? 'n/a' : String(Boolean(data.provider.readiness.lastFailure.retryable)))), row('Consecutive failures', esc(String(data.provider?.readiness?.consecutiveFailures || 0)))].join('')),
+      renderCard('Runtime state', 'Published LLM posture', [row('Overall state', esc(data.runtime?.label || data.runtime?.status || 'unknown')), row('Summary', esc(data.runtime?.summary || 'n/a')), row('Analysis', esc(data.runtime?.surfaces?.analysis?.label || 'n/a')), row('Ideas', esc(data.runtime?.surfaces?.ideas?.label || 'n/a'))].join('')),
+      renderCard('Mode forcing', 'Operator default mode and forcing state', [row('Default news mode', esc(data.modes?.defaultNewsMode || 'auto')), row('Forced heuristic', esc(String(Boolean(data.modes?.forcedHeuristic)))), row('Forced LLM', esc(String(Boolean(data.modes?.forcedLlm)))), row('Explanation', esc(data.modes?.explanation || 'n/a'))].join('')),
+      renderCard('Fallback chains', 'Current surfaces and fallback targets', `<div class="list">${(data.fallbackChains || []).map(item => `<div class="item"><strong>${esc(item.surface)}</strong><div class="mini">entry ${esc(item.entryMode || 'n/a')} → fallback ${esc(item.fallbackTarget || 'n/a')}</div><div>${esc(item.fallbackReason || 'no current fallback reason')}</div></div>`).join('')}</div>`),
+      renderCard('LLM telemetry', 'Operator-visible cost, latency, and completion telemetry', `<div class="list">${[renderTelemetrySummary('Clustering aggregate', data.llmTelemetry?.clustering?.aggregate), renderTelemetrySummary('Clustering generation', data.llmTelemetry?.clustering?.generation), renderTelemetrySummary('Clustering repair', data.llmTelemetry?.clustering?.repair), renderTelemetrySummary('Agent analysis', data.llmTelemetry?.analysis)].join('')}</div>`),
+      renderCard('Recent failure reasons', 'Latest LLM-related failures or degradations', (data.recentFailures || []).length ? `<div class="list">${data.recentFailures.map(renderFailure).join('')}</div>` : '<div class="item">No recent LLM failures captured.</div>'),
+      renderCard('Clustering prompt debug', 'Prompt-debug and parse-failure surface', [row('Review endpoint', `<a href="${esc(data.clusteringDebug?.reviewEndpoint || '/api/brief/news/review')}" target="_blank" rel="noreferrer">${esc(data.clusteringDebug?.reviewEndpoint || '/api/brief/news/review')}</a>`), row('Artifact endpoint', `<a href="${esc(data.clusteringDebug?.artifactEndpoint || '/api/brief/news/review/artifacts')}" target="_blank" rel="noreferrer">${esc(data.clusteringDebug?.artifactEndpoint || '/api/brief/news/review/artifacts')}</a>`), row('Fallback reason', esc(data.clusteringDebug?.fallbackReason || 'none')), row('Failed regions', esc(String(data.clusteringDebug?.review?.failedRegionCount ?? 0))), row('Artifact count', esc(String(data.clusteringDebug?.parseFailureArtifacts?.totalArtifacts ?? 0))), row('Prompt fingerprint', esc(data.clusteringDebug?.promptDebug?.promptFingerprint || 'n/a')), row('Repair prompt fingerprint', esc(data.clusteringDebug?.promptDebug?.repairPromptFingerprint || 'n/a')), row('Prompt preview', esc(data.clusteringDebug?.promptDebug?.promptPreview || 'n/a')), row('Repair preview', esc(data.clusteringDebug?.promptDebug?.repairPromptPreview || 'n/a'))].join('')),
+      renderCard('Reasoning surface validation', 'Published analysis and news reasoning visibility', `<div class="list"><div class="item"><strong>Analysis validation</strong><div class="mini"><a href="${esc(data.reasoningValidation?.analysis?.endpoint || '/api/analysis/validation-summary')}" target="_blank" rel="noreferrer">${esc(data.reasoningValidation?.analysis?.endpoint || '/api/analysis/validation-summary')}</a> · <a href="${esc(data.reasoningValidation?.analysis?.reviewEndpoint || '/api/analysis/review')}" target="_blank" rel="noreferrer">${esc(data.reasoningValidation?.analysis?.reviewEndpoint || '/api/analysis/review')}</a></div><div>${esc(data.reasoningValidation?.analysis?.reasoningSurfacePresent ? 'Reasoning surface present' : 'Reasoning surface missing')}</div>${renderReasoningSummary(data.reasoningValidation?.analysis?.sourceReasoning)}</div><div class="item"><strong>News reasoning</strong><div class="mini"><a href="${esc(data.reasoningValidation?.news?.endpoint || '/api/brief/news')}" target="_blank" rel="noreferrer">${esc(data.reasoningValidation?.news?.endpoint || '/api/brief/news')}</a></div><div>${esc(data.reasoningValidation?.news?.reasoningSurfacePresent ? 'Reasoning surface present' : 'Reasoning surface missing')}</div>${renderReasoningSummary(data.reasoningValidation?.news?.sourceReasoning)}</div></div>`),
+      renderCard('Notes', 'Boundaries', `<pre>${esc((data.notes || []).join('\n- ')).replace(/^/, '- ')}</pre>`),
+    ].join('');
+  } catch (err) {
+    shell.status.textContent = `Failed to load LLM operations: ${err.message}`;
+  }
+}
+boot();
+}
+</script>
+</body>
+</html>

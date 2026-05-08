@@ -1,0 +1,78 @@
+{
+  "version": "source-action-taxonomy-v1",
+  "generatedAt": "2026-04-25T18:45:00Z",
+  "actions": [
+    {
+      "id": "research",
+      "label": "Research",
+      "appliesTo": ["result-envelope"],
+      "description": "More discovery or validation work is needed before scoring or transition decisions."
+    },
+    {
+      "id": "grade",
+      "label": "Grade",
+      "appliesTo": ["result-envelope"],
+      "description": "Candidate should move into structured grading."
+    },
+    {
+      "id": "shadow",
+      "label": "Shadow",
+      "appliesTo": ["result-envelope", "scorecard", "overlap"],
+      "description": "Candidate is suitable for shadow observation but must not influence production output."
+    },
+    {
+      "id": "prepare-onboarding",
+      "label": "Prepare onboarding",
+      "appliesTo": ["result-envelope"],
+      "description": "Prepare bounded onboarding artifacts without mutating production."
+    },
+    {
+      "id": "retain",
+      "label": "Retain",
+      "appliesTo": ["pruning"],
+      "description": "Keep the current source posture; no change is recommended."
+    },
+    {
+      "id": "human-review",
+      "label": "Human review",
+      "appliesTo": ["pruning", "lifecycle-evaluator"],
+      "description": "A human decision is required before any higher-impact transition or pruning action."
+    },
+    {
+      "id": "downgrade-review",
+      "label": "Downgrade review",
+      "appliesTo": ["pruning"],
+      "description": "A bounded downgrade may be justified, but only after human review."
+    },
+    {
+      "id": "deprecate-review",
+      "label": "Deprecate review",
+      "appliesTo": ["pruning"],
+      "description": "Deprecation may be justified, but only as a recommendation for human review."
+    },
+    {
+      "id": "reject",
+      "label": "Reject",
+      "appliesTo": ["result-envelope"],
+      "description": "Candidate should not proceed further in the source-ops lifecycle."
+    },
+    {
+      "id": "deprecate",
+      "label": "Deprecate",
+      "appliesTo": ["result-envelope"],
+      "description": "Record a deprecation recommendation or non-production lifecycle outcome."
+    },
+    {
+      "id": "approve",
+      "label": "Approve",
+      "appliesTo": ["lifecycle-evaluator"],
+      "description": "The next allowed lifecycle state is approval, typically gated by human review."
+    },
+    {
+      "id": "block",
+      "label": "Block",
+      "appliesTo": ["lifecycle-evaluator"],
+      "description": "No transition should occur until the listed blockers are resolved."
+    }
+  ]
+}

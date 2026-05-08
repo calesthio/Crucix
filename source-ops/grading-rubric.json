@@ -1,0 +1,82 @@
+{
+  "version": "source-grading-rubric-v1",
+  "generatedAt": "2026-04-25T13:45:00Z",
+  "scoreScale": {
+    "min": 1,
+    "max": 5,
+    "labels": {
+      "1": "poor",
+      "2": "weak",
+      "3": "adequate",
+      "4": "strong",
+      "5": "excellent"
+    }
+  },
+  "dimensions": [
+    {
+      "id": "source-reliability",
+      "label": "Source reliability",
+      "weight": 0.25,
+      "prompt": "How trustworthy, stable, and operationally dependable is the source itself?",
+      "strongSignals": ["official or well-governed publisher", "consistent update cadence", "clear provenance or methodology"],
+      "weakSignals": ["anonymous sourcing", "frequent unexplained outages", "opaque methodology"]
+    },
+    {
+      "id": "coverage-fit",
+      "label": "Coverage fit",
+      "weight": 0.2,
+      "prompt": "How well does the source match the declared category, region, and runtime gap?",
+      "strongSignals": ["directly addresses a listed gap", "good geographic or topical fit", "timely for operator needs"],
+      "weakSignals": ["adjacent but not targeted", "narrow coverage for the requested gap", "stale or slow updates"]
+    },
+    {
+      "id": "corroboration-value",
+      "label": "Corroboration value",
+      "weight": 0.2,
+      "prompt": "How much new corroboration strength does the source add beyond current active coverage?",
+      "strongSignals": ["adds independent evidence", "improves confirmation for weak categories", "useful against noisy social reporting"],
+      "weakSignals": ["mostly duplicates existing sources", "same upstream as current feeds", "little incremental confirmation value"]
+    },
+    {
+      "id": "noise-discipline",
+      "label": "Noise discipline",
+      "weight": 0.15,
+      "prompt": "How likely is the source to improve signal quality instead of flooding reviews with low-value items?",
+      "strongSignals": ["bounded, structured output", "low spam rate", "clear filtering affordances"],
+      "weakSignals": ["high rumor volume", "large unstructured firehose", "weak filtering or categorization"]
+    },
+    {
+      "id": "integration-cost",
+      "label": "Integration cost",
+      "weight": 0.1,
+      "prompt": "How reasonable is the implementation and maintenance cost for this source?",
+      "strongSignals": ["stable API or feed", "clear auth model", "low operational burden"],
+      "weakSignals": ["fragile scraping", "unclear terms", "high maintenance burden"]
+    },
+    {
+      "id": "llm-utility",
+      "label": "LLM utility",
+      "weight": 0.1,
+      "prompt": "How useful is the source likely to be for clustering, analysis, and operator explanation paths?",
+      "strongSignals": ["structured fields", "good metadata", "clean evidence snippets"],
+      "weakSignals": ["thin metadata", "ambiguous entities", "messy unstructured text"]
+    }
+  ],
+  "recommendationThresholds": {
+    "rejectMax": 2.2,
+    "researchMin": 2.21,
+    "gradeMin": 2.8,
+    "shadowMin": 3.6,
+    "prepareOnboardingMin": 4.2
+  },
+  "promotionReadiness": {
+    "shadowReadyMin": 3.6,
+    "onboardingReadyMin": 4.2,
+    "requiresNoBlockingIssues": true
+  },
+  "operatorExpectations": {
+    "requireExplainableDimensionReasoning": true,
+    "requireEvidenceAnchors": true,
+    "requireBlockingIssuesWhenBelowShadowReady": true
+  }
+}

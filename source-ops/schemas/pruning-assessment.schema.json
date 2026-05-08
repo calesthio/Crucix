@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "crucix/source-ops/pruning-assessment.schema.json",
+  "title": "Crucix Source Pruning Assessment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "targetId",
+    "generatedAt",
+    "summary",
+    "cohort",
+    "dimensionScores",
+    "weightedTotal",
+    "recommendation",
+    "recommendedAction",
+    "confidence",
+    "productionGuardrails"
+  ],
+  "properties": {
+    "version": { "type": "string", "const": "source-pruning-v1" },
+    "targetId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "summary": { "type": "string", "minLength": 1 },
+    "cohort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "comparedAgainst"],
+      "properties": {
+        "category": { "type": ["string", "null"] },
+        "comparedAgainst": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "reason"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 1 },
+              "operatorRole": { "type": ["string", "null"] },
+              "trustClass": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "dimensionScores": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["dimension", "score", "weight", "weightedScore", "reasoning", "evidence"],
+        "properties": {
+          "dimension": { "type": "string", "minLength": 1 },
+          "score": { "type": "number", "minimum": 1, "maximum": 5 },
+          "weight": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+          "weightedScore": { "type": "number", "minimum": 0 },
+          "reasoning": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "weightedTotal": { "type": "number", "minimum": 0 },
+    "recommendation": { "type": "string", "enum": ["retain", "human-review", "downgrade-review", "deprecate-review"] },
+    "recommendedAction": { "type": ["string", "null"], "enum": ["retain", "human-review", "downgrade-review", "deprecate-review", null] },
+    "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
+    "productionGuardrails": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["productionMutationProposed", "humanReviewRequired", "autoRemovalAllowed"],
+      "properties": {
+        "productionMutationProposed": { "type": "boolean", "const": false },
+        "humanReviewRequired": { "type": "boolean" },
+        "autoRemovalAllowed": { "type": "boolean", "const": false },
+        "notes": { "type": ["string", "null"] }
+      }
+    },
+    "blockingIssues": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

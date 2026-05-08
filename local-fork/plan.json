@@ -1,0 +1,1654 @@
+{
+  "fork": {
+    "name": "rightclaw-runtime-local-fork",
+    "upstreamRemote": "origin",
+    "upstreamBranch": "master",
+    "deployment": {
+      "runtime": "rightclaw-mac-mini",
+      "serviceUrl": "http://127.0.0.1:3117",
+      "healthEndpoint": "/api/health",
+      "dataEndpoint": "/api/data"
+    }
+  },
+  "workflow": {
+    "command": "execute next crucix dev cycle",
+    "expectations": [
+      "advance the next planned effort",
+      "update production on the local runtime",
+      "verify health and representative data output",
+      "record the cycle in local-fork/cycles",
+      "commit the repo so the fork is versioned"
+    ]
+  },
+  "roadmap": {
+    "epics": [
+      {
+        "id": "epic-1",
+        "title": "Source reliability and fallback hardening",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-1.1",
+            "title": "Source trust and evidence normalization foundation",
+            "status": "completed"
+          },
+          {
+            "id": "effort-1.2",
+            "title": "OpenSky degraded-state cooldown and fallback hardening",
+            "status": "completed"
+          },
+          {
+            "id": "effort-1.3",
+            "title": "OpenSky cadence, hotspot rotation, and 429 cooldown",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-2",
+        "title": "Evidence normalization and fusion trust model",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-2.1",
+            "title": "Operator-facing evidence freshness and provenance summary",
+            "status": "completed"
+          },
+          {
+            "id": "effort-2.2",
+            "title": "Explicit evidence-mode labeling for cached, carried-forward, and degraded states",
+            "status": "completed"
+          },
+          {
+            "id": "effort-2.3",
+            "title": "Briefing and chat-facing trust labels for corroborated and suspect signals",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-3",
+        "title": "News clustering and LLM operationalization",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-3.1",
+            "title": "Expose clustered news summaries through runtime briefing endpoints",
+            "status": "completed"
+          },
+          {
+            "id": "effort-3.2",
+            "title": "Cluster quality signals and operator-facing confidence labeling",
+            "status": "completed"
+          },
+          {
+            "id": "effort-3.3",
+            "title": "LLM cluster operational controls and fallback visibility",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-4",
+        "title": "iMessage Crucix skill UX",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-4.1",
+            "title": "Compact trust-aware iMessage brief surface",
+            "status": "completed"
+          },
+          {
+            "id": "effort-4.2",
+            "title": "iMessage drill-down support for why, sources, and expand",
+            "status": "completed"
+          },
+          {
+            "id": "effort-4.3",
+            "title": "Stable signal IDs and ID-based drill-down selection",
+            "status": "completed"
+          },
+          {
+            "id": "effort-4.4",
+            "title": "Alias resolution for natural iMessage follow-ups",
+            "status": "completed"
+          },
+          {
+            "id": "effort-4.5",
+            "title": "Short-lived conversational selection memory for follow-up references",
+            "status": "completed"
+          },
+          {
+            "id": "effort-4.6",
+            "title": "Context-state inspection and reset contract for chat follow-ups",
+            "status": "completed"
+          },
+          {
+            "id": "effort-4.7",
+            "title": "Bounded selection-memory hygiene and health visibility",
+            "status": "completed"
+          },
+          {
+            "id": "effort-4.8",
+            "title": "Access-aware LRU eviction for active chat contexts",
+            "status": "completed"
+          },
+          {
+            "id": "effort-4.9",
+            "title": "Selection-memory eviction and prune telemetry",
+            "status": "completed"
+          },
+          {
+            "id": "effort-4.10",
+            "title": "Telemetry reset and lightweight context debug inspection",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-5",
+        "title": "LLM cluster prompt and response hardening",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-5.1",
+            "title": "Structured cluster JSON extraction and repair retry",
+            "status": "completed"
+          },
+          {
+            "id": "effort-5.2",
+            "title": "Per-region prompt tuning and retry/backoff telemetry",
+            "status": "completed"
+          },
+          {
+            "id": "effort-5.3",
+            "title": "Operator review surfacing for persistent cluster parse failures",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-6",
+        "title": "Operator review workflow controls",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-6.1",
+            "title": "Bounded operator ack/dismiss layer for noisy cluster-failure regions",
+            "status": "completed"
+          },
+          {
+            "id": "effort-6.2",
+            "title": "Persist rolling per-region cluster failure stats across restarts",
+            "status": "completed"
+          },
+          {
+            "id": "effort-6.3",
+            "title": "Sampled hashed repair-failure artifacts for prompt regression comparison",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-7",
+        "title": "Agent analysis, outlook, and accountable tipping points",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-7.1",
+            "title": "Trend-memory foundation for multi-day and multi-week operator analysis",
+            "status": "completed"
+          },
+          {
+            "id": "effort-7.2",
+            "title": "Structured agent-analysis schema for outlook, configurable horizons, evidence anchors, accountable tipping points, and iMessage summaries",
+            "status": "completed"
+          },
+          {
+            "id": "effort-7.3",
+            "title": "LLM and rule-assisted agent analysis generation with confidence, caveat, and probability gating controls",
+            "status": "completed"
+          },
+          {
+            "id": "effort-7.4",
+            "title": "Dashboard agent-analysis panel plus concise iMessage rendering and review surface",
+            "status": "completed"
+          },
+          {
+            "id": "effort-7.5",
+            "title": "Validation harness for outlook drift, tipping-point lifecycle accountability, and stale-trend handling",
+            "status": "completed"
+          },
+          {
+            "id": "effort-7.6",
+            "title": "Deferred agent-analysis refinement telemetry for timeout, cancellation, completion, and honest fallback visibility",
+            "status": "completed"
+          },
+          {
+            "id": "effort-7.7",
+            "title": "Published-outlook deduplication by horizon plus stable merge rules for deterministic and refined analysis paths",
+            "status": "completed"
+          },
+          {
+            "id": "effort-7.8",
+            "title": "Compact CLI or API summary surface for agent-analysis validation harness pass/fail reporting",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-8",
+        "title": "Source health policy, failure classification, and runtime maintenance",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-8.1",
+            "title": "Configurable per-source freshness thresholds and policy tuning",
+            "status": "completed"
+          },
+          {
+            "id": "effort-8.2",
+            "title": "Source-level fallback, parse, LLM-fallback, and empty-result counters",
+            "status": "completed"
+          },
+          {
+            "id": "effort-8.3",
+            "title": "Operator-facing source failure classification for setup debt versus live outages",
+            "status": "completed"
+          },
+          {
+            "id": "effort-8.4",
+            "title": "Runtime maintenance pass for stale OpenSky artifacts and cache-hit telemetry",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-9",
+        "title": "Operator briefing guardrails and externalized debug posture",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-9.1",
+            "title": "Operator-facing evidence provenance labels in iMessage briefings",
+            "status": "completed"
+          },
+          {
+            "id": "effort-9.2",
+            "title": "Guardrails for debug and review endpoints, including local-only or config-gated exposure",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-10",
+        "title": "Geocoding precision and cluster-review quality operations",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-10.1",
+            "title": "Explicit map precision classes for source-native versus inferred geocoded news placement",
+            "status": "completed"
+          },
+          {
+            "id": "effort-10.2",
+            "title": "Cluster-quality review metrics for merge-split anomalies and low-confidence counts",
+            "status": "completed"
+          },
+          {
+            "id": "effort-10.3",
+            "title": "Operator review helpers for suspicious near-duplicate single-source clusters",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-11",
+        "title": "Persistent cluster-review diagnostics and operator accountability",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-11.1",
+            "title": "Persist rolling per-region prompt-tuning and retry pressure stats across restarts",
+            "status": "completed"
+          },
+          {
+            "id": "effort-11.2",
+            "title": "Ack history counters and recent-dismissal visibility for review-surface accountability",
+            "status": "completed"
+          },
+          {
+            "id": "effort-11.3",
+            "title": "Rolling or decayed per-region failure-rate windows so recovering regions stop looking chronically weak",
+            "status": "completed"
+          },
+          {
+            "id": "effort-11.4",
+            "title": "Prompt and version fingerprints on repair-failure artifacts for regression comparison",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-12",
+        "title": "Trend-memory backfill and historical compatibility",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-12.1",
+            "title": "Compact-history backfill or migration for older cold runs so trend summaries stop zeroing newly added fields",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-13",
+        "title": "Freshness policy deployment validation",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-13.1",
+            "title": "Runtime override-validation check that boots Crucix with custom freshness env vars and verifies /api/health reflects them",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-14",
+        "title": "Local fork planning hygiene",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-14.1",
+            "title": "Prevent backlog drift where already-completed recommendations remain advertised after roadmap promotion",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-15",
+        "title": "Sweep lifecycle integrity and runtime freshness",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-15.1",
+            "title": "Investigate and fix stuck sweep-in-progress state so lastSweep, sweep lifecycle, and operator freshness signals advance honestly",
+            "status": "completed"
+          },
+          {
+            "id": "effort-15.2",
+            "title": "Add runtime watchdog or self-healing recovery for hung sweep state with explicit health telemetry",
+            "status": "completed"
+          },
+          {
+            "id": "effort-15.3",
+            "title": "Add regression coverage for sweep lifecycle transitions across restart, success, timeout, and failure paths",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-16",
+        "title": "Dashboard rendering resilience and visual truthfulness",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-16.1",
+            "title": "Fix globe-mode or 3D load failure so the Sensor Grid degrades cleanly and does not present a broken primary interaction",
+            "status": "completed"
+          },
+          {
+            "id": "effort-16.2",
+            "title": "Add browser-level validation for key dashboard interactions including layer switching, region focus, and map mode behavior",
+            "status": "completed"
+          },
+          {
+            "id": "effort-16.3",
+            "title": "Harden dashboard fallback messaging so failed visual layers are explicit, bounded, and operator-readable rather than noisy",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-17",
+        "title": "Macro card data hygiene and display safety",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-17.1",
+            "title": "Eliminate invalid macro display values such as NaN/NaNT and replace them with safe operator-facing placeholders",
+            "status": "completed"
+          },
+          {
+            "id": "effort-17.2",
+            "title": "Differentiate unavailable, stale, failed, and not-configured macro inputs in card rendering so blanks are interpretable",
+            "status": "completed"
+          },
+          {
+            "id": "effort-17.3",
+            "title": "Add regression coverage for macro card formatting and degraded-data rendering in dashboard and compact briefing surfaces",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-18",
+        "title": "LLM state coherence and operator messaging",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-18.1",
+            "title": "Unify operator-visible LLM status language across analysis, leverageable ideas, and review surfaces so off, fallback, configured, and parse-failed states do not contradict each other",
+            "status": "completed"
+          },
+          {
+            "id": "effort-18.2",
+            "title": "Expose a compact runtime explanation surface for why deterministic fallback is active and whether a configured LLM path actually participated",
+            "status": "completed"
+          },
+          {
+            "id": "effort-18.3",
+            "title": "Add end-to-end validation for operator-facing LLM status combinations across configured, disabled, fallback, and failure modes",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-19",
+        "title": "Operator review queue usability",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-19.1",
+            "title": "Convert cluster-review quality telemetry into a bounded actionable operator queue instead of metrics-only visibility",
+            "status": "completed"
+          },
+          {
+            "id": "effort-19.2",
+            "title": "Prioritize review items by region pressure, near-duplicate suspicion, and repeated low-confidence patterns so the queue is triage-friendly",
+            "status": "completed"
+          },
+          {
+            "id": "effort-19.3",
+            "title": "Surface review queue state clearly in dashboard and API responses, including empty-queue semantics that explain why metrics may still be elevated",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-20",
+        "title": "LLM operator-state contract hardening",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-20.1",
+            "title": "Centralize a normalized operator-facing LLM state enum and explanation block in API payloads so dashboard and briefing surfaces consume one shared contract",
+            "status": "completed"
+          },
+          {
+            "id": "effort-20.2",
+            "title": "Separate per-surface LLM supportability from participation so configured, static-by-design, not-invoked, and unavailable states do not collapse into one operator label",
+            "status": "completed"
+          },
+          {
+            "id": "effort-20.3",
+            "title": "Add a booted-server validation matrix for dashboard and API operator-state combinations under controlled runtime scenarios",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-21",
+        "title": "Operator review queue direct actions",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-21.1",
+            "title": "Add first-class operator queue actions such as ack, snooze, and jump-to-artifact links so the review queue becomes directly actionable",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-22",
+        "title": "Realistic queue fixtures and prioritization validation",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-22.1",
+            "title": "Capture sampled high-pressure queue fixtures or snapshots from real runs so prioritization tuning can be validated against realistic operator cases",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-23",
+        "title": "Agent-managed source intelligence foundation",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-23.1",
+            "title": "Define a canonical source registry schema that supports active, candidate, shadow, rejected, and deprecated lifecycle states plus agent-review provenance",
+            "status": "completed"
+          },
+          {
+            "id": "effort-23.2",
+            "title": "Build a file-based source-ops workspace contract so OpenClaw subagents can read role/task packets and write structured discovery, grading, overlap, and pruning outputs without touching production admission directly",
+            "status": "completed"
+          },
+          {
+            "id": "effort-23.3",
+            "title": "Expose an operator-facing source inventory and source-ops needs surface showing lifecycle state, review status, promotion readiness, and current runtime coverage gaps",
+            "status": "completed"
+          },
+          {
+            "id": "effort-23.4",
+            "title": "Add explicit source-registry metadata for expected multi-publisher runtime buckets so attribution diagnostics can classify aggregators like GDELT from data contract rather than a hard-coded heuristic list",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-24",
+        "title": "Bounded subagent discovery and grading workflow",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-24.1",
+            "title": "Create bounded OpenClaw subagent role definitions and task templates for source discovery, validation, grading, overlap analysis, pruning review, and onboarding preparation",
+            "status": "completed"
+          },
+          {
+            "id": "effort-24.2",
+            "title": "Implement a structured source scorecard and explainable grading rubric so subagent-produced candidate evaluations are comparable and operator-reviewable",
+            "status": "completed"
+          },
+          {
+            "id": "effort-24.3",
+            "title": "Add overlap and uniqueness evaluation so candidate sources are judged on incremental corroboration value, duplication risk, and likely LLM utility rather than existence alone",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-25",
+        "title": "Shadow-mode source evaluation and promotion gates",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-25.1",
+            "title": "Add shadow-state handling so candidate sources can be observed and scored before they influence production operator output",
+            "status": "completed"
+          },
+          {
+            "id": "effort-25.2",
+            "title": "Define policy-driven lifecycle transitions that can auto-advance candidates through pre-production stages up to shadow while requiring human approval before active promotion",
+            "status": "completed"
+          },
+          {
+            "id": "effort-25.3",
+            "title": "Record pruning recommendations for noisy, redundant, expensive, or maintenance-heavy sources without auto-removing active production sources",
+            "status": "completed"
+          },
+          {
+            "id": "effort-25.4",
+            "title": "Add a lifecycle policy evaluator that consumes candidate records plus scorecard and overlap artifacts and emits the exact next allowed transition or blocking reason",
+            "status": "completed"
+          },
+          {
+            "id": "effort-25.5",
+            "title": "Add a shared source-ops action taxonomy so result envelopes, pruning assessments, and policy evaluators use one canonical set of recommendation labels",
+            "status": "completed"
+          },
+          {
+            "id": "effort-25.6",
+            "title": "Add evaluator support for batch candidate queues so source-ops can compute next allowed transitions and blockers for multiple candidate records at once",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-26",
+        "title": "Source-role-aware fusion and performance measurement",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-26.1",
+            "title": "Classify sources by fusion role such as anchor, corroborator, anomaly detector, context, and exploratory so runtime evidence handling stops treating all feeds alike",
+            "status": "completed"
+          },
+          {
+            "id": "effort-26.2",
+            "title": "Feed source-role and source-quality metadata into LLM clustering and analysis paths so weak evidence is not treated like anchor evidence and better source mixes improve downstream reasoning",
+            "status": "completed"
+          },
+          {
+            "id": "effort-26.3",
+            "title": "Measure per-source contribution, overlap, noise, and operator impact so source additions can be validated against cluster quality, review pressure, tipping-point quality, and trust outcomes",
+            "status": "completed"
+          },
+          {
+            "id": "effort-26.4",
+            "title": "Add endpoint-level contract coverage for reasoning metadata on `/api/analysis` and `/api/brief/news` so source-role context cannot silently drop from live operator surfaces",
+            "status": "completed"
+          },
+          {
+            "id": "effort-26.5",
+            "title": "Add direct per-cluster source provenance or cluster-to-runtime-source attribution so source contribution scoring stops relying on feed-type proxies like RSS to GDELT and can measure downstream quality impact more truthfully",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-27",
+        "title": "Operator settings and configuration control plane",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-27.1",
+            "title": "Create a dedicated settings surface that centralizes layout preferences, source selection, LLM provider/model controls, agent-analysis behavior, refresh cadence, and debug exposure into one operator-facing control plane",
+            "status": "completed"
+          },
+          {
+            "id": "effort-27.2",
+            "title": "Define a versioned Crucix runtime configuration contract with schema validation, sane defaults, effective-config reporting, and boot-time drift checks across file, env, and live runtime state",
+            "status": "completed"
+          },
+          {
+            "id": "effort-27.3",
+            "title": "Persist operator settings safely so dashboard layout, source toggles, LLM mode, and agent-analysis preferences survive restarts and can be exported or restored",
+            "status": "completed"
+          },
+          {
+            "id": "effort-27.4",
+            "title": "Add role-separated admin controls and local-safe access boundaries so sensitive settings, debug surfaces, and runtime controls are not mixed with read-only operator views",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-28",
+        "title": "Dashboard layout overhaul and operator workspace UX",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-28.1",
+            "title": "Replace the current brittle panel placement with a responsive layout system that properly fits the newer content windows and supports narrow, desktop, and wallboard display modes",
+            "status": "completed"
+          },
+          {
+            "id": "effort-28.2",
+            "title": "Add panel resizing, collapsing, pinning, and priority ordering so high-value windows stay usable without manual DOM surgery when the dashboard grows",
+            "status": "completed"
+          },
+          {
+            "id": "effort-28.3",
+            "title": "Create saved workspace presets such as operator, diagnostics, source-ops, and executive briefing layouts with quick switching between them",
+            "status": "completed"
+          },
+          {
+            "id": "effort-28.4",
+            "title": "Separate live operator views, diagnostics, and administration into clearer information architecture so the dashboard stops mixing operations with debug clutter",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-29",
+        "title": "Runtime control, restart safety, and sweep reliability",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-29.1",
+            "title": "Add a dev-safe restart helper with PID or port ownership sanity checks so local validation cycles stop binding to stale `3117` listeners and can prove which instance is live",
+            "status": "completed"
+          },
+          {
+            "id": "effort-29.2",
+            "title": "Detect, classify, and recover stuck sweep or synthesis jobs so `/api/health` does not remain indefinitely in `sweepInProgress` when LLM paths hang or fail to complete cleanly",
+            "status": "completed"
+          },
+          {
+            "id": "effort-29.3",
+            "title": "Expose runtime process controls and last-success state so operators can see current sweep stage, last good refresh, active PID identity, and bounded restart or stop actions",
+            "status": "completed"
+          },
+          {
+            "id": "effort-29.4",
+            "title": "Add timeout, cancellation, retry, and completion telemetry for deferred LLM and synthesis work so slow, hung, and failed jobs are operationally distinguishable",
+            "status": "completed"
+          },
+          {
+            "id": "effort-29.5",
+            "title": "Add bounded retention or time-decay for noise-suppression history so one-off duplicate bursts and retired sources do not accumulate indefinite suggestion weight or unbounded state growth across repeated sweeps",
+            "status": "completed"
+          },
+          {
+            "id": "effort-29.6",
+            "title": "Surface noise-suppression history decay and prune telemetry in health and review diagnostics so operators can see when stale suggestion weight has aged out, how many retained history entries remain, and whether pruning is actively keeping state bounded",
+            "status": "completed"
+          },
+          {
+            "id": "effort-29.7",
+            "title": "Add rolling per-sweep noise-suppression telemetry snapshots and a lightweight diagnostics trend view so operators can distinguish one-off aged-out or prune activity from sustained state-growth pressure over time",
+            "status": "completed"
+          },
+          {
+            "id": "effort-29.8",
+            "title": "Add a sustained-pressure alert or queue threshold for noise-suppression telemetry so repeated retained-entry growth or consecutive prune-active sweeps can escalate from diagnostics-only visibility into an operator action cue",
+            "status": "completed"
+          },
+          {
+            "id": "effort-29.9",
+            "title": "Add operator acknowledge or snooze controls plus recent audit visibility for sustained noise-suppression pressure alerts so teams can distinguish accepted load from unattended telemetry churn",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-30",
+        "title": "Source operations console and lifecycle controls",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-30.1",
+            "title": "Build an operator-facing source management console for source enable-disable controls, category filtering, role grouping, and per-source selection without editing raw files",
+            "status": "completed"
+          },
+          {
+            "id": "effort-30.2",
+            "title": "Add source lifecycle actions for candidate, shadow, active, quarantine, and prune recommendations with visible policy blockers and human-approval boundaries",
+            "status": "completed"
+          },
+          {
+            "id": "effort-30.3",
+            "title": "Expose source health history, freshness thresholds, failure-class trends, and one-click quarantine or suppression controls for noisy or broken sources",
+            "status": "completed"
+          },
+          {
+            "id": "effort-30.4",
+            "title": "Turn source performance measurement into an operator workflow surface with attribution explanations, confidence caveats, and validation views tied to cluster quality and trust outcomes",
+            "status": "completed"
+          },
+          {
+            "id": "effort-30.5",
+            "title": "Add historical source-performance trend snapshots and delta views so operators can compare attribution, cluster quality, and trust-outcome shifts across sweeps instead of only inspecting the current snapshot",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-31",
+        "title": "LLM and agent operations console",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-31.1",
+            "title": "Create an LLM operations page that exposes provider health, active model, fallback chain, forced heuristic or forced LLM modes, and recent failure reasons",
+            "status": "completed"
+          },
+          {
+            "id": "effort-31.2",
+            "title": "Expose prompt-debug, parse-failure, and reasoning-surface validation details for clustering and analysis paths without requiring direct file inspection",
+            "status": "completed"
+          },
+          {
+            "id": "effort-31.3",
+            "title": "Add agent-analysis tuning controls for tipping-point thresholds, publish policy, deterministic fallback mode, and horizon behavior so output can be tuned without code edits",
+            "status": "completed"
+          },
+          {
+            "id": "effort-31.4",
+            "title": "Add operator-visible cost, latency, and completion telemetry for LLM-backed clustering and analysis so expensive or degraded paths can be diagnosed quickly",
+            "status": "completed"
+          },
+          {
+            "id": "effort-31.5",
+            "title": "Extend phase telemetry and recovery classification to deferred ideas enrichment so watchdog and `/api/health` can distinguish post-publish idea-generation hangs from analysis refinement hangs",
+            "status": "completed"
+          },
+          {
+            "id": "effort-31.6",
+            "title": "Add an active LLM provider readiness probe plus last-success and last-failure heartbeat so `/llm-ops` health reflects live reachability and model readiness rather than only configuration-derived posture",
+            "status": "completed"
+          },
+          {
+            "id": "effort-31.7",
+            "title": "Add provider-specific cheap readiness checks and richer failure classification for LLM probes so heartbeat validation can distinguish network failure, auth failure, rate limiting, and missing-model states without always using a synthetic completion",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-32",
+        "title": "Operator review workflow, diagnostics, and reasoning repair",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-32.1",
+            "title": "Turn review queues and low-confidence diagnostics into direct operator workflows with acknowledge, snooze, suppress, promote, and quarantine actions plus audit trail capture",
+            "status": "completed"
+          },
+          {
+            "id": "effort-32.2",
+            "title": "Add cluster repair helpers that explain why a cluster is weak and support bounded merge, split, placement-correction, and suppression actions",
+            "status": "completed"
+          },
+          {
+            "id": "effort-32.3",
+            "title": "Expose attribution uncertainty and alias-collision diagnostics so inferred runtime-source mappings, duplicate publisher aliases, and double-count risks are visible to operators",
+            "status": "completed"
+          },
+          {
+            "id": "effort-32.4",
+            "title": "Add noise-suppression controls for duplicate bursts, repetitive low-value events, and source-specific suppression rules that can be reviewed and tuned from the UI",
+            "status": "completed"
+          },
+          {
+            "id": "effort-32.5",
+            "title": "Add a shared navigation and page-shell component for dashboard-adjacent operator, diagnostics, admin, and LLM operations surfaces so labels, links, and boundary explanations do not drift",
+            "status": "completed"
+          },
+          {
+            "id": "effort-32.6",
+            "title": "Distinguish expected multi-publisher runtime buckets from true alias-collision anomalies in attribution diagnostics, so broad aggregators like `GDELT` do not over-report routine publisher diversity as operator-actionable alias risk",
+            "status": "completed"
+          },
+          {
+            "id": "effort-32.7",
+            "title": "Persist rolling noise-suppression match history and per-rule hit counters so duplicate-burst, low-value, and source-rule suggestions reflect multi-sweep behavior instead of only the current snapshot",
+            "status": "completed"
+          },
+          {
+            "id": "effort-32.8",
+            "title": "Surface source-registry runtime-bucket metadata and registry-vs-observed attribution drift in the source-ops console so operators can review when a source declared single-publisher starts behaving like an aggregator or when new aggregator aliases should be added to the contract",
+            "status": "completed"
+          },
+          {
+            "id": "effort-32.9",
+            "title": "Persist runtime-bucket drift history and delta trends across sweeps so operators can distinguish one-off alias anomalies from sustained contract drift before editing source-registry aliases or promoting a source to expected multi-publisher",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-33",
+        "title": "Deployment hardening, persistence, and external operations",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-33.1",
+            "title": "Add startup and deployment hardening with environment validation, secret sanity checks, graceful shutdown, and process-manager-friendly health semantics",
+            "status": "completed"
+          },
+          {
+            "id": "effort-33.2",
+            "title": "Persist runtime history for source health, review pressure, LLM failures, and performance trends in a proper local datastore instead of only transient in-memory surfaces",
+            "status": "completed"
+          },
+          {
+            "id": "effort-33.3",
+            "title": "Add configurable alert routing and escalation for stale sweeps, source failures, elevated review pressure, and degraded inference paths",
+            "status": "completed"
+          },
+          {
+            "id": "effort-33.4",
+            "title": "Support config and state export-import plus operator audit history so deployments can be backed up, restored, or reviewed without manual file archaeology",
+            "status": "completed"
+          },
+          {
+            "id": "effort-33.5",
+            "title": "Add source-control audit history and undo metadata for suppress and quarantine actions so local-admin mutations are attributable, reviewable, and safely reversible during incident triage",
+            "status": "completed"
+          },
+          {
+            "id": "effort-33.6",
+            "title": "Provide checked example launchd or systemd service definitions plus restart-policy guidance so Epic 33 hardening is easier to operationalize across real hosts",
+            "status": "completed"
+          },
+          {
+            "id": "effort-33.7",
+            "title": "Add a small admin diagnostics surface or export endpoint for the SQLite runtime-history store, including table sizes, last-write timestamps, and a bounded integrity check, so datastore health is visible without shell access",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-34",
+        "title": "Contract validation and payload integrity expansion",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-34.1",
+            "title": "Add schema-level validation helpers for source-ops artifacts so example task packets, scorecards, overlap assessments, pruning outputs, lifecycle envelopes, and related artifacts are checked against their JSON schemas instead of only spot-checking fields in tests",
+            "status": "completed"
+          },
+          {
+            "id": "effort-34.2",
+            "title": "Expand contract tests for UI-facing and operator-facing payloads so dashboard, health, analysis, brief, settings, and admin surfaces cannot silently drift",
+            "status": "completed"
+          },
+          {
+            "id": "effort-34.3",
+            "title": "Add effective-runtime payload validation and served-page smoke checks so HTML-backed dashboard surfaces are validated as delivered, not just as source files",
+            "status": "completed"
+          },
+          {
+            "id": "effort-34.4",
+            "title": "Add endpoint-level regression coverage for settings-driven agent-analysis publish behavior so horizon filtering, tipping-point thresholds, and deterministic-fallback suppression are validated against live `/api/analysis` output rather than only settings contracts",
+            "status": "completed"
+          },
+          {
+            "id": "effort-34.5",
+            "title": "Add end-to-end regression coverage for `POST /api/review-workflow/action` and `GET /api/review-workflow/audit`, including action-specific payload validation and audit-entry assertions",
+            "status": "completed"
+          },
+          {
+            "id": "effort-34.6",
+            "title": "Add endpoint-level regression coverage for cluster-repair workflow actions and suppressed-cluster state on `/api/brief/news/review` and `/api/data`, so bounded repair recommendations and persisted decisions do not drift from the live contracts",
+            "status": "completed"
+          },
+          {
+            "id": "effort-34.7",
+            "title": "Add browser-level regression coverage for the shared operator surface shell so active-nav state, boundary copy, and admin action availability are validated after client-side render instead of only by static HTML fetches",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-35",
+        "title": "Critical event alerting, corroboration, and proactive operator notification",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-35.1",
+            "title": "Define a critical-event taxonomy and policy contract for fast alert classes such as government-site violence, aviation incidents, radiation anomalies, and major chokepoint disruptions, including per-class severity and corroboration thresholds",
+            "status": "completed"
+          },
+          {
+            "id": "effort-35.2",
+            "title": "Build an urgent candidate queue that ingests tripwire signals from low-trust and medium-trust feeds, holds them in monitoring state, and retries corroboration on a short cadence before promotion or discard",
+            "status": "completed"
+          },
+          {
+            "id": "effort-35.3",
+            "title": "Add alert-state promotion rules and confidence labels such as preliminary, corroborated, and official-confirmation, with explicit evidence summaries explaining why a candidate crossed the paging threshold",
+            "status": "completed"
+          },
+          {
+            "id": "effort-35.4",
+            "title": "Expose proactive alert routing for narrowly scoped critical events so Crucix can send immediate vetted operator notifications with freshness, confidence, corroboration basis, and unresolved caveats",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-36",
+        "title": "Settings safety, preset lifecycle, map-event surfacing, and dashboard performance hardening",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-36.1",
+            "title": "Add revision or ETag-style concurrency tokens to the operator settings store and write API so stale listeners, conflicting saves, and restore drift are detected instead of silently last-write-wins",
+            "status": "completed"
+          },
+          {
+            "id": "effort-36.2",
+            "title": "Add an explicit local admin nonce or CSRF-style confirmation token for `/api/settings/operator` and `/api/settings/import` so browser-originated local writes are not relying on network locality alone",
+            "status": "completed"
+          },
+          {
+            "id": "effort-36.3",
+            "title": "Add panel-level render budget telemetry and optional virtualization for wallboard mode so long OSINT and news streams plus large review queues do not silently degrade browser responsiveness as the dashboard grows",
+            "status": "completed"
+          },
+          {
+            "id": "effort-36.4",
+            "title": "Add saved panel-layout reset plus named operator presets so per-panel collapse, pin, priority, and size controls can recover from bad workspace states and switch intentionally between analyst, narrow-screen, and wallboard profiles",
+            "status": "completed"
+          },
+          {
+            "id": "effort-36.5",
+            "title": "Add operator-editable preset authoring plus clone, reset, and import-export controls so workspace presets stop being code-defined bundles and can be tuned safely from the UI",
+            "status": "completed"
+          },
+          {
+            "id": "effort-36.6",
+            "title": "Investigate and harden missing map surfacing for high-salience breaking open-source events, starting with the White House Correspondents' Dinner Secret Service shooting signature, including source carriage, ingestion, clustering, geocoding, and map-placement behavior",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-37",
+        "title": "Local runtime restart verification and deploy-proofing",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-37.1",
+            "title": "Make local `restart-safe` prove PID rotation or report failure explicitly so contract deploy checks do not falsely succeed against a still-serving stale runtime",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-38",
+        "title": "SDR corroboration workflow and RF-side analyst prompts",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-38.1",
+            "title": "Expose an SDR corroboration contract that turns public KiwiSDR coverage into analyst-facing watch profiles, covered zones, and prioritized regional RF-side checks for active Crucix signals",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-39",
+        "title": "Critical event delivery integrity and queue accountability",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-39.1",
+            "title": "Harden critical-event candidate classification beyond regex heuristics by incorporating richer source and topic metadata into queue class detection",
+            "status": "completed"
+          },
+          {
+            "id": "effort-39.2",
+            "title": "Persist retained audit history for critical-event queue transitions so operators can inspect when candidates moved between monitoring, corroborated, official-confirmation, and discarded states",
+            "status": "completed"
+          },
+          {
+            "id": "effort-39.3",
+            "title": "Add delivery outcome audit and resend state for critical-event notifications before any automatic outbound send loop is enabled",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-40",
+        "title": "SDR receiver session automation and retained RF evidence",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-40.1",
+            "title": "Add bounded SDR session automation, capture artifacts, and retained RF-side evidence summaries so corroboration can advance from receiver selection into operator-reviewable observation support",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-41",
+        "title": "Runtime restart audit visibility and operator diagnostics",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-41.1",
+            "title": "Expose retained restart-safe outcome history and PID-rotation proof in operator-visible runtime diagnostics",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-42",
+        "title": "Runtime restart audit workflow surfaces",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-42.1",
+            "title": "Expose restart-safe audit as a clearer diagnostics timeline and action-history surface across diagnostics and admin views",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-43",
+        "title": "Runtime restart audit live feedback",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-43.1",
+            "title": "Add live refresh or poll-backed completion feedback for queued restart-safe actions on admin and diagnostics surfaces",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-44",
+        "title": "Shared runtime restart audit feedback helpers",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-44.1",
+            "title": "Centralize restart-audit polling and completion messaging in the shared ops shell so admin and diagnostics runtime feedback stop drifting",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-45",
+        "title": "Dashboard map proportional sizing",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-45.1",
+            "title": "Clamp map panel height by layout mode so the dashboard map stays proportionate to the visible window instead of expanding taller than the viewport",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-46",
+        "title": "Dashboard map sizing tokens",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-46.1",
+            "title": "Move map height clamps into explicit layout tokens so dashboard vertical budget tuning stops depending on scattered inline CSS math",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-47",
+        "title": "Dashboard layout budget diagnostics",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-47.1",
+            "title": "Expose live dashboard layout-budget diagnostics so viewport-driven map, topbar, and lower-grid sizing can be checked from measured DOM state instead of only by visual inspection",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-48",
+        "title": "Dashboard layout efficiency tuning",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-48.1",
+            "title": "Analyze live dashboard space waste and tune desktop column balance, topbar density, and lower-panel placement so operator surfaces use screen real estate more efficiently without collapsing graceful degradation",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-49",
+        "title": "Dashboard layout regression contracts",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-49.1",
+            "title": "Add browser-level regression coverage for dashboard layout-budget diagnostics so measured map and panel ratios fail fast when a layout change lets the dashboard freelance again",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-50",
+        "title": "Preset-aware dashboard density tuning",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-50.1",
+            "title": "Add preset-specific density tuning and possibly alternate topbar/control placement so operator, diagnostics, and executive modes can optimize for different screen budgets without one global layout compromise",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-51",
+        "title": "Shared runtime action feedback contracts",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-51.1",
+            "title": "Generalize shared runtime-action feedback helpers beyond restart-safe so stop or future bounded actions can report queued, completed, and failed states consistently",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-52",
+        "title": "Critical event operator observability and workflow surfaces",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-52.1",
+            "title": "Expose critical-event classifier match basis and ambiguity flags for operator review",
+            "status": "completed"
+          },
+          {
+            "id": "effort-52.2",
+            "title": "Expose critical-event queue transition audit on operator-facing diagnostics surfaces",
+            "status": "completed"
+          },
+          {
+            "id": "effort-52.3",
+            "title": "Expose critical-event delivery audit and resend posture on operator-facing diagnostics surfaces",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-53",
+        "title": "SDR session operator workflow surfaces",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-53.1",
+            "title": "Expose SDR session plans, observation capture, and evidence-review workflow on operator-facing surfaces",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-54",
+        "title": "Settings conflict recovery UX",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-54.1",
+            "title": "Add clearer admin-surface stale-write recovery UX for settings concurrency conflicts so operators can reload or reconcile after a bounded 409 instead of only seeing a raw failure string",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-55",
+        "title": "Extended local admin write-auth boundaries",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-55.1",
+            "title": "Extend local admin write-auth nonce coverage to additional debug-side mutation endpoints so source controls, review workflow source actions, and runtime control can be evaluated under the same local write boundary",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-56",
+        "title": "Restart-safe helper portability hardening",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-56.1",
+            "title": "Harden restart-safe helper portability when lsof is unavailable so local runtime rotation can fall back cleanly instead of failing on host packaging gaps",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-57",
+        "title": "Dashboard persistence honesty and feedback",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-57.1",
+            "title": "Restore bounded persistence for dashboard-side panel, map, and workspace controls after the local-admin nonce rollout so operator tweaks do not silently fail across reloads",
+            "status": "completed"
+          },
+          {
+            "id": "effort-57.2",
+            "title": "Add explicit dashboard-side save-status feedback for preset and panel-layout actions so operators can tell when a layout action only applied locally versus durably persisted through the supported write boundary",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-58",
+        "title": "Admin preset browser regression coverage",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-58.1",
+            "title": "Add browser-level regression coverage for admin preset clone, import, and delete flows so the operator-editable preset authoring path stays honest when future UI work touches the local control plane",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-59",
+        "title": "Telegram and RSS cluster corroboration hardening",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-59.1",
+            "title": "Add bounded corroboration and de-duplication between urgent Telegram map candidates and matching RSS/GDELT stories so high-salience OSINT incidents land on the map quickly without permanently inflating single-source weak-cluster pressure",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-60",
+        "title": "Headless layout-budget measurement thresholds",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-60.1",
+            "title": "Add true headless-browser layout-budget measurements and threshold assertions so future regressions can verify computed topbar, map, and overflow ratios directly instead of relying only on served-page contract coverage",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-61",
+        "title": "Admin preset presentation controls",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-61.1",
+            "title": "Extend local admin preset authoring so custom presets can explicitly edit densityMode and topbarMode instead of inheriting only built-in presentation defaults",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-62",
+        "title": "Sweep-state closure honesty after publish",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-62.1",
+            "title": "Close primary sweep state before deferred LLM enrichments so /api/health does not keep advertising an in-progress sweep after data is already published",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-63",
+        "title": "Sweep lifecycle retained-state follow-up",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-63.1",
+            "title": "Investigate and fix retained sweepInProgress and stale sweepStartedAt after publish when startup preview and deferred analysis overlap",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-64",
+        "title": "Initial-sweep publish honesty and synthesis-phase tracing",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-64.1",
+            "title": "Separate raw sweep completion from snapshot publish success and trace the startup synthesize path so health does not imply a published update while the initial sweep is still stuck in synthesis",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-65",
+        "title": "Health contract phase visibility for startup sweep tracing",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-65.1",
+            "title": "Expose runtime phase and raw-to-publish timing directly on /api/health so startup sweep state is visible without requiring nested runtime-control inspection",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-66",
+        "title": "Startup synthesis latency visibility and handoff timing",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-66.1",
+            "title": "Expose active phase elapsed time plus raw-to-persist and raw-to-publish latency on the health contract so startup synthesis hangs are directly measurable",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-67",
+        "title": "Published versus candidate snapshot timestamp honesty",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-67.1",
+            "title": "Split published snapshot timestamp from the in-flight candidate snapshot timestamp on the health contract so startup sweeps do not blur stale published data with pending work",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-68",
+        "title": "Candidate snapshot timestamp fallback stamping",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-68.1",
+            "title": "Populate candidate snapshot timestamp from briefing completion when raw sweep payloads omit meta.timestamp, and expose the timestamp source for operator honesty",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-69",
+        "title": "Clustered OSINT alert synopsis surfacing",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-69.1",
+            "title": "Add a highly succinct synopsis line for clustered OSINT suspect alerts so alert surfaces can explain the gist of the traffic without dropping the directional caveat",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-70",
+        "title": "Runtime history cache reuse for sweep summaries",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-70.1",
+            "title": "Cache reconstructed persisted runtime history across trend and summary builders so one sweep does not repeatedly reload and normalize the full SQLite and cold-history corpus",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-71",
+        "title": "Dashboard 3D dependency lazy loading and Safari memory-pressure mitigation",
+        "status": "completed",
+        "efforts": [
+          {
+            "id": "effort-71.1",
+            "title": "Defer loading three.js and globe.gl until globe mode is actually requested, and default Safari sessions to lite visuals so flat-mode dashboard loads stop paying the 3D memory cost up front",
+            "status": "completed"
+          }
+        ]
+      },
+      {
+        "id": "epic-72",
+        "title": "X acquisition strategy, intake, and normalization",
+        "status": "in_progress",
+        "efforts": [
+          {
+            "id": "effort-72.1",
+            "title": "Add a bounded first-class X lead intake contract for URLs, pasted posts, quoted threads, screenshots with operator context, and immutable raw-evidence capture",
+            "status": "completed"
+          },
+          {
+            "id": "effort-72.2",
+            "title": "Implement an X acquisition ladder covering manual URL or text intake, bounded public retrieval, bounded logged-in browser retrieval, and future formal API readiness with explicit graceful degradation",
+            "status": "completed"
+          },
+          {
+            "id": "effort-72.3",
+            "title": "Add an explicit X provider-guardrail policy that forbids broad crawling and unattended browser scraping while enforcing rate limits, dedupe, and backoff",
+            "status": "pending"
+          },
+          {
+            "id": "effort-72.4",
+            "title": "Normalize X and other social inputs into one canonical lead envelope with acquisition metadata, thread context, citations, media refs, and safety fields",
+            "status": "pending"
+          },
+          {
+            "id": "effort-72.5",
+            "title": "Define concrete decision gates for when Crucix should remain on manual or browser-assisted X retrieval versus adopt formal account-backed or paid API access",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-73",
+        "title": "Claim extraction, rhetoric stripping, and provenance scoring",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-73.1",
+            "title": "Split dramatic social posts into atomic factual claims with actor, action, target, place, time window, and text-span anchors back to source content",
+            "status": "pending"
+          },
+          {
+            "id": "effort-73.2",
+            "title": "Resolve cited sources and repost chains so claims record firsthand, cited, derivative, commentary, or unknown provenance explicitly",
+            "status": "pending"
+          },
+          {
+            "id": "effort-73.3",
+            "title": "Add bounded source-reputation heuristics for reach, originality, repost distance, prior corrections, and operator-adjustable trust caveats",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-74",
+        "title": "Verification fanout and evidence fusion for social claims",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-74.1",
+            "title": "Fan out each atomic social claim against existing Crucix evidence and return corroborated, partially supported, contradicted, unverified, or stale-evidence-limited outcomes with references",
+            "status": "pending"
+          },
+          {
+            "id": "effort-74.2",
+            "title": "Normalize claimed geography and timing into bounded geo-time entities so region-aware and time-window-aware corroboration checks stay honest",
+            "status": "pending"
+          },
+          {
+            "id": "effort-74.3",
+            "title": "Fuse supporting, missing, and contradictory evidence into claim-level and narrative-level confidence outputs that cannot be inflated by repeated social agreement alone",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-75",
+        "title": "LLM-assisted social analysis with prompt-injection hardening",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-75.1",
+            "title": "Use LLMs only for bounded structured tasks such as claim extraction, rhetoric stripping, contradiction synopsis, and review-priority rationale with strict JSON validation and fallback",
+            "status": "pending"
+          },
+          {
+            "id": "effort-75.2",
+            "title": "Add a content-firewall layer that treats social text as inert untrusted data, flags prompt-injection attempts, and blocks tool-use or policy-override behavior inside the LLM path",
+            "status": "pending"
+          },
+          {
+            "id": "effort-75.3",
+            "title": "Expose operator-reviewable policy and configuration controls for LLM task enablement, thresholds, suspicious-pattern actions, repair attempts, and audit logging",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-76",
+        "title": "Operator workflow, brief integration, and audit for social leads",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-76.1",
+            "title": "Add a social-leads review queue with bounded actions such as watch, suppress, quarantine, mark corroborated, mark false, and include in brief",
+            "status": "pending"
+          },
+          {
+            "id": "effort-76.2",
+            "title": "Integrate social-lead outputs into operator briefs and alerts with explicit caveats so social-only claims never silently contaminate top-line confirmed reporting",
+            "status": "pending"
+          },
+          {
+            "id": "effort-76.3",
+            "title": "Persist operator overrides, post-hoc truth outcomes, and reversible audit history so social scoring can improve without mutating raw evidence",
+            "status": "pending"
+          }
+        ]
+      },
+      {
+        "id": "epic-77",
+        "title": "Validation harness and rollout safety for social-lead workflows",
+        "status": "pending",
+        "efforts": [
+          {
+            "id": "effort-77.1",
+            "title": "Add contract and fixture coverage for social-lead schemas, extraction outputs, verification results, and review workflow actions",
+            "status": "pending"
+          },
+          {
+            "id": "effort-77.2",
+            "title": "Add security regression fixtures for prompt injection, tool-use bait, oversized content, Unicode spoofing, malformed citations, and hostile markup payloads",
+            "status": "pending"
+          },
+          {
+            "id": "effort-77.3",
+            "title": "Roll out the social-lead pipeline behind observe-only and caveated-brief gates before any alert-level promotion",
+            "status": "pending"
+          }
+        ]
+      }
+    ]
+  },
+  "cycleState": {
+    "sequence": 192,
+    "activeCycleId": null,
+    "lastCompletedCycleId": "2026-05-08-cycle-192"
+  },
+  "backlog": [
+    {
+      "id": "backlog-62-a",
+      "title": "Investigate why the live runtime can still retain `sweepInProgress: true` and the original `sweepStartedAt` after publish, even when `lastSweep` and deferred analysis completion telemetry advance",
+      "status": "promoted",
+      "notes": "Observed on cycle 180 after shipping earlier sweep-state closure hardening. Likely needs deeper tracing of overlapping startup preview enrichment versus initial sweep lifecycle bookkeeping."
+    },
+    {
+      "id": "backlog-63-a",
+      "title": "Trace the post-publish path that can leave the live runtime stuck in `synthesis` with `sweepInProgress: true` even after startup preview analysis is skipped",
+      "status": "promoted",
+      "notes": "Observed on cycle 181. The new startup-preview overlap guard landed and startup logs confirm preview analysis was skipped while the initial sweep was active, but live `/api/health` still showed `runtimeControl.sweep.currentPhase: synthesis`, retained `sweepStartedAt`, and `sweepInProgress: true` after `lastSweep` and `publishedAt` advanced. Likely a separate post-publish or finalization path outside the original startup-preview overlap hypothesis. Promoted into the active roadmap on 2026-04-30 for cycle 182 execution."
+    },
+    {
+      "id": "backlog-64-a",
+      "title": "Add bounded stage-level timing or timeout instrumentation around startup sweep synthesis and publish handoff so hangs after fullBriefing are attributable before watchdog recovery",
+      "status": "pending",
+      "notes": "Cycle 182 live validation showed the restarted runtime remained in phase `synthesis` with stale `/api/data` while `lastSweep` advanced, which suggests a deeper startup-sweep hang and misleading last-success semantics rather than only a post-publish retained gate."
+    },
+    {
+      "id": "backlog-72-a",
+      "title": "Formalized social-lead intake, verification, and LLM-hardening roadmap for integrating high-value social-media claims into Crucix without turning social chatter into top-line truth",
+      "status": "promoted",
+      "notes": "Planned on 2026-05-08 and scheduled into epic-72 through epic-77 with supporting design docs under docs/social-leads-llm-pipeline-design.md and local-fork/artifacts/2026-05-08-social-leads-backlog.md."
+    },
+    {
+      "id": "backlog-72-b",
+      "title": "Move social-lead persistence from the initial bounded JSON store toward NDJSON or SQLite history once X intake volume grows enough that operator audit and query needs exceed simple recent-lead snapshots",
+      "status": "pending",
+      "notes": "Identified during cycle 191 while shipping effort-72.1. The first slice uses a simple file-backed JSON store for speed and reliability, but higher sustained intake will likely want append-oriented history plus bounded query surfaces."
+    },
+    {
+      "id": "backlog-72-c",
+      "title": "Add an explicit social-leads policy artifact and endpoint before enabling browser-assisted X retrieval so operator-visible guardrails, budgets, and audit trails exist before any real browser-backed collection runs",
+      "status": "pending",
+      "notes": "Identified during cycle 192 while shipping the acquisition ladder contract. The code now records graceful degradation and acquisition capabilities, but browser-assisted retrieval should not be enabled until the policy surface and audit controls from effort-72.3 exist."
+    }
+  ]
+}

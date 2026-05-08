@@ -1,0 +1,17 @@
+{
+  "version": "source-lifecycle-evaluation-v1",
+  "candidateId": "candidate-maritime-example-001",
+  "generatedAt": "2026-04-25T18:20:00Z",
+  "currentState": "shadow",
+  "promotionReadiness": "shadow-ready",
+  "allowedNextStates": ["approved", "rejected", "deprecated"],
+  "agentMayAdvanceCurrentState": false,
+  "unmetRequirements": [],
+  "nextAllowedState": "approved",
+  "recommendedAction": "human-review",
+  "blocked": true,
+  "blockedReasons": [
+    "next state crosses human approval boundary",
+    "current state is not agent-advanceable"
+  ]
+}

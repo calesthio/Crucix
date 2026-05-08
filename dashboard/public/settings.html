@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRUCIX Operator Settings</title>
+<link rel="stylesheet" href="/ops-shell.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="/ops-shell.js"></script>
+<script>
+{
+const { esc, row, tags, renderCard, mountOpsShell } = window.CRUCIX_OPS_SHELL;
+const shell = mountOpsShell({
+  activeSurface: 'settings',
+  kicker: 'Crucix operator settings',
+  title: 'Settings visibility plane',
+  subtitle: 'This is the read-only operator view. Persisted writes, export/import, and debug-adjacent controls are intentionally separated into the local-only admin surface.',
+  loadingText: 'Loading settings…',
+  contentClass: 'grid',
+  actions: [{ label: 'Raw JSON', href: '/api/settings', target: '_blank', rel: 'noreferrer' }],
+});
+async function boot(){
+  try {
+    const res = await fetch('/api/settings');
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    shell.status.textContent = `Loaded ${data.version} at ${new Date(data.generatedAt).toLocaleString()}`;
+    const categories = (data.sources?.categories || []).map(item => `${item.category}: ${item.count}`);
+    const lifecycle = (data.sources?.lifecycleStates || []).map(item => `${item.lifecycle}: ${item.count}`);
+    const layouts = (data.layout?.available || []).map(item => `${item.id} (${item.status})`);
+    shell.content.hidden = false;
+    shell.content.innerHTML = [
+      renderCard('Access', 'Surface role and boundaries', [
+        row('Role', esc(data.access?.role || 'operator')),
+        row('Mode', esc(data.access?.mode || 'read-only')),
+        row('Local admin required', esc(String(Boolean(data.access?.localAdminRequired)))),
+        row('Admin surface', esc(data.access?.adminSurface || 'n/a')),
+        row('Source console', esc(data.access?.sourceConsoleSurface || 'n/a')),
+        row('LLM operations', esc(data.access?.llmOperationsSurface || 'n/a')),
+      ].join('')),
+      renderCard('Layout', 'Current operator posture', [
+        row('Current', esc(data.layout?.current || 'unknown')),
+        row('Visuals mode', esc(data.layout?.controls?.visualsMode || 'unknown')), row('Workspace preset', esc(data.layout?.controls?.currentWorkspacePresetLabel || data.layout?.controls?.workspacePreset || 'unknown')), row('Preset reset support', esc(String(Boolean(data.layout?.controls?.resetSupported)))),
+        row('Map mode', esc(data.layout?.controls?.mapMode || 'unknown')),
+        row('Display mode', esc(data.layout?.controls?.displayMode || 'auto')),
+        row('Default region', esc(data.layout?.controls?.defaultRegion || 'unknown')),
+        row('Active layer', esc(data.layout?.controls?.activeLayer || 'all')),
+        row('Persistence', esc(data.layout?.controls?.persistence || 'unknown')),
+        tags(layouts), (data.layout?.controls?.namedPresets || []).length ? tags((data.layout.controls.namedPresets || []).map(item => `${item.label || item.id}: ${item.description || item.profile || 'n/a'}`)) : '',
+      ].join('')),
+      renderCard('Sources', 'Inventory and selection state', [
+        row('Total', esc(data.sources?.total ?? 0)),
+        row('Active', esc(data.sources?.active ?? 0)),
+        row('Per-source controls', esc(String(Boolean(data.sources?.selection?.supportsPerSourceControl)))),
+        row('Category filtering', esc(String(Boolean(data.sources?.selection?.supportsCategoryFiltering)))),
+        row('Role grouping', esc(String(Boolean(data.sourceConsole?.roleGrouping?.enabled)))),
+        row('Source console surface', esc(data.sourceConsole?.surface || 'n/a')),
+        row('Enabled categories', esc((data.sources?.selection?.enabledCategories || []).join(', ') || 'all')),
+        row('Enabled source IDs', esc((data.sources?.selection?.enabledSourceIds || []).join(', ') || 'all')),
+        row('Duplicate burst suppression', esc(String(Boolean(data.sources?.selection?.noiseSuppression?.duplicateBurst?.enabled)))),
+        row('Repetitive low-value suppression', esc(String(Boolean(data.sources?.selection?.noiseSuppression?.repetitiveLowValue?.enabled)))),
+        row('Active source rules', esc(String((data.sourceConsole?.noiseSuppression?.summary?.activeSourceRuleCount) ?? 0))),
+        categories.length ? tags(categories) : '',
+        lifecycle.length ? tags(lifecycle) : '',
+      ].join('')),
+      renderCard('LLM', 'Provider and runtime state', [
+        row('Provider', esc(data.llm?.provider || 'disabled')),
+        row('Model', esc(data.llm?.model || 'none')),
+        row('Configured', esc(String(Boolean(data.llm?.configured)))),
+        row('State', esc(data.llm?.state?.label || data.llm?.state?.status || 'unknown')),
+        row('Default news mode', esc(data.llm?.defaultMode || 'auto')),
+      ].join('')),
+      renderCard('Agent analysis', 'Published reasoning behavior', [
+        row('Status', esc(data.agentAnalysis?.current?.status || 'unavailable')),
+        row('Confidence', esc(data.agentAnalysis?.current?.confidenceLabel || 'n/a')),
+        row('Source', esc(data.agentAnalysis?.current?.source || 'n/a')),
+        row('Refinement', esc(data.agentAnalysis?.current?.refinementState || 'n/a')),
+        row('Publish policy', esc(data.agentAnalysis?.controls?.publishMode || 'strict')),
+        row('Fallback mode', esc(data.agentAnalysis?.controls?.deterministicFallbackMode || 'always')),
+        row('Horizon behavior', esc(data.agentAnalysis?.controls?.horizonBehavior || 'balanced')),
+        row('Tipping threshold', esc(data.agentAnalysis?.controls?.tippingPointMinProbability || 'HIGH')),
+        row('Max tipping points', esc(data.agentAnalysis?.controls?.maxPublishedTippingPoints || 5)),
+        row('Detail level', esc(data.agentAnalysis?.controls?.detailLevel || 'standard')),
+      ].join('')),
+      renderCard('Runtime', 'Cadence and sweep state', [
+        row('Refresh interval', esc(`${data.runtime?.refreshIntervalMinutes ?? '?'} min`)),
+        row('Sweep in progress', esc(String(Boolean(data.runtime?.sweepInProgress)))),
+        row('Next sweep', esc(data.runtime?.nextSweep || 'unknown')),
+        row('Locale', esc(data.runtime?.locale || 'unknown')),
+        row('Watchdog timeout', esc(`${data.runtime?.watchdog?.timeoutMinutes ?? '?'} min`)),
+      ].join('')),
+      renderCard('Debug and alerts', 'Exposure and routing posture', [
+        row('Debug exposure', esc(data.debug?.endpointExposure || 'unknown')),
+        row('Local-only by default', esc(String(Boolean(data.debug?.localRequestRequiredByDefault)))),
+        row('Telegram', esc(String(Boolean(data.alerts?.telegramEnabled)))),
+        row('Discord', esc(String(Boolean(data.alerts?.discordEnabled)))),
+        (data.alerts?.enabled || []).length ? tags(data.alerts.enabled) : '',
+      ].join('')),
+      renderCard('Runtime config', 'Defaults, effective values, and drift', [
+        row('Contract', esc(data.config?.contract?.version || 'unknown')),
+        row('Valid', esc(String(Boolean(data.config?.validation?.valid)))),
+        row('Drifted entries', esc(String(data.config?.driftSummary?.driftedEntries ?? 0))),
+        row('Env overrides', esc(String(data.config?.driftSummary?.envOverrides ?? 0))),
+        row('Defaulted entries', esc(String(data.config?.driftSummary?.defaultedEntries ?? 0))),
+      ].join('')),
+      renderCard('Operator notes', 'Honesty and boundaries', `<pre>${esc((data.notes || []).join('\n- ')).replace(/^/, '- ')}</pre>`),
+    ].join('');
+  } catch (err) {
+    shell.status.textContent = `Failed to load settings: ${err.message}`;
+  }
+}
+boot();
+}
+</script>
+</body>
+</html>

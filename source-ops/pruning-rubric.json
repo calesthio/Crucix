@@ -1,0 +1,50 @@
+{
+  "version": "source-pruning-rubric-v1",
+  "generatedAt": "2026-04-25T17:55:00Z",
+  "dimensions": [
+    {
+      "id": "noise-pressure",
+      "label": "Noise pressure",
+      "weight": 0.3,
+      "question": "How strongly does this source increase operator review burden, false positives, or low-value signal churn?"
+    },
+    {
+      "id": "duplication-burden",
+      "label": "Duplication burden",
+      "weight": 0.25,
+      "question": "How much of this source's output is already covered by higher-trust or lower-cost sources?"
+    },
+    {
+      "id": "maintenance-cost",
+      "label": "Maintenance cost",
+      "weight": 0.2,
+      "question": "How much operator or engineering burden does this source impose through auth churn, instability, or breakage risk?"
+    },
+    {
+      "id": "operator-value-retention",
+      "label": "Operator value retention",
+      "weight": 0.15,
+      "question": "If this source were downgraded or deprecated, how much operator value would still be preserved by the remaining source set?"
+    },
+    {
+      "id": "safe-actionability",
+      "label": "Safe actionability",
+      "weight": 0.1,
+      "question": "Can a bounded recommendation be made without auto-removing an active production source or hiding a real coverage gap?"
+    }
+  ],
+  "recommendationThresholds": {
+    "retain": { "maxWeightedTotal": 2.2 },
+    "review": { "minWeightedTotal": 2.21, "maxWeightedTotal": 3.4 },
+    "deprecate-candidate": { "minWeightedTotal": 3.41 }
+  },
+  "operatorExpectations": {
+    "activeSourceGuardrail": "Active production sources may receive recommendation-only outputs such as retain, human-review, downgrade-review, or deprecate-review. Agents must not auto-remove or disable them.",
+    "requiredReasoning": [
+      "noise evidence",
+      "duplication evidence",
+      "maintenance or failure burden",
+      "coverage risk if reduced"
+    ]
+  }
+}

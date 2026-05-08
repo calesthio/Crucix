@@ -1,0 +1,61 @@
+{
+  "version": "source-ops-profile-v1",
+  "generatedAt": "2026-04-25T18:45:00Z",
+  "registryPath": "source-ops/source-registry.seed.json",
+  "taskSchemaPath": "source-ops/schemas/task-packet.schema.json",
+  "resultSchemaPath": "source-ops/schemas/result-envelope.schema.json",
+  "scorecardSchemaPath": "source-ops/schemas/scorecard.schema.json",
+  "gradingRubricPath": "source-ops/grading-rubric.json",
+  "overlapSchemaPath": "source-ops/schemas/overlap-assessment.schema.json",
+  "overlapRubricPath": "source-ops/overlap-rubric.json",
+  "pruningSchemaPath": "source-ops/schemas/pruning-assessment.schema.json",
+  "pruningRubricPath": "source-ops/pruning-rubric.json",
+  "lifecycleEvaluationSchemaPath": "source-ops/schemas/lifecycle-evaluation.schema.json",
+  "lifecycleBatchSchemaPath": "source-ops/schemas/lifecycle-batch.schema.json",
+  "actionTaxonomyPath": "source-ops/action-taxonomy.json",
+  "lifecycleTransitionPolicyPath": "source-ops/lifecycle-transition-policy.json",
+  "approvalPolicy": {
+    "contractMode": "file-first",
+    "preProductionAutoAdvanceMax": "shadow",
+    "activePromotionRequiresHumanApproval": true
+  },
+  "transitionPolicy": {
+    "defaultEntryState": "candidate",
+    "autoAdvanceEnabled": true,
+    "agentMayAutoAdvanceTo": ["researched", "graded", "shadow"],
+    "humanApprovalRequiredFor": ["approved", "active", "degraded"],
+    "policySource": "source-ops/lifecycle-transition-policy.json"
+  },
+  "shadowPolicy": {
+    "productionInfluenceBlocked": true,
+    "operatorSurface": "source-ops-only",
+    "requiresScoringBeforeShadow": true,
+    "minimumPromotionReadiness": "shadow-ready"
+  },
+  "allowedRoles": [
+    "discovery",
+    "validation",
+    "grading",
+    "overlap",
+    "pruning",
+    "onboarding-prep"
+  ],
+  "workspace": {
+    "tasksDir": "source-ops/tasks",
+    "resultsDir": "source-ops/results",
+    "queuePath": "source-ops/queue/pending.json",
+    "reviewedQueuePath": "source-ops/queue/reviewed.json",
+    "needsPath": "source-ops/runtime-needs.json"
+  },
+  "lifecyclePolicy": {
+    "states": ["candidate", "researched", "graded", "shadow", "approved", "active", "degraded", "deprecated", "rejected"],
+    "agentWritableStates": ["candidate", "researched", "graded", "shadow", "deprecated", "rejected"],
+    "humanApprovalRequiredFor": ["active"]
+  },
+  "discipline": {
+    "externalWritesAllowed": false,
+    "productionMutationsAllowed": false,
+    "requireStructuredOutputs": true,
+    "preferExplainableScoring": true
+  }
+}

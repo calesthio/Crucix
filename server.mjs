@@ -3,45 +3,3948 @@
 // Serves the Jarvis dashboard, runs sweep cycle, pushes live updates via SSE
 
 import express from 'express';
+import { randomUUID } from 'crypto';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import config from './crucix.config.mjs';
 import { getLocale, currentLanguage, getSupportedLocales } from './lib/i18n.mjs';
 import { fullBriefing } from './apis/briefing.mjs';
-import { synthesize, generateIdeas } from './dashboard/inject.mjs';
+import { synthesize, generateIdeas, buildNewsClusters } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider } from './lib/llm/index.mjs';
 import { generateLLMIdeas } from './lib/llm/ideas.mjs';
+import { buildLlmCallTelemetry, combineLlmTelemetry } from './lib/llm/telemetry.mjs';
 import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
+import { buildSixHourBaseline } from './lib/baseline-sixhour.mjs';
+import { getFreshnessPolicy } from './lib/freshness-policy.mjs';
+import { buildSourceOpsSurface } from './lib/source-ops-runtime.mjs';
+import { appendRuntimeRestartAudit } from './lib/runtime-restart.mjs';
+import { createSocialLeadStore } from './lib/social-leads/store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
 const RUNS_DIR = join(ROOT, 'runs');
 const MEMORY_DIR = join(RUNS_DIR, 'memory');
+const REVIEW_ACKS_PATH = join(RUNS_DIR, 'cluster-review-acks.json');
+const REVIEW_WORKFLOW_AUDIT_PATH = join(RUNS_DIR, 'review-workflow-audit.json');
+const CLUSTER_REPAIR_ACTIONS_PATH = join(RUNS_DIR, 'cluster-repair-actions.json');
+const NOISE_SUPPRESSION_HISTORY_PATH = join(RUNS_DIR, 'noise-suppression-history.json');
+const SETTINGS_ADMIN_AUDIT_PATH = join(RUNS_DIR, 'settings-admin-audit.json');
+const SOURCE_CONTROL_AUDIT_PATH = join(RUNS_DIR, 'source-control-audit.json');
+const RUNTIME_RESTART_AUDIT_PATH = join(RUNS_DIR, 'runtime-restart-audit.json');
+const AGENT_ANALYSIS_VALIDATION_SCRIPT = join(ROOT, 'scripts/agent-analysis-validation-summary.mjs');
+const OPENSKY_STATE_PATH = join(ROOT, 'runs', 'cache', 'opensky-state.json');
+const OPERATOR_SETTINGS_PATH = process.env.OPERATOR_SETTINGS_PATH || join(ROOT, 'runs', 'operator-settings.json');
+const RUNTIME_CONTROL_LOG_PATH = join(ROOT, 'logs', 'runtime-control.log');
+const LOCAL_ADMIN_WRITE_HEADER = 'X-Crucix-Local-Admin-Nonce';
+const LOCAL_ADMIN_WRITE_BODY_FIELD = 'localAdminNonce';
+const LOCAL_ADMIN_WRITE_TOKEN = randomUUID();
 
 // Ensure directories exist
-for (const dir of [RUNS_DIR, MEMORY_DIR, join(MEMORY_DIR, 'cold')]) {
+for (const dir of [RUNS_DIR, MEMORY_DIR, join(MEMORY_DIR, 'cold'), join(ROOT, 'logs')]) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
 
 // === State ===
 let currentData = null;    // Current synthesized dashboard data
-let lastSweepTime = null;  // Timestamp of last sweep
+let lastSweepTime = null;  // Timestamp of last published snapshot
+let lastPublishedSnapshotTimestamp = null; // Snapshot timestamp of the last published dashboard payload
+let candidateSnapshotTimestamp = null; // Snapshot timestamp currently being prepared but not yet published
+let lastBriefingCompletedAt = null; // Timestamp when raw source collection finished
+let lastRawSnapshotPersistedAt = null; // Timestamp when runs/latest.json was updated
 let sweepStartedAt = null; // Timestamp when current/last sweep started
 let sweepInProgress = false;
+let runtimeJobState = {
+  phase: 'idle',
+  phaseStartedAt: null,
+  lastCompletedPhase: null,
+  lastCompletedAt: null,
+  lastFailurePhase: null,
+  lastFailureAt: null,
+  lastFailureReason: null,
+  lastRecoveryPhase: null,
+  lastRecoveryAt: null,
+  lastRecoveryReason: null,
+};
 const startTime = Date.now();
 const sseClients = new Set();
+let serverInstance = null;
+let sweepIntervalHandle = null;
+let watchdogIntervalHandle = null;
+let shutdownPromise = null;
+let shuttingDown = false;
+const runtimeLifecycle = {
+  phase: 'booting',
+  ready: false,
+  shuttingDown: false,
+  shutdownReason: null,
+};
+const selectionMemory = new Map();
+const selectionMemoryTelemetry = {
+  ttlExpired: 0,
+  capacityEvicted: 0,
+  manualCleared: 0,
+  touchHits: 0,
+  misses: 0,
+};
+const SELECTION_MEMORY_TTL_MS = 10 * 60 * 1000;
+const SELECTION_MEMORY_MAX_ENTRIES = 100;
+const REVIEW_ACK_TTL_MS = Math.max(1, Number(config.review?.ackTtlHours || 72)) * 60 * 60 * 1000;
+const REVIEW_ACK_MAX_ENTRIES = Math.max(1, Number(config.review?.ackMaxEntries || 100));
+const SWEEP_WATCHDOG_TIMEOUT_MS = Math.max(5 * 60 * 1000, Number(config.review?.sweepWatchdogTimeoutMinutes || Math.max(config.refreshIntervalMinutes * 2, 45)) * 60 * 1000);
+const SWEEP_WATCHDOG_POLL_MS = Math.max(5 * 1000, Number(config.review?.sweepWatchdogPollSeconds || 30) * 1000);
+const CLUSTER_REVIEW_STATE_KEY = 'cluster-review:regions';
+const CLUSTER_REVIEW_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+const CLUSTER_REVIEW_DECAY_HALF_LIFE_MS = 3 * 24 * 60 * 60 * 1000;
+const CLUSTER_PRESSURE_STATE_KEY = 'cluster-review:pressure';
+const CLUSTER_PRESSURE_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+const CRITICAL_EVENT_QUEUE_STATE_KEY = 'critical-events:queue';
+const CRITICAL_EVENT_QUEUE_AUDIT_STATE_KEY = 'critical-events:queue-audit';
+const CRITICAL_EVENT_DELIVERY_STATE_KEY = 'critical-events:delivery';
+const SDR_SESSION_STATE_KEY = 'sdr:session-audit';
+const CRITICAL_EVENT_QUEUE_RETENTION_MS = Math.max(1, Number(config.review?.criticalEventQueueRetentionHours || 24)) * 60 * 60 * 1000;
+const CRITICAL_EVENT_QUEUE_RETRY_INTERVAL_MS = Math.max(1, Number(config.review?.criticalEventQueueRetryMinutes || 5)) * 60 * 1000;
+const CRITICAL_EVENT_QUEUE_MAX_RETRIES = Math.max(1, Number(config.review?.criticalEventQueueMaxRetries || 6));
+const CRITICAL_EVENT_QUEUE_MAX_ITEMS = Math.max(10, Number(config.review?.criticalEventQueueMaxEntries || 80));
+const CLUSTER_REPAIR_ARTIFACTS_STATE_KEY = 'cluster-review:repair-artifacts';
+const CLUSTER_REPAIR_ARTIFACT_RETENTION_MS = Math.max(1, Number(config.review?.repairArtifactRetentionDays || 14)) * 24 * 60 * 60 * 1000;
+const CLUSTER_REPAIR_ARTIFACT_MAX_ENTRIES = Math.max(1, Number(config.review?.repairArtifactMaxEntries || 50));
+const CLUSTER_REPAIR_ACTION_MAX_HISTORY = Math.max(20, Number(config.review?.clusterRepairActionMaxEntries || 200));
+const REVIEW_WORKFLOW_AUDIT_MAX_ENTRIES = Math.max(20, Number(config.review?.workflowAuditMaxEntries || 200));
+const SOURCE_CONTROL_AUDIT_MAX_ENTRIES = Math.max(20, Number(config.review?.sourceControlAuditMaxEntries || 250));
+const NOISE_SUPPRESSION_HISTORY_RETENTION_MS = Math.max(1, Number(config.review?.noiseSuppressionHistoryRetentionDays || 14)) * 24 * 60 * 60 * 1000;
+const NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS = Math.max(1, Number(config.review?.noiseSuppressionHistoryHalfLifeDays || 5)) * 24 * 60 * 60 * 1000;
+const NOISE_SUPPRESSION_HISTORY_MAX_DUPLICATE_BURSTS = Math.max(20, Number(config.review?.noiseSuppressionHistoryMaxDuplicateBursts || 200));
+const NOISE_SUPPRESSION_HISTORY_MAX_LOW_VALUE_EVENTS = Math.max(20, Number(config.review?.noiseSuppressionHistoryMaxLowValueEvents || 200));
+const NOISE_SUPPRESSION_HISTORY_MAX_SOURCE_RULE_HITS = Math.max(20, Number(config.review?.noiseSuppressionHistoryMaxSourceRuleHits || 200));
+const reviewAcks = loadReviewAcks();
+const reviewWorkflowAudit = loadReviewWorkflowAudit();
+const sourceControlAudit = loadSourceControlAudit();
+const clusterRepairActions = loadClusterRepairActions();
+const noiseSuppressionHistory = loadNoiseSuppressionHistory();
+const socialLeadStore = createSocialLeadStore({ rootDir: RUNS_DIR });
+const sweepWatchdogTelemetry = {
+  recoveryCount: 0,
+  lastRecoveryAt: null,
+  lastRecoveryReason: null,
+  lastRecoveredSweepStartedAt: null,
+  lastOverdueAt: null,
+};
+const runtimeJobTelemetry = {
+  synthesis: {
+    active: false,
+    attemptCount: 0,
+    retryCount: 0,
+    cancellationCount: 0,
+    lastAttemptId: null,
+    lastStartedAt: null,
+    lastCompletedAt: null,
+    lastDurationMs: null,
+    lastOutcome: null,
+    lastError: null,
+    lastTimedOut: false,
+    timeoutMs: SWEEP_WATCHDOG_TIMEOUT_MS,
+  },
+  ideas: {
+    active: false,
+    attemptCount: 0,
+    retryCount: 0,
+    cancellationCount: 0,
+    lastAttemptId: null,
+    lastStartedAt: null,
+    lastCompletedAt: null,
+    lastDurationMs: null,
+    lastOutcome: null,
+    lastError: null,
+    lastTimedOut: false,
+    timeoutMs: 90000,
+  },
+  analysis: {
+    active: false,
+    attemptCount: 0,
+    retryCount: 0,
+    cancellationCount: 0,
+    lastAttemptId: null,
+    lastStartedAt: null,
+    lastCompletedAt: null,
+    lastDurationMs: null,
+    lastOutcome: null,
+    lastError: null,
+    lastTimedOut: false,
+    timeoutMs: 90000,
+  },
+};
+const LLM_PROVIDER_PROBE_TTL_MS = 5 * 60 * 1000;
+const LLM_PROVIDER_PROBE_TIMEOUT_MS = 4000;
+let llmProviderProbeState = {
+  version: 'llm-provider-readiness-v1',
+  configured: Boolean(config.llm?.provider),
+  available: false,
+  status: !config.llm?.provider ? 'disabled' : 'unknown',
+  checkedAt: null,
+  inFlight: false,
+  stale: false,
+  summary: !config.llm?.provider
+    ? 'No LLM provider configured.'
+    : 'No active readiness probe has completed yet.',
+  probeTtlMs: LLM_PROVIDER_PROBE_TTL_MS,
+  timeoutMs: LLM_PROVIDER_PROBE_TIMEOUT_MS,
+  consecutiveFailures: 0,
+  lastLatencyMs: null,
+  lastModel: config.llm?.model || null,
+  lastCheckedReason: null,
+  lastSuccess: {
+    at: null,
+    latencyMs: null,
+    model: null,
+    detail: null,
+  },
+  lastFailure: {
+    at: null,
+    latencyMs: null,
+    reason: null,
+    detail: null,
+    classification: null,
+    status: null,
+    retryable: null,
+  },
+  lastProbeType: null,
+};
+let llmProviderProbePromise = null;
+
+function loadJsonFile(path, fallback) {
+  try {
+    if (!existsSync(path)) return fallback;
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
+
+function saveJsonFile(path, data) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(data, null, 2)}\n`);
+}
+
+function deepCloneJson(data) {
+  return data == null ? data : JSON.parse(JSON.stringify(data));
+}
+
+function runtimeRestartAuditDefaults() {
+  return {
+    version: 'runtime-restart-audit-v1',
+    updatedAt: null,
+    history: [],
+  };
+}
+
+function getRuntimeRestartAuditState() {
+  const state = loadJsonFile(RUNTIME_RESTART_AUDIT_PATH, runtimeRestartAuditDefaults());
+  if (!state || typeof state !== 'object') return runtimeRestartAuditDefaults();
+  return {
+    version: 'runtime-restart-audit-v1',
+    updatedAt: state.updatedAt || null,
+    history: Array.isArray(state.history) ? state.history : [],
+  };
+}
+
+function isPlaceholderSecret(value = '') {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return false;
+  return [
+    'changeme',
+    'replace-me',
+    'replace_me',
+    'your-token-here',
+    'your_api_key_here',
+    'your-api-key-here',
+    'example',
+    'test',
+    'todo',
+  ].includes(normalized);
+}
+
+function isValidHttpUrl(value = '') {
+  if (!String(value || '').trim()) return false;
+  try {
+    const parsed = new URL(String(value));
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function shouldAutoOpenBrowser() {
+  const raw = String(process.env.CRUCIX_AUTO_OPEN_BROWSER || '').trim().toLowerCase();
+  if (['0', 'false', 'no', 'off'].includes(raw)) return false;
+  if (['1', 'true', 'yes', 'on'].includes(raw)) return true;
+  return Boolean(process.stdout?.isTTY) && !process.env.CI;
+}
+
+function validateStartupEnvironment() {
+  const issues = [];
+  const warnings = [];
+  const llmProviderName = String(config.llm?.provider || '').trim();
+  const llmProviderLower = llmProviderName.toLowerCase();
+  const llmApiKey = String(config.llm?.apiKey || '').trim();
+  const telegramToken = String(config.telegram?.botToken || '').trim();
+  const telegramChatId = String(config.telegram?.chatId || '').trim();
+  const discordToken = String(config.discord?.botToken || '').trim();
+  const discordWebhookUrl = String(config.discord?.webhookUrl || '').trim();
+
+  if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) {
+    issues.push({ key: 'PORT', message: 'PORT must be an integer between 1 and 65535.' });
+  }
+  if (!Number.isInteger(config.refreshIntervalMinutes) || config.refreshIntervalMinutes < 1) {
+    issues.push({ key: 'REFRESH_INTERVAL_MINUTES', message: 'REFRESH_INTERVAL_MINUTES must be at least 1.' });
+  }
+  if (!Number.isInteger(config.review?.sweepWatchdogPollSeconds) || config.review.sweepWatchdogPollSeconds < 5) {
+    issues.push({ key: 'SWEEP_WATCHDOG_POLL_SECONDS', message: 'SWEEP_WATCHDOG_POLL_SECONDS must be at least 5.' });
+  }
+  if (!['local-only', 'open'].includes(config.debugEndpoints?.exposure || 'local-only')) {
+    issues.push({ key: 'DEBUG_ENDPOINT_EXPOSURE', message: 'DEBUG_ENDPOINT_EXPOSURE must be local-only or open.' });
+  }
+  if (llmProviderName && !config.llm?.model) {
+    warnings.push({ key: 'LLM_MODEL', message: 'LLM provider is configured without an explicit model override.' });
+  }
+  if (llmProviderName && !['ollama', 'codex'].includes(llmProviderLower) && !llmApiKey) {
+    issues.push({ key: 'LLM_API_KEY', message: `LLM provider ${llmProviderName} requires LLM_API_KEY.` });
+  }
+  if (llmApiKey && isPlaceholderSecret(llmApiKey)) {
+    issues.push({ key: 'LLM_API_KEY', message: 'LLM_API_KEY looks like a placeholder value.' });
+  }
+  if (telegramToken && !telegramChatId) {
+    issues.push({ key: 'TELEGRAM_CHAT_ID', message: 'TELEGRAM_CHAT_ID is required when TELEGRAM_BOT_TOKEN is configured.' });
+  }
+  if (!telegramToken && telegramChatId) {
+    issues.push({ key: 'TELEGRAM_BOT_TOKEN', message: 'TELEGRAM_BOT_TOKEN is required when TELEGRAM_CHAT_ID is configured.' });
+  }
+  if (telegramToken && isPlaceholderSecret(telegramToken)) {
+    issues.push({ key: 'TELEGRAM_BOT_TOKEN', message: 'TELEGRAM_BOT_TOKEN looks like a placeholder value.' });
+  }
+  if (discordToken && isPlaceholderSecret(discordToken)) {
+    issues.push({ key: 'DISCORD_BOT_TOKEN', message: 'DISCORD_BOT_TOKEN looks like a placeholder value.' });
+  }
+  if (discordWebhookUrl && !isValidHttpUrl(discordWebhookUrl)) {
+    issues.push({ key: 'DISCORD_WEBHOOK_URL', message: 'DISCORD_WEBHOOK_URL must be a valid http(s) URL.' });
+  }
+  if (config.llm?.baseUrl && !isValidHttpUrl(config.llm.baseUrl)) {
+    issues.push({ key: 'OLLAMA_BASE_URL', message: 'OLLAMA_BASE_URL must be a valid http(s) URL when configured.' });
+  }
+  if (llmProviderLower === 'ollama' && !config.llm?.baseUrl) {
+    warnings.push({ key: 'OLLAMA_BASE_URL', message: 'OLLAMA_BASE_URL is not set, so the default local Ollama endpoint will be used.' });
+  }
+  if ((config.debugEndpoints?.exposure || 'local-only') === 'open') {
+    warnings.push({ key: 'DEBUG_ENDPOINT_EXPOSURE', message: 'Debug endpoints are openly exposed. Prefer local-only outside trusted local development.' });
+  }
+
+  return {
+    valid: issues.length === 0,
+    checkedAt: new Date().toISOString(),
+    issues,
+    warnings,
+  };
+}
+
+const startupValidation = validateStartupEnvironment();
+
+function normalizeToken(value = '') {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+const builtInWorkspacePresetLibrary = [
+  { id: 'operator', label: 'Analyst', profile: 'analyst', description: 'Balanced operator workspace for normal desktop analysis.', displayMode: 'desktop', mapMode: 'auto', visualsMode: 'full', densityMode: 'balanced', topbarMode: 'standard', defaultRegion: 'world', activeLayer: null, panels: { reviewQueue: { pinned: true, priority: 10, size: 'wide', collapsed: false }, analysisReview: { pinned: true, priority: 20, size: 'normal', collapsed: false }, layoutBudget: { pinned: false, priority: 30, size: 'normal', collapsed: false }, tradeIdeas: { pinned: false, priority: 60, size: 'compact', collapsed: false }, evidenceAudit: { pinned: false, priority: 40, size: 'normal', collapsed: false } } },
+  { id: 'diagnostics', label: 'Narrow Screen', profile: 'narrow-screen', description: 'Dense but bounded layout for constrained displays and troubleshooting.', displayMode: 'desktop', mapMode: 'flat', visualsMode: 'lite', densityMode: 'dense', topbarMode: 'compact', defaultRegion: 'world', activeLayer: 'news', panels: { reviewQueue: { pinned: true, priority: 5, size: 'wide', collapsed: false }, analysisReview: { pinned: true, priority: 10, size: 'wide', collapsed: false }, layoutBudget: { pinned: true, priority: 12, size: 'wide', collapsed: false }, evidenceAudit: { pinned: true, priority: 15, size: 'wide', collapsed: false }, tradeIdeas: { pinned: false, priority: 90, size: 'compact', collapsed: true }, newsTicker: { pinned: false, priority: 50, size: 'compact', collapsed: false } } },
+  { id: 'source-ops', label: 'Source Ops', profile: 'source-ops', description: 'Source-health triage layout that keeps evidence and review controls close.', displayMode: 'desktop', mapMode: 'flat', visualsMode: 'lite', densityMode: 'dense', topbarMode: 'compact', defaultRegion: 'world', activeLayer: 'news', panels: { reviewQueue: { pinned: true, priority: 5, size: 'wide', collapsed: false }, evidenceAudit: { pinned: true, priority: 10, size: 'wide', collapsed: false }, crossSignals: { pinned: true, priority: 20, size: 'normal', collapsed: false }, layoutBudget: { pinned: false, priority: 30, size: 'compact', collapsed: true }, tradeIdeas: { pinned: false, priority: 95, size: 'compact', collapsed: true } } },
+  { id: 'executive-briefing', label: 'Wallboard', profile: 'wallboard', description: 'Wallboard-first briefing layout for glanceable shared monitoring.', displayMode: 'wallboard', mapMode: 'globe', visualsMode: 'full', densityMode: 'briefing', topbarMode: 'briefing', defaultRegion: 'world', activeLayer: null, panels: { agentAnalysis: { pinned: true, priority: 5, size: 'wide', collapsed: false }, macroMarkets: { pinned: true, priority: 10, size: 'wide', collapsed: false }, newsTicker: { pinned: true, priority: 15, size: 'wide', collapsed: false }, reviewQueue: { pinned: false, priority: 80, size: 'compact', collapsed: true }, evidenceAudit: { pinned: false, priority: 70, size: 'compact', collapsed: true }, tradeIdeas: { pinned: false, priority: 60, size: 'compact', collapsed: false } } },
+];
+
+function buildWorkspacePresetLibrary(operatorSettings = null) {
+  const settings = operatorSettings || loadOperatorSettings();
+  const layout = settings?.preferences?.layout || {};
+  const customPresets = layout.customPresets && typeof layout.customPresets === 'object' ? layout.customPresets : {};
+  const customItems = Object.entries(customPresets).map(([id, value]) => ({
+    id,
+    label: value?.label || id,
+    profile: value?.profile || 'custom',
+    description: value?.description || 'Custom operator-authored preset.',
+    displayMode: value?.displayMode || 'desktop',
+    mapMode: value?.mapMode || 'auto',
+    visualsMode: value?.visualsMode || 'full',
+    densityMode: value?.densityMode || 'balanced',
+    topbarMode: value?.topbarMode || 'standard',
+    defaultRegion: value?.defaultRegion || 'world',
+    activeLayer: value?.activeLayer || null,
+    panels: value?.panels && typeof value.panels === 'object' ? value.panels : {},
+    builtIn: false,
+  }));
+  return [...builtInWorkspacePresetLibrary.map(item => ({ ...item, builtIn: true })), ...customItems]
+    .sort((a, b) => Number(Boolean(b.builtIn)) - Number(Boolean(a.builtIn)) || String(a.label || a.id).localeCompare(String(b.label || b.id)));
+}
+
+function normalizeCustomWorkspacePresets(input = {}) {
+  const allowedRegions = ['world', 'americas', 'europe', 'middleEast', 'asiaPacific', 'africa'];
+  const allowedLayers = ['air', 'thermal', 'sdr', 'maritime', 'nuke', 'conflict', 'health', 'news', 'osint', 'space'];
+  const allowedMapModes = ['auto', 'flat', 'globe'];
+  const allowedDisplayModes = ['auto', 'narrow', 'desktop', 'wallboard'];
+  const allowedVisualsModes = ['full', 'lite'];
+  const allowedDensityModes = ['balanced', 'dense', 'briefing'];
+  const allowedTopbarModes = ['standard', 'compact', 'briefing'];
+  const allowedPanelSizes = ['compact', 'normal', 'wide'];
+  return Object.fromEntries(Object.entries(input && typeof input === 'object' ? input : {}).map(([key, value]) => {
+    const id = normalizeToken(key).slice(0, 48);
+    if (!id) return null;
+    return [id, {
+      label: String(value?.label || id).trim().slice(0, 64) || id,
+      profile: String(value?.profile || 'custom').trim().slice(0, 32) || 'custom',
+      description: String(value?.description || 'Custom operator-authored preset.').trim().slice(0, 240) || 'Custom operator-authored preset.',
+      displayMode: allowedDisplayModes.includes(value?.displayMode) ? value.displayMode : 'desktop',
+      mapMode: allowedMapModes.includes(value?.mapMode) ? value.mapMode : 'auto',
+      visualsMode: allowedVisualsModes.includes(value?.visualsMode) ? value.visualsMode : 'full',
+      densityMode: allowedDensityModes.includes(value?.densityMode) ? value.densityMode : 'balanced',
+      topbarMode: allowedTopbarModes.includes(value?.topbarMode) ? value.topbarMode : 'standard',
+      defaultRegion: allowedRegions.includes(value?.defaultRegion) ? value.defaultRegion : 'world',
+      activeLayer: allowedLayers.includes(value?.activeLayer) ? value.activeLayer : null,
+      panels: Object.fromEntries(Object.entries(value?.panels && typeof value.panels === 'object' ? value.panels : {}).map(([panelId, panelValue]) => [panelId, {
+        collapsed: Boolean(panelValue?.collapsed),
+        pinned: Boolean(panelValue?.pinned),
+        priority: Math.max(0, Math.min(99, Number.isFinite(Number(panelValue?.priority)) ? Number(panelValue.priority) : 50)),
+        size: allowedPanelSizes.includes(panelValue?.size) ? panelValue.size : 'normal',
+      }])),
+    }];
+  }).filter(Boolean));
+}
+
+function operatorSettingsDefaults() {
+  return {
+    version: 'operator-settings-store-v1',
+    revision: 0,
+    updatedAt: null,
+    preferences: {
+      layout: {
+        visualsMode: 'full',
+        mapMode: 'auto',
+        displayMode: 'auto',
+        densityMode: 'balanced',
+        topbarMode: 'standard',
+        defaultRegion: 'world',
+        activeLayer: null,
+        workspacePreset: 'operator',
+        performance: {
+          wallboardVirtualization: 'auto',
+        },
+        panels: {},
+        customPresets: {},
+      },
+      sources: {
+        enabledCategories: [],
+        enabledSourceIds: [],
+        suppressedSourceIds: [],
+        quarantinedSourceIds: [],
+        noiseSuppression: {
+          duplicateBurst: {
+            enabled: true,
+            minSimilarClusters: 2,
+          },
+          repetitiveLowValue: {
+            enabled: true,
+            maxStoryCount: 1,
+            maxSourceCount: 1,
+          },
+          sourceRules: [],
+        },
+      },
+      llm: {
+        newsModeDefault: 'auto',
+      },
+      agentAnalysis: {
+        detailLevel: 'standard',
+        tippingPointMinProbability: 'HIGH',
+        maxPublishedTippingPoints: 5,
+        publishPolicy: 'strict',
+        deterministicFallbackMode: 'always',
+        horizonBehavior: 'balanced',
+      },
+      alerts: {
+        operational: {
+          enabled: true,
+          defaultRoute: ['telegram'],
+          escalationRoute: ['telegram', 'discord'],
+          staleSweep: { enabled: true, cooldownMinutes: 30, escalationAfter: 2 },
+          sourceFailures: { enabled: true, minFailedSources: 3, minDegradedSources: 2, cooldownMinutes: 60, escalationAfter: 3 },
+          reviewPressure: { enabled: true, minChronicRegions: 2, minPressuredRegions: 2, minLowConfidenceCount: 4, cooldownMinutes: 60, escalationAfter: 2 },
+          inferenceDegraded: { enabled: true, heuristicFallbackCount: 3, cooldownMinutes: 45, escalationAfter: 2 },
+          noiseSuppressionPressure: { enabled: true, minRetainedEntries: 25, minRetainedDelta: 3, minConsecutiveGrowthSweeps: 2, minConsecutivePruneSweeps: 2, cooldownMinutes: 90, escalationAfter: 2 },
+        },
+        criticalEvents: {
+          enabled: true,
+          defaultRoute: ['telegram'],
+          escalationRoute: ['telegram', 'discord'],
+          classes: {
+            governmentSiteViolence: { enabled: true, severity: 'critical', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: false, freshnessMinutes: 20 },
+            aviationIncident: { enabled: true, severity: 'high', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: false, freshnessMinutes: 30 },
+            radiationAnomaly: { enabled: true, severity: 'critical', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 1, officialConfirmationRequired: false, freshnessMinutes: 30 },
+            chokepointDisruption: { enabled: true, severity: 'high', minHighTrustCorroboration: 1, minMediumTrustCorroboration: 2, officialConfirmationRequired: false, freshnessMinutes: 45 },
+          },
+        },
+      },
+    },
+  };
+}
+
+function normalizeOperatorSettings(input = {}) {
+  const defaults = operatorSettingsDefaults();
+  const layout = input?.preferences?.layout || {};
+  const sources = input?.preferences?.sources || {};
+  const llm = input?.preferences?.llm || {};
+  const agentAnalysis = input?.preferences?.agentAnalysis || {};
+  const alertPrefs = input?.preferences?.alerts || {};
+  const operationalAlerts = alertPrefs.operational && typeof alertPrefs.operational === 'object' ? alertPrefs.operational : {};
+  const criticalEvents = alertPrefs.criticalEvents && typeof alertPrefs.criticalEvents === 'object' ? alertPrefs.criticalEvents : {};
+  const allowedRegions = ['world', 'americas', 'europe', 'middleEast', 'asiaPacific', 'africa'];
+  const allowedLayers = ['air', 'thermal', 'sdr', 'maritime', 'nuke', 'conflict', 'health', 'news', 'osint', 'space'];
+  const allowedMapModes = ['auto', 'flat', 'globe'];
+  const allowedDisplayModes = ['auto', 'narrow', 'desktop', 'wallboard'];
+  const allowedVisualsModes = ['full', 'lite'];
+  const allowedDensityModes = ['balanced', 'dense', 'briefing'];
+  const allowedTopbarModes = ['standard', 'compact', 'briefing'];
+  const allowedLlmModes = ['auto', 'off', 'force'];
+  const allowedAnalysisDetails = ['standard', 'compact', 'expanded'];
+  const allowedTippingProbabilities = ['HIGH', 'MEDIUM', 'LOW'];
+  const allowedPublishPolicies = ['strict', 'balanced', 'exploratory'];
+  const allowedFallbackModes = ['always', 'llm-unavailable-only', 'disabled'];
+  const allowedHorizonBehaviors = ['short-only', 'balanced', 'extended'];
+  const allowedPanelSizes = ['compact', 'normal', 'wide'];
+  const builtInWorkspacePresetIds = builtInWorkspacePresetLibrary.map(item => item.id);
+  const allowedWallboardVirtualizationModes = ['auto', 'off', 'on'];
+  const allowedAlertRoutes = ['telegram', 'discord'];
+  const normalizeAlertRoute = value => Array.isArray(value)
+    ? Array.from(new Set(value.map(item => String(item || '').trim().toLowerCase()).filter(item => allowedAlertRoutes.includes(item))))
+    : [];
+  const noiseSuppression = sources.noiseSuppression && typeof sources.noiseSuppression === 'object' ? sources.noiseSuppression : {};
+  const duplicateBurst = noiseSuppression.duplicateBurst && typeof noiseSuppression.duplicateBurst === 'object' ? noiseSuppression.duplicateBurst : {};
+  const repetitiveLowValue = noiseSuppression.repetitiveLowValue && typeof noiseSuppression.repetitiveLowValue === 'object' ? noiseSuppression.repetitiveLowValue : {};
+  const sourceRules = Array.isArray(noiseSuppression.sourceRules) ? noiseSuppression.sourceRules : [];
+  return {
+    version: defaults.version,
+    revision: Math.max(0, Number.isFinite(Number(input?.revision)) ? Number(input.revision) : (Number.isFinite(Number(defaults.revision)) ? Number(defaults.revision) : 0)),
+    updatedAt: input?.updatedAt || null,
+    preferences: {
+      layout: {
+        visualsMode: allowedVisualsModes.includes(layout.visualsMode) ? layout.visualsMode : defaults.preferences.layout.visualsMode,
+        mapMode: allowedMapModes.includes(layout.mapMode) ? layout.mapMode : defaults.preferences.layout.mapMode,
+        displayMode: allowedDisplayModes.includes(layout.displayMode) ? layout.displayMode : defaults.preferences.layout.displayMode,
+        densityMode: allowedDensityModes.includes(layout.densityMode) ? layout.densityMode : defaults.preferences.layout.densityMode,
+        topbarMode: allowedTopbarModes.includes(layout.topbarMode) ? layout.topbarMode : defaults.preferences.layout.topbarMode,
+        defaultRegion: allowedRegions.includes(layout.defaultRegion) ? layout.defaultRegion : defaults.preferences.layout.defaultRegion,
+        activeLayer: allowedLayers.includes(layout.activeLayer) ? layout.activeLayer : null,
+        workspacePreset: [...builtInWorkspacePresetLibrary.map(item => item.id), ...Object.keys(normalizeCustomWorkspacePresets(layout.customPresets))].includes(layout.workspacePreset) ? layout.workspacePreset : defaults.preferences.layout.workspacePreset,
+        performance: {
+          wallboardVirtualization: allowedWallboardVirtualizationModes.includes(layout.performance?.wallboardVirtualization)
+            ? layout.performance.wallboardVirtualization
+            : defaults.preferences.layout.performance.wallboardVirtualization,
+        },
+        panels: Object.fromEntries(Object.entries(layout.panels && typeof layout.panels === 'object' ? layout.panels : {}).map(([key, value]) => [key, {
+          collapsed: Boolean(value?.collapsed),
+          pinned: Boolean(value?.pinned),
+          priority: Math.max(0, Math.min(99, Number.isFinite(Number(value?.priority)) ? Number(value.priority) : 50)),
+          size: allowedPanelSizes.includes(value?.size) ? value.size : 'normal',
+        }])),
+        customPresets: normalizeCustomWorkspacePresets(layout.customPresets),
+      },
+      sources: {
+        enabledCategories: Array.isArray(sources.enabledCategories) ? Array.from(new Set(sources.enabledCategories.map(value => String(value).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)) : [],
+        enabledSourceIds: Array.isArray(sources.enabledSourceIds) ? Array.from(new Set(sources.enabledSourceIds.map(value => String(value).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)) : [],
+        suppressedSourceIds: Array.isArray(sources.suppressedSourceIds) ? Array.from(new Set(sources.suppressedSourceIds.map(value => String(value).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)) : [],
+        quarantinedSourceIds: Array.isArray(sources.quarantinedSourceIds) ? Array.from(new Set(sources.quarantinedSourceIds.map(value => String(value).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)) : [],
+        noiseSuppression: {
+          duplicateBurst: {
+            enabled: duplicateBurst.enabled !== undefined ? Boolean(duplicateBurst.enabled) : defaults.preferences.sources.noiseSuppression.duplicateBurst.enabled,
+            minSimilarClusters: Math.max(2, Math.min(6, Number.isFinite(Number(duplicateBurst.minSimilarClusters)) ? Number(duplicateBurst.minSimilarClusters) : defaults.preferences.sources.noiseSuppression.duplicateBurst.minSimilarClusters)),
+          },
+          repetitiveLowValue: {
+            enabled: repetitiveLowValue.enabled !== undefined ? Boolean(repetitiveLowValue.enabled) : defaults.preferences.sources.noiseSuppression.repetitiveLowValue.enabled,
+            maxStoryCount: Math.max(1, Math.min(3, Number.isFinite(Number(repetitiveLowValue.maxStoryCount)) ? Number(repetitiveLowValue.maxStoryCount) : defaults.preferences.sources.noiseSuppression.repetitiveLowValue.maxStoryCount)),
+            maxSourceCount: Math.max(1, Math.min(3, Number.isFinite(Number(repetitiveLowValue.maxSourceCount)) ? Number(repetitiveLowValue.maxSourceCount) : defaults.preferences.sources.noiseSuppression.repetitiveLowValue.maxSourceCount)),
+          },
+          sourceRules: sourceRules
+            .map(rule => ({
+              sourceId: String(rule?.sourceId || '').trim(),
+              action: String(rule?.action || 'suppress').trim().toLowerCase(),
+              reason: String(rule?.reason || '').trim(),
+              enabled: rule?.enabled !== undefined ? Boolean(rule.enabled) : true,
+            }))
+            .filter(rule => rule.sourceId && ['suppress', 'review-only'].includes(rule.action))
+            .sort((a, b) => String(a.sourceId).localeCompare(String(b.sourceId))),
+        },
+      },
+      llm: {
+        newsModeDefault: allowedLlmModes.includes(llm.newsModeDefault) ? llm.newsModeDefault : defaults.preferences.llm.newsModeDefault,
+      },
+      agentAnalysis: {
+        detailLevel: allowedAnalysisDetails.includes(agentAnalysis.detailLevel) ? agentAnalysis.detailLevel : defaults.preferences.agentAnalysis.detailLevel,
+        tippingPointMinProbability: allowedTippingProbabilities.includes(agentAnalysis.tippingPointMinProbability) ? agentAnalysis.tippingPointMinProbability : defaults.preferences.agentAnalysis.tippingPointMinProbability,
+        maxPublishedTippingPoints: Math.max(1, Math.min(8, Number.isFinite(Number(agentAnalysis.maxPublishedTippingPoints)) ? Number(agentAnalysis.maxPublishedTippingPoints) : defaults.preferences.agentAnalysis.maxPublishedTippingPoints)),
+        publishPolicy: allowedPublishPolicies.includes(agentAnalysis.publishPolicy) ? agentAnalysis.publishPolicy : defaults.preferences.agentAnalysis.publishPolicy,
+        deterministicFallbackMode: allowedFallbackModes.includes(agentAnalysis.deterministicFallbackMode) ? agentAnalysis.deterministicFallbackMode : defaults.preferences.agentAnalysis.deterministicFallbackMode,
+        horizonBehavior: allowedHorizonBehaviors.includes(agentAnalysis.horizonBehavior) ? agentAnalysis.horizonBehavior : defaults.preferences.agentAnalysis.horizonBehavior,
+      },
+      alerts: {
+        operational: {
+          enabled: operationalAlerts.enabled !== undefined ? Boolean(operationalAlerts.enabled) : defaults.preferences.alerts.operational.enabled,
+          defaultRoute: normalizeAlertRoute(operationalAlerts.defaultRoute).length ? normalizeAlertRoute(operationalAlerts.defaultRoute) : defaults.preferences.alerts.operational.defaultRoute,
+          escalationRoute: normalizeAlertRoute(operationalAlerts.escalationRoute).length ? normalizeAlertRoute(operationalAlerts.escalationRoute) : defaults.preferences.alerts.operational.escalationRoute,
+          staleSweep: {
+            enabled: operationalAlerts.staleSweep?.enabled !== undefined ? Boolean(operationalAlerts.staleSweep.enabled) : defaults.preferences.alerts.operational.staleSweep.enabled,
+            cooldownMinutes: Math.max(5, Math.min(360, Number.isFinite(Number(operationalAlerts.staleSweep?.cooldownMinutes)) ? Number(operationalAlerts.staleSweep.cooldownMinutes) : defaults.preferences.alerts.operational.staleSweep.cooldownMinutes)),
+            escalationAfter: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.staleSweep?.escalationAfter)) ? Number(operationalAlerts.staleSweep.escalationAfter) : defaults.preferences.alerts.operational.staleSweep.escalationAfter)),
+          },
+          sourceFailures: {
+            enabled: operationalAlerts.sourceFailures?.enabled !== undefined ? Boolean(operationalAlerts.sourceFailures.enabled) : defaults.preferences.alerts.operational.sourceFailures.enabled,
+            minFailedSources: Math.max(1, Math.min(20, Number.isFinite(Number(operationalAlerts.sourceFailures?.minFailedSources)) ? Number(operationalAlerts.sourceFailures.minFailedSources) : defaults.preferences.alerts.operational.sourceFailures.minFailedSources)),
+            minDegradedSources: Math.max(1, Math.min(20, Number.isFinite(Number(operationalAlerts.sourceFailures?.minDegradedSources)) ? Number(operationalAlerts.sourceFailures.minDegradedSources) : defaults.preferences.alerts.operational.sourceFailures.minDegradedSources)),
+            cooldownMinutes: Math.max(5, Math.min(360, Number.isFinite(Number(operationalAlerts.sourceFailures?.cooldownMinutes)) ? Number(operationalAlerts.sourceFailures.cooldownMinutes) : defaults.preferences.alerts.operational.sourceFailures.cooldownMinutes)),
+            escalationAfter: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.sourceFailures?.escalationAfter)) ? Number(operationalAlerts.sourceFailures.escalationAfter) : defaults.preferences.alerts.operational.sourceFailures.escalationAfter)),
+          },
+          reviewPressure: {
+            enabled: operationalAlerts.reviewPressure?.enabled !== undefined ? Boolean(operationalAlerts.reviewPressure.enabled) : defaults.preferences.alerts.operational.reviewPressure.enabled,
+            minChronicRegions: Math.max(1, Math.min(10, Number.isFinite(Number(operationalAlerts.reviewPressure?.minChronicRegions)) ? Number(operationalAlerts.reviewPressure.minChronicRegions) : defaults.preferences.alerts.operational.reviewPressure.minChronicRegions)),
+            minPressuredRegions: Math.max(1, Math.min(10, Number.isFinite(Number(operationalAlerts.reviewPressure?.minPressuredRegions)) ? Number(operationalAlerts.reviewPressure.minPressuredRegions) : defaults.preferences.alerts.operational.reviewPressure.minPressuredRegions)),
+            minLowConfidenceCount: Math.max(1, Math.min(20, Number.isFinite(Number(operationalAlerts.reviewPressure?.minLowConfidenceCount)) ? Number(operationalAlerts.reviewPressure.minLowConfidenceCount) : defaults.preferences.alerts.operational.reviewPressure.minLowConfidenceCount)),
+            cooldownMinutes: Math.max(5, Math.min(360, Number.isFinite(Number(operationalAlerts.reviewPressure?.cooldownMinutes)) ? Number(operationalAlerts.reviewPressure.cooldownMinutes) : defaults.preferences.alerts.operational.reviewPressure.cooldownMinutes)),
+            escalationAfter: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.reviewPressure?.escalationAfter)) ? Number(operationalAlerts.reviewPressure.escalationAfter) : defaults.preferences.alerts.operational.reviewPressure.escalationAfter)),
+          },
+          inferenceDegraded: {
+            enabled: operationalAlerts.inferenceDegraded?.enabled !== undefined ? Boolean(operationalAlerts.inferenceDegraded.enabled) : defaults.preferences.alerts.operational.inferenceDegraded.enabled,
+            heuristicFallbackCount: Math.max(1, Math.min(20, Number.isFinite(Number(operationalAlerts.inferenceDegraded?.heuristicFallbackCount)) ? Number(operationalAlerts.inferenceDegraded.heuristicFallbackCount) : defaults.preferences.alerts.operational.inferenceDegraded.heuristicFallbackCount)),
+            cooldownMinutes: Math.max(5, Math.min(360, Number.isFinite(Number(operationalAlerts.inferenceDegraded?.cooldownMinutes)) ? Number(operationalAlerts.inferenceDegraded.cooldownMinutes) : defaults.preferences.alerts.operational.inferenceDegraded.cooldownMinutes)),
+            escalationAfter: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.inferenceDegraded?.escalationAfter)) ? Number(operationalAlerts.inferenceDegraded.escalationAfter) : defaults.preferences.alerts.operational.inferenceDegraded.escalationAfter)),
+          },
+          noiseSuppressionPressure: {
+            enabled: operationalAlerts.noiseSuppressionPressure?.enabled !== undefined ? Boolean(operationalAlerts.noiseSuppressionPressure.enabled) : defaults.preferences.alerts.operational.noiseSuppressionPressure.enabled,
+            minRetainedEntries: Math.max(5, Math.min(500, Number.isFinite(Number(operationalAlerts.noiseSuppressionPressure?.minRetainedEntries)) ? Number(operationalAlerts.noiseSuppressionPressure.minRetainedEntries) : defaults.preferences.alerts.operational.noiseSuppressionPressure.minRetainedEntries)),
+            minRetainedDelta: Math.max(1, Math.min(100, Number.isFinite(Number(operationalAlerts.noiseSuppressionPressure?.minRetainedDelta)) ? Number(operationalAlerts.noiseSuppressionPressure.minRetainedDelta) : defaults.preferences.alerts.operational.noiseSuppressionPressure.minRetainedDelta)),
+            minConsecutiveGrowthSweeps: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.noiseSuppressionPressure?.minConsecutiveGrowthSweeps)) ? Number(operationalAlerts.noiseSuppressionPressure.minConsecutiveGrowthSweeps) : defaults.preferences.alerts.operational.noiseSuppressionPressure.minConsecutiveGrowthSweeps)),
+            minConsecutivePruneSweeps: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.noiseSuppressionPressure?.minConsecutivePruneSweeps)) ? Number(operationalAlerts.noiseSuppressionPressure.minConsecutivePruneSweeps) : defaults.preferences.alerts.operational.noiseSuppressionPressure.minConsecutivePruneSweeps)),
+            cooldownMinutes: Math.max(5, Math.min(360, Number.isFinite(Number(operationalAlerts.noiseSuppressionPressure?.cooldownMinutes)) ? Number(operationalAlerts.noiseSuppressionPressure.cooldownMinutes) : defaults.preferences.alerts.operational.noiseSuppressionPressure.cooldownMinutes)),
+            escalationAfter: Math.max(1, Math.min(6, Number.isFinite(Number(operationalAlerts.noiseSuppressionPressure?.escalationAfter)) ? Number(operationalAlerts.noiseSuppressionPressure.escalationAfter) : defaults.preferences.alerts.operational.noiseSuppressionPressure.escalationAfter)),
+          },
+        },
+        criticalEvents: {
+          enabled: criticalEvents.enabled !== undefined ? Boolean(criticalEvents.enabled) : defaults.preferences.alerts.criticalEvents.enabled,
+          defaultRoute: normalizeAlertRoute(criticalEvents.defaultRoute).length ? normalizeAlertRoute(criticalEvents.defaultRoute) : defaults.preferences.alerts.criticalEvents.defaultRoute,
+          escalationRoute: normalizeAlertRoute(criticalEvents.escalationRoute).length ? normalizeAlertRoute(criticalEvents.escalationRoute) : defaults.preferences.alerts.criticalEvents.escalationRoute,
+          classes: {
+            governmentSiteViolence: {
+              enabled: criticalEvents.classes?.governmentSiteViolence?.enabled !== undefined ? Boolean(criticalEvents.classes.governmentSiteViolence.enabled) : defaults.preferences.alerts.criticalEvents.classes.governmentSiteViolence.enabled,
+              severity: ['high', 'critical'].includes(criticalEvents.classes?.governmentSiteViolence?.severity) ? criticalEvents.classes.governmentSiteViolence.severity : defaults.preferences.alerts.criticalEvents.classes.governmentSiteViolence.severity,
+              minHighTrustCorroboration: Math.max(1, Math.min(5, Number.isFinite(Number(criticalEvents.classes?.governmentSiteViolence?.minHighTrustCorroboration)) ? Number(criticalEvents.classes.governmentSiteViolence.minHighTrustCorroboration) : defaults.preferences.alerts.criticalEvents.classes.governmentSiteViolence.minHighTrustCorroboration)),
+              minMediumTrustCorroboration: Math.max(1, Math.min(5, Number.isFinite(Number(criticalEvents.classes?.governmentSiteViolence?.minMediumTrustCorroboration)) ? Number(criticalEvents.classes.governmentSiteViolence.minMediumTrustCorroboration) : defaults.preferences.alerts.criticalEvents.classes.governmentSiteViolence.minMediumTrustCorroboration)),
+              officialConfirmationRequired: criticalEvents.classes?.governmentSiteViolence?.officialConfirmationRequired !== undefined ? Boolean(criticalEvents.classes.governmentSiteViolence.officialConfirmationRequired) : defaults.preferences.alerts.criticalEvents.classes.governmentSiteViolence.officialConfirmationRequired,
+              freshnessMinutes: Math.max(5, Math.min(180, Number.isFinite(Number(criticalEvents.classes?.governmentSiteViolence?.freshnessMinutes)) ? Number(criticalEvents.classes.governmentSiteViolence.freshnessMinutes) : defaults.preferences.alerts.criticalEvents.classes.governmentSiteViolence.freshnessMinutes)),
+            },
+            aviationIncident: {
+              enabled: criticalEvents.classes?.aviationIncident?.enabled !== undefined ? Boolean(criticalEvents.classes.aviationIncident.enabled) : defaults.preferences.alerts.criticalEvents.classes.aviationIncident.enabled,
+              severity: ['medium', 'high', 'critical'].includes(criticalEvents.classes?.aviationIncident?.severity) ? criticalEvents.classes.aviationIncident.severity : defaults.preferences.alerts.criticalEvents.classes.aviationIncident.severity,
+              minHighTrustCorroboration: Math.max(1, Math.min(5, Number.isFinite(Number(criticalEvents.classes?.aviationIncident?.minHighTrustCorroboration)) ? Number(criticalEvents.classes.aviationIncident.minHighTrustCorroboration) : defaults.preferences.alerts.criticalEvents.classes.aviationIncident.minHighTrustCorroboration)),
+              minMediumTrustCorroboration: Math.max(1, Math.min(5, Number.isFinite(Number(criticalEvents.classes?.aviationIncident?.minMediumTrustCorroboration)) ? Number(criticalEvents.classes.aviationIncident.minMediumTrustCorroboration) : defaults.preferences.alerts.criticalEvents.classes.aviationIncident.minMediumTrustCorroboration)),
+              officialConfirmationRequired: criticalEvents.classes?.aviationIncident?.officialConfirmationRequired !== undefined ? Boolean(criticalEvents.classes.aviationIncident.officialConfirmationRequired) : defaults.preferences.alerts.criticalEvents.classes.aviationIncident.officialConfirmationRequired,
+              freshnessMinutes: Math.max(5, Math.min(180, Number.isFinite(Number(criticalEvents.classes?.aviationIncident?.freshnessMinutes)) ? Number(criticalEvents.classes.aviationIncident.freshnessMinutes) : defaults.preferences.alerts.criticalEvents.classes.aviationIncident.freshnessMinutes)),
+            },
+            radiationAnomaly: {
+              enabled: criticalEvents.classes?.radiationAnomaly?.enabled !== undefined ? Boolean(criticalEvents.classes.radiationAnomaly.enabled) : defaults.preferences.alerts.criticalEvents.classes.radiationAnomaly.enabled,
+              severity: ['high', 'critical'].includes(criticalEvents.classes?.radiationAnomaly?.severity) ? criticalEvents.classes.radiationAnomaly.severity : defaults.preferences.alerts.criticalEvents.classes.radiationAnomaly.severity,
+              minHighTrustCorroboration: Math.max(1, Math.min(5, Number.isFinite(Number(criticalEvents.classes?.radiationAnomaly?.minHighTrustCorroboration)) ? Number(criticalEvents.classes.radiationAnomaly.minHighTrustCorroboration) : defaults.preferences.alerts.criticalEvents.classes.radiationAnomaly.minHighTrustCorroboration)),
+              minMediumTrustCorroboration: Math.max(1, Math.min(5, Number.isFinite(Number(criticalEvents.classes?.radiationAnomaly?.minMediumTrustCorroboration)) ? Number(criticalEvents.classes.radiationAnomaly.minMediumTrustCorroboration) : defaults.preferences.alerts.criticalEvents.classes.radiationAnomaly.minMediumTrustCorroboration)),
+              officialConfirmationRequired: criticalEvents.classes?.radiationAnomaly?.officialConfirmationRequired !== undefined ? Boolean(criticalEvents.classes.radiationAnomaly.officialConfirmationRequired) : defaults.preferences.alerts.criticalEvents.classes.radiationAnomaly.officialConfirmationRequired,
+              freshnessMinutes: Math.max(5, Math.min(180, Number.isFinite(Number(criticalEvents.classes?.radiationAnomaly?.freshnessMinutes)) ? Number(criticalEvents.classes.radiationAnomaly.freshnessMinutes) : defaults.preferences.alerts.criticalEvents.classes.radiationAnomaly.freshnessMinutes)),
+            },
+            chokepointDisruption: {
+              enabled: criticalEvents.classes?.chokepointDisruption?.enabled !== undefined ? Boolean(criticalEvents.classes.chokepointDisruption.enabled) : defaults.preferences.alerts.criticalEvents.classes.chokepointDisruption.enabled,
+              severity: ['medium', 'high', 'critical'].includes(criticalEvents.classes?.chokepointDisruption?.severity) ? criticalEvents.classes.chokepointDisruption.severity : defaults.preferences.alerts.criticalEvents.classes.chokepointDisruption.severity,
+              minHighTrustCorroboration: Math.max(1, Math.min(5, Number.isFinite(Number(criticalEvents.classes?.chokepointDisruption?.minHighTrustCorroboration)) ? Number(criticalEvents.classes.chokepointDisruption.minHighTrustCorroboration) : defaults.preferences.alerts.criticalEvents.classes.chokepointDisruption.minHighTrustCorroboration)),
+              minMediumTrustCorroboration: Math.max(1, Math.min(5, Number.isFinite(Number(criticalEvents.classes?.chokepointDisruption?.minMediumTrustCorroboration)) ? Number(criticalEvents.classes.chokepointDisruption.minMediumTrustCorroboration) : defaults.preferences.alerts.criticalEvents.classes.chokepointDisruption.minMediumTrustCorroboration)),
+              officialConfirmationRequired: criticalEvents.classes?.chokepointDisruption?.officialConfirmationRequired !== undefined ? Boolean(criticalEvents.classes.chokepointDisruption.officialConfirmationRequired) : defaults.preferences.alerts.criticalEvents.classes.chokepointDisruption.officialConfirmationRequired,
+              freshnessMinutes: Math.max(5, Math.min(180, Number.isFinite(Number(criticalEvents.classes?.chokepointDisruption?.freshnessMinutes)) ? Number(criticalEvents.classes.chokepointDisruption.freshnessMinutes) : defaults.preferences.alerts.criticalEvents.classes.chokepointDisruption.freshnessMinutes)),
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+function buildSettingsRevisionEtag(settings = {}) {
+  const revision = Math.max(0, Number.isFinite(Number(settings?.revision)) ? Number(settings.revision) : 0);
+  return `"operator-settings-r${revision}"`;
+}
+
+function buildSettingsConcurrencyState(settings = {}) {
+  const revision = Math.max(0, Number.isFinite(Number(settings?.revision)) ? Number(settings.revision) : 0);
+  return {
+    revision,
+    etag: buildSettingsRevisionEtag({ revision }),
+    updatedAt: settings?.updatedAt || null,
+    required: true,
+    header: 'If-Match',
+    bodyFields: ['expectedRevision', 'expectedEtag'],
+    notes: [
+      'Admin writes require a current revision token so stale tabs and restore drift fail with a bounded conflict instead of silently last-write-wins.',
+      'Use either If-Match with the advertised ETag or include expectedRevision/expectedEtag in the JSON body.',
+    ],
+  };
+}
+
+function buildLocalAdminWriteAuthState() {
+  return {
+    required: true,
+    header: LOCAL_ADMIN_WRITE_HEADER,
+    bodyField: LOCAL_ADMIN_WRITE_BODY_FIELD,
+    token: LOCAL_ADMIN_WRITE_TOKEN,
+    notes: [
+      'Local admin writes require a process-scoped nonce in addition to local-network restrictions and revision concurrency tokens.',
+      'The nonce is intentionally only exposed on local admin surfaces so cross-origin browser requests cannot synthesize successful write calls with locality alone.',
+    ],
+  };
+}
+
+function resolveLocalAdminWriteToken(req) {
+  const headerToken = String(req.get(LOCAL_ADMIN_WRITE_HEADER) || '').trim();
+  const bodyToken = String(req.body?.[LOCAL_ADMIN_WRITE_BODY_FIELD] || '').trim();
+  return {
+    provided: Boolean(headerToken || bodyToken),
+    token: headerToken || bodyToken || null,
+  };
+}
+
+function assertLocalAdminWriteToken(req) {
+  const provided = resolveLocalAdminWriteToken(req);
+  if (!provided.provided) {
+    const error = new Error('local admin write token required');
+    error.statusCode = 428;
+    error.payload = {
+      ok: false,
+      error: 'local-admin-write-token-required',
+      detail: 'Local admin writes must include the current local admin nonce.',
+      writeAuth: buildLocalAdminWriteAuthState(),
+    };
+    throw error;
+  }
+  if (provided.token !== LOCAL_ADMIN_WRITE_TOKEN) {
+    const error = new Error('local admin write token invalid');
+    error.statusCode = 403;
+    error.payload = {
+      ok: false,
+      error: 'local-admin-write-token-invalid',
+      detail: 'The provided local admin nonce does not match the active runtime token.',
+    };
+    throw error;
+  }
+  return provided;
+}
+
+function resolveExpectedSettingsRevision(req) {
+  const ifMatch = String(req.get('if-match') || '').trim();
+  const expectedEtag = String(req.body?.expectedEtag || ifMatch || '').trim();
+  const expectedRevisionRaw = req.body?.expectedRevision;
+  const expectedRevision = Number.isFinite(Number(expectedRevisionRaw)) ? Number(expectedRevisionRaw) : null;
+  return {
+    expectedRevision,
+    expectedEtag: expectedEtag || null,
+    provided: expectedRevision !== null || Boolean(expectedEtag),
+  };
+}
+
+function buildSettingsConflictPayload(currentSettings = {}, detail = 'settings revision conflict') {
+  const concurrency = buildSettingsConcurrencyState(currentSettings);
+  return {
+    ok: false,
+    error: 'settings-revision-conflict',
+    detail,
+    current: concurrency,
+  };
+}
+
+function assertExpectedSettingsRevision(currentSettings = {}, expected = {}) {
+  const concurrency = buildSettingsConcurrencyState(currentSettings);
+  if (!expected?.provided) {
+    const error = new Error('settings revision token required');
+    error.statusCode = 428;
+    error.payload = {
+      ok: false,
+      error: 'settings-revision-required',
+      detail: 'Admin writes must provide the current settings revision token.',
+      current: concurrency,
+    };
+    throw error;
+  }
+  if (expected.expectedRevision !== null && expected.expectedRevision !== concurrency.revision) {
+    const error = new Error('settings revision conflict');
+    error.statusCode = 409;
+    error.payload = buildSettingsConflictPayload(currentSettings, 'expectedRevision does not match the current persisted revision');
+    throw error;
+  }
+  if (expected.expectedEtag && expected.expectedEtag !== concurrency.etag) {
+    const error = new Error('settings revision conflict');
+    error.statusCode = 409;
+    error.payload = buildSettingsConflictPayload(currentSettings, 'expectedEtag does not match the current persisted revision token');
+    throw error;
+  }
+}
+
+function loadOperatorSettings() {
+  return normalizeOperatorSettings(loadJsonFile(OPERATOR_SETTINGS_PATH, operatorSettingsDefaults()));
+}
+
+function saveOperatorSettings(input = {}) {
+  const normalized = normalizeOperatorSettings(input);
+  const current = loadOperatorSettings();
+  const persisted = {
+    ...normalized,
+    revision: Math.max(0, Number.isFinite(Number(current?.revision)) ? Number(current.revision) : 0) + 1,
+    updatedAt: new Date().toISOString(),
+  };
+  saveJsonFile(OPERATOR_SETTINGS_PATH, persisted);
+  return persisted;
+}
+
+function mergeOperatorSettingsPatch(patch = {}, options = {}) {
+  const current = loadOperatorSettings();
+  assertExpectedSettingsRevision(current, options.expected || {});
+  const merged = {
+    ...current,
+    preferences: {
+      layout: {
+        ...current.preferences.layout,
+        ...(patch?.preferences?.layout || {}),
+        customPresets: patch?.preferences?.layout && Object.prototype.hasOwnProperty.call(patch.preferences.layout, 'customPresets') ? patch.preferences.layout.customPresets : current.preferences.layout.customPresets,
+      },
+      sources: {
+        ...current.preferences.sources,
+        ...(patch?.preferences?.sources || {}),
+      },
+      llm: {
+        ...current.preferences.llm,
+        ...(patch?.preferences?.llm || {}),
+      },
+      agentAnalysis: {
+        ...current.preferences.agentAnalysis,
+        ...(patch?.preferences?.agentAnalysis || {}),
+      },
+      alerts: {
+        ...current.preferences.alerts,
+        ...(patch?.preferences?.alerts || {}),
+      },
+    },
+  };
+  return saveOperatorSettings(merged);
+}
+
+const SETTINGS_ADMIN_AUDIT_MAX_ENTRIES = 250;
+const settingsAdminAudit = Array.isArray(loadJsonFile(SETTINGS_ADMIN_AUDIT_PATH, []))
+  ? loadJsonFile(SETTINGS_ADMIN_AUDIT_PATH, [])
+  : [];
+
+function saveSettingsAdminAudit() {
+  saveJsonFile(SETTINGS_ADMIN_AUDIT_PATH, settingsAdminAudit.slice(-SETTINGS_ADMIN_AUDIT_MAX_ENTRIES));
+}
+
+function buildSettingsPayloadSummary(settings = {}) {
+  const preferences = settings?.preferences || {};
+  const sourcePreferences = preferences.sources || {};
+  const layoutPreferences = preferences.layout || {};
+  return {
+    version: settings?.version || null,
+    updatedAt: settings?.updatedAt || null,
+    layoutPreset: layoutPreferences.workspacePreset || null,
+    displayMode: layoutPreferences.displayMode || null,
+    enabledCategoryCount: Array.isArray(sourcePreferences.enabledCategories) ? sourcePreferences.enabledCategories.length : 0,
+    enabledSourceCount: Array.isArray(sourcePreferences.enabledSourceIds) ? sourcePreferences.enabledSourceIds.length : 0,
+    suppressedSourceCount: Array.isArray(sourcePreferences.suppressedSourceIds) ? sourcePreferences.suppressedSourceIds.length : 0,
+    quarantinedSourceCount: Array.isArray(sourcePreferences.quarantinedSourceIds) ? sourcePreferences.quarantinedSourceIds.length : 0,
+    noiseRuleCount: Array.isArray(sourcePreferences.noiseSuppression?.sourceRules) ? sourcePreferences.noiseSuppression.sourceRules.length : 0,
+  };
+}
+
+function recordSettingsAdminAudit(entry = {}) {
+  settingsAdminAudit.push({
+    id: `settings-audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    recordedAt: new Date().toISOString(),
+    ...entry,
+  });
+  while (settingsAdminAudit.length > SETTINGS_ADMIN_AUDIT_MAX_ENTRIES) settingsAdminAudit.shift();
+  saveSettingsAdminAudit();
+  return settingsAdminAudit[settingsAdminAudit.length - 1];
+}
+
+function settingsAdminAuditSnapshot(limit = 25) {
+  return settingsAdminAudit.slice(-Math.max(1, limit)).reverse();
+}
+
+function buildSettingsStateBundle() {
+  return {
+    version: 'settings-state-bundle-v1',
+    exportedAt: new Date().toISOString(),
+    config: {
+      operatorSettings: deepCloneJson(loadOperatorSettings()),
+    },
+    state: {
+      reviewAcks: Array.from(loadReviewAcks().values()).map(entry => deepCloneJson(entry)),
+      reviewWorkflowAudit: deepCloneJson(reviewWorkflowAudit),
+      clusterRepairActions: deepCloneJson(loadClusterRepairActions()),
+      noiseSuppressionHistory: deepCloneJson(loadJsonFile(NOISE_SUPPRESSION_HISTORY_PATH, null)),
+      operationalAlertsState: deepCloneJson(getOperationalAlertsState()),
+    },
+  };
+}
+
+function importSettingsStateBundle(payload = {}, options = {}) {
+  const importedAt = new Date().toISOString();
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('settings-import-payload-required');
+  }
+  assertExpectedSettingsRevision(loadOperatorSettings(), options.expected || {});
+  const isBundle = payload.version === 'settings-state-bundle-v1' || payload.config || payload.state;
+  if (!isBundle) {
+    const settingsPayload = payload?.preferences ? payload : { preferences: payload || {} };
+    const savedSettings = saveOperatorSettings(settingsPayload);
+    return {
+      mode: 'settings-only',
+      importedAt,
+      settings: savedSettings,
+      restored: {
+        reviewAcks: false,
+        reviewWorkflowAudit: false,
+        clusterRepairActions: false,
+        noiseSuppressionHistory: false,
+        operationalAlertsState: false,
+      },
+    };
+  }
+
+  const bundle = payload;
+  const operatorSettingsPayload = bundle?.config?.operatorSettings || operatorSettingsDefaults();
+  const savedSettings = saveOperatorSettings(operatorSettingsPayload);
+  const state = bundle?.state && typeof bundle.state === 'object' ? bundle.state : {};
+
+  const importedReviewAcks = Array.isArray(state.reviewAcks) ? state.reviewAcks : [];
+  reviewAcks.clear();
+  for (const entry of importedReviewAcks) {
+    const normalized = normalizeReviewAckEntry(entry);
+    if (!normalized) continue;
+    reviewAcks.set(reviewAckKey(normalized), normalized);
+  }
+  pruneReviewAcks();
+  saveReviewAcks();
+
+  const importedWorkflowAudit = Array.isArray(state.reviewWorkflowAudit) ? state.reviewWorkflowAudit : [];
+  reviewWorkflowAudit.length = 0;
+  for (const entry of importedWorkflowAudit.slice(-REVIEW_WORKFLOW_AUDIT_MAX_ENTRIES)) {
+    if (!entry || typeof entry !== 'object') continue;
+    reviewWorkflowAudit.push(entry);
+  }
+  saveReviewWorkflowAudit();
+
+  const importedClusterRepairActions = state.clusterRepairActions && typeof state.clusterRepairActions === 'object'
+    ? state.clusterRepairActions
+    : clusterRepairActionDefaults();
+  clusterRepairActions.version = 'cluster-repair-actions-v1';
+  clusterRepairActions.updatedAt = importedClusterRepairActions.updatedAt || null;
+  clusterRepairActions.suppressedClusterIds = Array.isArray(importedClusterRepairActions.suppressedClusterIds)
+    ? importedClusterRepairActions.suppressedClusterIds.slice(0, 500)
+    : [];
+  clusterRepairActions.decisions = Array.isArray(importedClusterRepairActions.decisions)
+    ? importedClusterRepairActions.decisions.slice(-CLUSTER_REPAIR_ACTION_MAX_HISTORY)
+    : [];
+  saveClusterRepairActions();
+
+  saveJsonFile(NOISE_SUPPRESSION_HISTORY_PATH, state.noiseSuppressionHistory ?? null);
+
+  const operationalAlertsState = state.operationalAlertsState && typeof state.operationalAlertsState === 'object'
+    ? state.operationalAlertsState
+    : { policies: {} };
+  saveOperationalAlertsState(operationalAlertsState);
+
+  return {
+    mode: 'bundle',
+    importedAt,
+    settings: savedSettings,
+    restored: {
+      reviewAcks: true,
+      reviewWorkflowAudit: true,
+      clusterRepairActions: true,
+      noiseSuppressionHistory: true,
+      operationalAlertsState: true,
+    },
+  };
+}
+
+function isLocalRequest(req) {
+  const candidates = [
+    req.ip,
+    req.socket?.remoteAddress,
+    req.connection?.remoteAddress,
+  ].filter(Boolean).map(value => String(value));
+  return candidates.some(value =>
+    value === '127.0.0.1' ||
+    value === '::1' ||
+    value === '::ffff:127.0.0.1' ||
+    value.startsWith('::ffff:127.0.0.1')
+  );
+}
+
+function requireDebugAccess(req, res, next) {
+  const exposure = config.debugEndpoints?.exposure || 'local-only';
+  if (exposure === 'open') return next();
+  if (isLocalRequest(req)) return next();
+  return res.status(403).json({
+    error: 'debug-endpoint-forbidden',
+    detail: 'Debug and review endpoints are restricted to local requests unless DEBUG_ENDPOINT_EXPOSURE=open.',
+  });
+}
+
+function readOpenSkyRuntimeState() {
+  const raw = loadJsonFile(OPENSKY_STATE_PATH, null);
+  if (!raw || typeof raw !== 'object') return null;
+  return {
+    cacheHits: Number.isInteger(raw.cacheHits) ? raw.cacheHits : 0,
+    lastCacheHitAt: raw.lastCacheHitAt || null,
+    staleCachePrunes: Number.isInteger(raw.staleCachePrunes) ? raw.staleCachePrunes : 0,
+    lastStaleCachePrunedAt: raw.lastStaleCachePrunedAt || null,
+    cooldownUntil: raw.cooldownUntil || null,
+    last429At: raw.last429At || null,
+    cursor: Number.isInteger(raw.cursor) ? raw.cursor : 0,
+  };
+}
+
+function loadReviewAcks() {
+  const raw = loadJsonFile(REVIEW_ACKS_PATH, []);
+  const entries = Array.isArray(raw) ? raw : [];
+  const map = new Map();
+  const now = Date.now();
+  for (const entry of entries) {
+    if (!entry?.key || !entry?.expiresAt) continue;
+    const expiresAt = Number(entry.expiresAt);
+    if (!Number.isFinite(expiresAt) || expiresAt <= now) continue;
+    const createdAt = Number(entry.createdAt) || now;
+    const lastAckedAt = Number(entry.lastAckedAt) || createdAt;
+    map.set(entry.key, {
+      ...entry,
+      createdAt,
+      expiresAt,
+      firstAckedAt: Number(entry.firstAckedAt) || createdAt,
+      lastAckedAt,
+      ackCount: Math.max(1, Number(entry.ackCount) || 1),
+      lastClearedAt: Number(entry.lastClearedAt) || null,
+    });
+  }
+  return map;
+}
+
+function saveReviewAcks() {
+  saveJsonFile(REVIEW_ACKS_PATH, Array.from(reviewAcks.values()).sort((a, b) => (a.lastAckedAt || a.createdAt || 0) - (b.lastAckedAt || b.createdAt || 0)));
+}
+
+function reviewAckKey(item = {}) {
+  return `${String(item.region || 'unknown').trim().toLowerCase()}::${String(item.reason || 'unknown').trim().toLowerCase()}`;
+}
+
+function pruneReviewAcks() {
+  const now = Date.now();
+  let changed = false;
+  for (const [key, value] of reviewAcks.entries()) {
+    if (!value || Number(value.expiresAt) <= now) {
+      reviewAcks.delete(key);
+      changed = true;
+    }
+  }
+  while (reviewAcks.size > REVIEW_ACK_MAX_ENTRIES) {
+    const oldestKey = reviewAcks.keys().next().value;
+    if (!oldestKey) break;
+    reviewAcks.delete(oldestKey);
+    changed = true;
+  }
+  if (changed) saveReviewAcks();
+}
+
+function normalizeReviewAckEntry(entry = {}) {
+  if (!entry || typeof entry !== 'object') return null;
+  const region = String(entry.region || '').trim();
+  const reason = String(entry.reason || '').trim();
+  if (!region || !reason) return null;
+  const createdAt = entry.createdAt ? new Date(entry.createdAt).getTime() : Date.now();
+  const firstAckedAt = entry.firstAckedAt ? new Date(entry.firstAckedAt).getTime() : createdAt;
+  const lastAckedAt = entry.lastAckedAt ? new Date(entry.lastAckedAt).getTime() : firstAckedAt;
+  const durationMs = Math.max(1, Number(entry.durationMs) || REVIEW_ACK_TTL_MS);
+  const expiresAt = entry.expiresAt ? new Date(entry.expiresAt).getTime() : (lastAckedAt + durationMs);
+  return {
+    key: reviewAckKey({ region, reason }),
+    region,
+    reason,
+    note: String(entry.note || '').trim() || null,
+    createdAt,
+    firstAckedAt,
+    lastAckedAt,
+    ackCount: Math.max(1, Number(entry.ackCount) || 1),
+    expiresAt,
+    durationMs,
+    action: String(entry.action || '').trim() || 'ack',
+    lastClearedAt: entry.lastClearedAt ? new Date(entry.lastClearedAt).getTime() : null,
+  };
+}
+
+function formatReviewAckEntry(entry = {}) {
+  return {
+    ...entry,
+    createdAt: entry.createdAt ? new Date(entry.createdAt).toISOString() : null,
+    firstAckedAt: entry.firstAckedAt ? new Date(entry.firstAckedAt).toISOString() : null,
+    lastAckedAt: entry.lastAckedAt ? new Date(entry.lastAckedAt).toISOString() : null,
+    expiresAt: entry.expiresAt ? new Date(entry.expiresAt).toISOString() : null,
+    lastClearedAt: entry.lastClearedAt ? new Date(entry.lastClearedAt).toISOString() : null,
+  };
+}
+
+function reviewAckSnapshot(limit = 20) {
+  pruneReviewAcks();
+  return Array.from(reviewAcks.values())
+    .sort((a, b) => (b.lastAckedAt || b.createdAt || 0) - (a.lastAckedAt || a.createdAt || 0))
+    .slice(0, Math.max(1, Math.min(Number(limit) || 20, 100)))
+    .map(formatReviewAckEntry);
+}
+
+function reviewAckStats(limit = 5) {
+  pruneReviewAcks();
+  let nextExpiry = null;
+  let totalAckCount = 0;
+  let repeatAckCount = 0;
+  for (const value of reviewAcks.values()) {
+    if (!nextExpiry || value.expiresAt < nextExpiry) nextExpiry = value.expiresAt;
+    totalAckCount += Math.max(1, Number(value.ackCount) || 1);
+    if ((value.ackCount || 1) > 1) repeatAckCount += 1;
+  }
+  const recentDismissals = Array.from(reviewAcks.values())
+    .sort((a, b) => (b.lastAckedAt || b.createdAt || 0) - (a.lastAckedAt || a.createdAt || 0))
+    .slice(0, Math.max(1, Math.min(Number(limit) || 5, 20)))
+    .map(formatReviewAckEntry);
+  return {
+    active: reviewAcks.size,
+    maxEntries: REVIEW_ACK_MAX_ENTRIES,
+    ttlMs: REVIEW_ACK_TTL_MS,
+    nextExpiry: nextExpiry ? new Date(nextExpiry).toISOString() : null,
+    totalAckCount,
+    repeatAckCount,
+    recentDismissalCount: recentDismissals.length,
+    recentDismissals,
+  };
+}
+
+function ackReviewItem(region = '', reason = '', note = '', options = {}) {
+  const trimmedRegion = String(region || '').trim();
+  const trimmedReason = String(reason || '').trim();
+  if (!trimmedRegion || !trimmedReason) return null;
+  pruneReviewAcks();
+  const key = reviewAckKey({ region: trimmedRegion, reason: trimmedReason });
+  const now = Date.now();
+  const existing = reviewAcks.get(key);
+  const requestedDurationMs = Number(options?.durationMs);
+  const durationMs = Number.isFinite(requestedDurationMs) && requestedDurationMs > 0 ? requestedDurationMs : REVIEW_ACK_TTL_MS;
+  const action = String(options?.action || '').trim() || 'ack';
+  const entry = {
+    key,
+    region: trimmedRegion,
+    reason: trimmedReason,
+    note: String(note || '').trim() || existing?.note || null,
+    createdAt: existing?.createdAt || now,
+    firstAckedAt: existing?.firstAckedAt || existing?.createdAt || now,
+    lastAckedAt: now,
+    ackCount: Math.max(1, Number(existing?.ackCount) || 1) + (existing ? 1 : 0),
+    expiresAt: now + durationMs,
+    durationMs,
+    action,
+    lastClearedAt: existing?.lastClearedAt || null,
+  };
+  reviewAcks.delete(key);
+  reviewAcks.set(key, entry);
+  pruneReviewAcks();
+  saveReviewAcks();
+  return entry;
+}
+
+function clearReviewAck(region = '', reason = '') {
+  const key = reviewAckKey({ region, reason });
+  const existing = reviewAcks.get(key);
+  const existed = reviewAcks.delete(key);
+  if (existed && existing) saveReviewAcks();
+  return existed;
+}
+
+function loadReviewWorkflowAudit() {
+  return Array.isArray(loadJsonFile(REVIEW_WORKFLOW_AUDIT_PATH, [])) ? loadJsonFile(REVIEW_WORKFLOW_AUDIT_PATH, []) : [];
+}
+
+function saveReviewWorkflowAudit() {
+  saveJsonFile(REVIEW_WORKFLOW_AUDIT_PATH, reviewWorkflowAudit.slice(-REVIEW_WORKFLOW_AUDIT_MAX_ENTRIES));
+}
+
+function recordReviewWorkflowAudit(entry = {}) {
+  reviewWorkflowAudit.push({
+    id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    recordedAt: new Date().toISOString(),
+    ...entry,
+  });
+  while (reviewWorkflowAudit.length > REVIEW_WORKFLOW_AUDIT_MAX_ENTRIES) reviewWorkflowAudit.shift();
+  saveReviewWorkflowAudit();
+  return reviewWorkflowAudit[reviewWorkflowAudit.length - 1];
+}
+
+function reviewWorkflowAuditSnapshot(limit = 25) {
+  return reviewWorkflowAudit.slice(-Math.max(1, limit)).reverse();
+}
+
+function loadSourceControlAudit() {
+  return Array.isArray(loadJsonFile(SOURCE_CONTROL_AUDIT_PATH, [])) ? loadJsonFile(SOURCE_CONTROL_AUDIT_PATH, []) : [];
+}
+
+function saveSourceControlAudit() {
+  saveJsonFile(SOURCE_CONTROL_AUDIT_PATH, sourceControlAudit.slice(-SOURCE_CONTROL_AUDIT_MAX_ENTRIES));
+}
+
+function sourceControlAuditSnapshot(limit = 25) {
+  return sourceControlAudit.slice(-Math.max(1, limit)).reverse();
+}
+
+function buildSourceControlUndo(action = '', sourceId = '', before = {}) {
+  if (!sourceId) return null;
+  if (action === 'suppress-source' && !before?.suppressed) {
+    return {
+      action: 'unsuppress-source',
+      sourceId,
+      endpoint: '/api/source-ops/control',
+      note: 'Removes this source from the suppression list.',
+    };
+  }
+  if (action === 'quarantine-source' && !before?.quarantined) {
+    return {
+      action: 'clear-quarantine',
+      sourceId,
+      endpoint: '/api/source-ops/control',
+      note: 'Removes this source from the quarantine list.',
+    };
+  }
+  return null;
+}
+
+function recordSourceControlAudit(entry = {}) {
+  sourceControlAudit.push({
+    id: `source-control-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    recordedAt: new Date().toISOString(),
+    ...entry,
+  });
+  while (sourceControlAudit.length > SOURCE_CONTROL_AUDIT_MAX_ENTRIES) sourceControlAudit.shift();
+  saveSourceControlAudit();
+  return sourceControlAudit[sourceControlAudit.length - 1];
+}
+
+function applySourceControlAction(action = '', sourceId = '', options = {}) {
+  const trimmedAction = String(action || '').trim();
+  const trimmedSourceId = String(sourceId || '').trim();
+  if (!trimmedSourceId) throw new Error('sourceId is required');
+  const allowedActions = ['suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine'];
+  if (!allowedActions.includes(trimmedAction)) throw new Error('unsupported-source-op-action');
+
+  const current = loadOperatorSettings();
+  const expected = options.expected || null;
+  const suppressed = new Set(current.preferences.sources.suppressedSourceIds || []);
+  const quarantined = new Set(current.preferences.sources.quarantinedSourceIds || []);
+  const before = {
+    suppressed: suppressed.has(trimmedSourceId),
+    quarantined: quarantined.has(trimmedSourceId),
+  };
+
+  if (trimmedAction === 'suppress-source') suppressed.add(trimmedSourceId);
+  if (trimmedAction === 'unsuppress-source') suppressed.delete(trimmedSourceId);
+  if (trimmedAction === 'quarantine-source') quarantined.add(trimmedSourceId);
+  if (trimmedAction === 'clear-quarantine') quarantined.delete(trimmedSourceId);
+
+  const saved = mergeOperatorSettingsPatch({
+    preferences: {
+      sources: {
+        suppressedSourceIds: Array.from(suppressed).sort((a, b) => a.localeCompare(b)),
+        quarantinedSourceIds: Array.from(quarantined).sort((a, b) => a.localeCompare(b)),
+      },
+    },
+  }, expected ? { expected } : {});
+
+  const after = {
+    suppressed: saved.preferences.sources.suppressedSourceIds.includes(trimmedSourceId),
+    quarantined: saved.preferences.sources.quarantinedSourceIds.includes(trimmedSourceId),
+  };
+  const changed = before.suppressed !== after.suppressed || before.quarantined !== after.quarantined;
+  const undo = buildSourceControlUndo(trimmedAction, trimmedSourceId, before);
+  const audit = recordSourceControlAudit({
+    action: trimmedAction,
+    sourceId: trimmedSourceId,
+    changed,
+    status: changed ? 'applied' : 'noop',
+    before,
+    after,
+    undo,
+    note: options.note || null,
+    actorSurface: options.actorSurface || null,
+    actorEndpoint: options.actorEndpoint || null,
+    workflowAction: options.workflowAction || false,
+  });
+
+  return {
+    action: trimmedAction,
+    sourceId: trimmedSourceId,
+    changed,
+    before,
+    after,
+    undo,
+    controls: saved.preferences.sources,
+    audit,
+  };
+}
+
+function normalizeOperationalPolicyState(state = {}) {
+  return {
+    active: Boolean(state?.active),
+    occurrenceCount: Math.max(0, Number(state?.occurrenceCount) || 0),
+    lastSentAt: state?.lastSentAt || null,
+    lastResolvedAt: state?.lastResolvedAt || null,
+    lastEscalatedAt: state?.lastEscalatedAt || null,
+    lastSeverity: state?.lastSeverity || 'ok',
+    acknowledgedAt: state?.acknowledgedAt || null,
+    acknowledgedNote: state?.acknowledgedNote || null,
+    snoozedUntil: state?.snoozedUntil || null,
+    snoozeNote: state?.snoozeNote || null,
+    lastOperatorActionAt: state?.lastOperatorActionAt || null,
+  };
+}
+
+function getOperationalAlertsState() {
+  const state = memory.getSignalState(OPERATIONAL_ALERTS_STATE_KEY) || { policies: {} };
+  return state && typeof state === 'object' ? state : { policies: {} };
+}
+
+function saveOperationalAlertsState(state = {}) {
+  const nextState = state && typeof state === 'object' ? state : { policies: {} };
+  nextState.policies = nextState.policies && typeof nextState.policies === 'object' ? nextState.policies : {};
+  nextState.updatedAt = new Date().toISOString();
+  memory.setSignalState(OPERATIONAL_ALERTS_STATE_KEY, nextState);
+  return nextState;
+}
+
+function getOperationalPolicyActionState(policyKey = '') {
+  const trimmedKey = String(policyKey || '').trim();
+  const state = getOperationalAlertsState();
+  return normalizeOperationalPolicyState(state?.policies?.[trimmedKey] || {});
+}
+
+function applyOperationalAlertDisposition(policyKey = '', action = 'ack', options = {}) {
+  const trimmedKey = String(policyKey || '').trim();
+  if (!trimmedKey) return null;
+  const nextState = JSON.parse(JSON.stringify(getOperationalAlertsState()));
+  nextState.policies = nextState.policies || {};
+  const policyState = normalizeOperationalPolicyState(nextState.policies[trimmedKey] || {});
+  const nowIso = new Date().toISOString();
+  if (action === 'ack') {
+    policyState.acknowledgedAt = nowIso;
+    policyState.acknowledgedNote = String(options.note || '').trim() || policyState.acknowledgedNote || null;
+    policyState.snoozedUntil = null;
+    policyState.snoozeNote = null;
+    policyState.lastOperatorActionAt = nowIso;
+  } else if (action === 'snooze') {
+    const hours = Math.max(1, Math.min(Number.parseInt(options.hours, 10) || 24, 24 * 14));
+    policyState.snoozedUntil = new Date(Date.now() + (hours * 60 * 60 * 1000)).toISOString();
+    policyState.snoozeNote = String(options.note || '').trim() || `Snoozed for ${hours}h`;
+    policyState.lastOperatorActionAt = nowIso;
+  } else {
+    return null;
+  }
+  nextState.policies[trimmedKey] = policyState;
+  saveOperationalAlertsState(nextState);
+  return normalizeOperationalPolicyState(policyState);
+}
+
+function buildOperationalPolicyDisposition(policyKey = '', policy = {}) {
+  const state = getOperationalPolicyActionState(policyKey);
+  const snoozedUntilMs = state.snoozedUntil ? Date.parse(state.snoozedUntil) || 0 : 0;
+  const snoozed = snoozedUntilMs > Date.now();
+  const acknowledged = Boolean(state.acknowledgedAt);
+  const status = snoozed ? 'snoozed' : acknowledged ? 'acknowledged' : 'unattended';
+  const recentAudit = reviewWorkflowAudit
+    .filter(entry => entry?.targetType === 'operational-alert' && entry?.policyKey === policyKey)
+    .slice(-6)
+    .reverse();
+  return {
+    status,
+    acknowledged,
+    acknowledgedAt: state.acknowledgedAt,
+    acknowledgedNote: state.acknowledgedNote,
+    snoozed,
+    snoozedUntil: snoozed ? state.snoozedUntil : null,
+    snoozeNote: state.snoozeNote,
+    lastOperatorActionAt: state.lastOperatorActionAt || null,
+    recentAudit,
+    actions: policy?.active ? [
+      { id: 'ack-noise-suppression-pressure', label: 'Acknowledge pressure alert', method: 'POST', href: '/api/review-workflow/action', policyKey, targetType: 'operational-alert', requiresLocalAdmin: true },
+      { id: 'snooze-noise-suppression-pressure', label: 'Snooze 24h', method: 'POST', href: '/api/review-workflow/action', policyKey, targetType: 'operational-alert', hours: 24, requiresLocalAdmin: true },
+    ] : [],
+  };
+}
+
+function clusterRepairActionDefaults() {
+  return {
+    version: 'cluster-repair-actions-v1',
+    updatedAt: null,
+    suppressedClusterIds: [],
+    decisions: [],
+  };
+}
+
+function loadClusterRepairActions() {
+  const loaded = loadJsonFile(CLUSTER_REPAIR_ACTIONS_PATH, clusterRepairActionDefaults());
+  const base = loaded && typeof loaded === 'object' ? loaded : clusterRepairActionDefaults();
+  return {
+    version: 'cluster-repair-actions-v1',
+    updatedAt: base.updatedAt || null,
+    suppressedClusterIds: Array.isArray(base.suppressedClusterIds) ? base.suppressedClusterIds : [],
+    decisions: Array.isArray(base.decisions) ? base.decisions : [],
+  };
+}
+
+function saveClusterRepairActions() {
+  clusterRepairActions.version = 'cluster-repair-actions-v1';
+  clusterRepairActions.decisions = clusterRepairActions.decisions.slice(-CLUSTER_REPAIR_ACTION_MAX_HISTORY);
+  saveJsonFile(CLUSTER_REPAIR_ACTIONS_PATH, clusterRepairActions);
+}
+
+function recordClusterRepairDecision(entry = {}) {
+  const action = String(entry?.action || '').trim();
+  const clusterId = String(entry?.clusterId || '').trim();
+  const targetClusterId = String(entry?.targetClusterId || '').trim();
+  if (action === 'suppress-cluster' && clusterId && !clusterRepairActions.suppressedClusterIds.includes(clusterId)) {
+    clusterRepairActions.suppressedClusterIds.push(clusterId);
+    clusterRepairActions.suppressedClusterIds.sort((a, b) => a.localeCompare(b));
+  }
+  clusterRepairActions.updatedAt = new Date().toISOString();
+  clusterRepairActions.decisions.push({
+    id: `cluster-repair-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    recordedAt: clusterRepairActions.updatedAt,
+    ...entry,
+    clusterId: clusterId || null,
+    targetClusterId: targetClusterId || null,
+  });
+  while (clusterRepairActions.decisions.length > CLUSTER_REPAIR_ACTION_MAX_HISTORY) clusterRepairActions.decisions.shift();
+  saveClusterRepairActions();
+  return clusterRepairActions.decisions[clusterRepairActions.decisions.length - 1];
+}
+
+function noiseSuppressionHistoryDefaults() {
+  return {
+    version: 'noise-suppression-history-v2',
+    updatedAt: null,
+    lastSweepAt: null,
+    retentionMs: NOISE_SUPPRESSION_HISTORY_RETENTION_MS,
+    halfLifeMs: NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS,
+    duplicateBursts: {},
+    repetitiveLowValueEvents: {},
+    sourceRuleHits: {},
+    telemetry: {
+      lastPrunedAt: null,
+      pruningActive: false,
+      buckets: {},
+      summary: {
+        totalEntries: 0,
+        retainedEntries: 0,
+        expiredEntriesRemoved: 0,
+        overflowEntriesRemoved: 0,
+      },
+    },
+  };
+}
+
+function decayNoiseSuppressionCount(count = 0, lastSeenAt = null, referenceAt = new Date().toISOString()) {
+  const numericCount = Math.max(0, Number(count) || 0);
+  if (!numericCount) return 0;
+  const lastSeenMs = Date.parse(lastSeenAt || '') || 0;
+  const referenceMs = Date.parse(referenceAt || '') || Date.now();
+  if (!lastSeenMs || referenceMs <= lastSeenMs) return numericCount;
+  const elapsedMs = Math.max(0, referenceMs - lastSeenMs);
+  const decayFactor = Math.pow(0.5, elapsedMs / NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS);
+  return Number((numericCount * decayFactor).toFixed(3));
+}
+
+function pruneNoiseSuppressionHistoryBucket(bucket = {}, options = {}) {
+  const recordedAt = options.recordedAt || new Date().toISOString();
+  const retentionMs = Math.max(1, Number(options.retentionMs || NOISE_SUPPRESSION_HISTORY_RETENTION_MS) || 1);
+  const maxEntries = Math.max(1, Number(options.maxEntries || Number.MAX_SAFE_INTEGER) || 1);
+  const entries = Object.entries(bucket || {})
+    .filter(([, value]) => value && typeof value === 'object');
+  const withinRetention = entries
+    .filter(([, value]) => {
+      const lastSeenMs = Date.parse(value.lastSeenAt || value.updatedAt || value.firstSeenAt || '') || 0;
+      if (!lastSeenMs) return true;
+      return ((Date.parse(recordedAt) || Date.now()) - lastSeenMs) <= retentionMs;
+    })
+    .sort((a, b) => (Date.parse(b[1].lastSeenAt || b[1].updatedAt || b[1].firstSeenAt || '') || 0) - (Date.parse(a[1].lastSeenAt || a[1].updatedAt || a[1].firstSeenAt || '') || 0));
+  const kept = withinRetention.slice(0, maxEntries);
+  for (const key of Object.keys(bucket || {})) delete bucket[key];
+  for (const [key, value] of kept) bucket[key] = value;
+  return {
+    bucket,
+    telemetry: {
+      totalEntries: entries.length,
+      retainedEntries: kept.length,
+      expiredEntriesRemoved: Math.max(0, entries.length - withinRetention.length),
+      overflowEntriesRemoved: Math.max(0, withinRetention.length - kept.length),
+      maxEntries,
+    },
+  };
+}
+
+function pruneNoiseSuppressionHistory(historyState = noiseSuppressionHistory, recordedAt = new Date().toISOString()) {
+  historyState.retentionMs = NOISE_SUPPRESSION_HISTORY_RETENTION_MS;
+  historyState.halfLifeMs = NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS;
+  const duplicateBursts = pruneNoiseSuppressionHistoryBucket(historyState.duplicateBursts, { recordedAt, retentionMs: NOISE_SUPPRESSION_HISTORY_RETENTION_MS, maxEntries: NOISE_SUPPRESSION_HISTORY_MAX_DUPLICATE_BURSTS }).telemetry;
+  const repetitiveLowValueEvents = pruneNoiseSuppressionHistoryBucket(historyState.repetitiveLowValueEvents, { recordedAt, retentionMs: NOISE_SUPPRESSION_HISTORY_RETENTION_MS, maxEntries: NOISE_SUPPRESSION_HISTORY_MAX_LOW_VALUE_EVENTS }).telemetry;
+  const sourceRuleHits = pruneNoiseSuppressionHistoryBucket(historyState.sourceRuleHits, { recordedAt, retentionMs: NOISE_SUPPRESSION_HISTORY_RETENTION_MS, maxEntries: NOISE_SUPPRESSION_HISTORY_MAX_SOURCE_RULE_HITS }).telemetry;
+  const summary = {
+    totalEntries: duplicateBursts.totalEntries + repetitiveLowValueEvents.totalEntries + sourceRuleHits.totalEntries,
+    retainedEntries: duplicateBursts.retainedEntries + repetitiveLowValueEvents.retainedEntries + sourceRuleHits.retainedEntries,
+    expiredEntriesRemoved: duplicateBursts.expiredEntriesRemoved + repetitiveLowValueEvents.expiredEntriesRemoved + sourceRuleHits.expiredEntriesRemoved,
+    overflowEntriesRemoved: duplicateBursts.overflowEntriesRemoved + repetitiveLowValueEvents.overflowEntriesRemoved + sourceRuleHits.overflowEntriesRemoved,
+  };
+  const previousTelemetry = historyState.telemetry && historyState.telemetry.lastPrunedAt === recordedAt ? historyState.telemetry : null;
+  historyState.telemetry = {
+    lastPrunedAt: recordedAt,
+    pruningActive: Boolean(summary.expiredEntriesRemoved || summary.overflowEntriesRemoved || previousTelemetry?.pruningActive),
+    buckets: { duplicateBursts, repetitiveLowValueEvents, sourceRuleHits },
+    summary: {
+      totalEntries: summary.totalEntries,
+      retainedEntries: summary.retainedEntries,
+      expiredEntriesRemoved: summary.expiredEntriesRemoved + (previousTelemetry?.summary?.expiredEntriesRemoved || 0),
+      overflowEntriesRemoved: summary.overflowEntriesRemoved + (previousTelemetry?.summary?.overflowEntriesRemoved || 0),
+    },
+  };
+  return historyState;
+}
+
+function loadNoiseSuppressionHistory() {
+  const loaded = loadJsonFile(NOISE_SUPPRESSION_HISTORY_PATH, noiseSuppressionHistoryDefaults());
+  const base = loaded && typeof loaded === 'object' ? loaded : noiseSuppressionHistoryDefaults();
+  const normalized = {
+    version: 'noise-suppression-history-v2',
+    updatedAt: base.updatedAt || null,
+    lastSweepAt: base.lastSweepAt || null,
+    retentionMs: Math.max(1, Number(base.retentionMs || NOISE_SUPPRESSION_HISTORY_RETENTION_MS) || NOISE_SUPPRESSION_HISTORY_RETENTION_MS),
+    halfLifeMs: Math.max(1, Number(base.halfLifeMs || NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS) || NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS),
+    duplicateBursts: base.duplicateBursts && typeof base.duplicateBursts === 'object' ? base.duplicateBursts : {},
+    repetitiveLowValueEvents: base.repetitiveLowValueEvents && typeof base.repetitiveLowValueEvents === 'object' ? base.repetitiveLowValueEvents : {},
+    sourceRuleHits: base.sourceRuleHits && typeof base.sourceRuleHits === 'object' ? base.sourceRuleHits : {},
+    telemetry: base.telemetry && typeof base.telemetry === 'object' ? base.telemetry : noiseSuppressionHistoryDefaults().telemetry,
+  };
+  pruneNoiseSuppressionHistory(normalized, normalized.lastSweepAt || normalized.updatedAt || new Date().toISOString());
+  return normalized;
+}
+
+function saveNoiseSuppressionHistory() {
+  noiseSuppressionHistory.version = 'noise-suppression-history-v2';
+  noiseSuppressionHistory.retentionMs = NOISE_SUPPRESSION_HISTORY_RETENTION_MS;
+  noiseSuppressionHistory.halfLifeMs = NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS;
+  saveJsonFile(NOISE_SUPPRESSION_HISTORY_PATH, noiseSuppressionHistory);
+}
+
+function buildNoiseSuppressionHistoryKey(parts = []) {
+  return parts.map(part => normalizeToken(part)).filter(Boolean).join('::') || 'unknown';
+}
+
+function touchNoiseSuppressionHistoryBucket(bucket = {}, key = '', detail = {}, recordedAt = new Date().toISOString()) {
+  const existing = bucket[key] && typeof bucket[key] === 'object' ? bucket[key] : null;
+  bucket[key] = {
+    key,
+    firstSeenAt: existing?.firstSeenAt || recordedAt,
+    lastSeenAt: recordedAt,
+    hitCount: Math.max(0, Number(existing?.hitCount) || 0) + 1,
+    ...existing,
+    ...detail,
+    key,
+    firstSeenAt: existing?.firstSeenAt || recordedAt,
+    lastSeenAt: recordedAt,
+    hitCount: Math.max(0, Number(existing?.hitCount) || 0) + 1,
+  };
+  return bucket[key];
+}
+
+function recordNoiseSuppressionHistory(snapshot = currentData || null) {
+  const activeSnapshot = snapshot || currentData || null;
+  if (!activeSnapshot) return noiseSuppressionHistory;
+  const recordedAt = activeSnapshot?.meta?.timestamp || new Date().toISOString();
+  pruneNoiseSuppressionHistory(noiseSuppressionHistory, recordedAt);
+  const suppression = buildNoiseSuppressionContract(activeSnapshot, { history: noiseSuppressionHistory, persist: false, referenceAt: recordedAt });
+  for (const burst of suppression.duplicateBursts || []) {
+    const key = buildNoiseSuppressionHistoryKey(['duplicate-burst', burst.region, ...(burst.clusterIds || []), burst.headline]);
+    touchNoiseSuppressionHistoryBucket(noiseSuppressionHistory.duplicateBursts, key, {
+      region: burst.region || 'Unknown',
+      headline: burst.headline || 'duplicate burst',
+      clusterIds: Array.isArray(burst.clusterIds) ? burst.clusterIds : [],
+      similarity: burst.similarity || 0,
+      historyType: 'duplicate-burst',
+    }, recordedAt);
+  }
+  for (const item of suppression.repetitiveLowValueEvents || []) {
+    const key = buildNoiseSuppressionHistoryKey(['repetitive-low-value', item.sourceId || item.sourceName || 'unknown', item.region, item.headline || item.clusterId]);
+    touchNoiseSuppressionHistoryBucket(noiseSuppressionHistory.repetitiveLowValueEvents, key, {
+      region: item.region || 'Unknown',
+      headline: item.headline || item.clusterId || 'low value cluster',
+      clusterId: item.clusterId || null,
+      sourceId: item.sourceId || null,
+      sourceName: item.sourceName || null,
+      historyType: 'repetitive-low-value',
+    }, recordedAt);
+  }
+  for (const item of [...(suppression.repetitiveLowValueEvents || []), ...(suppression.duplicateBursts || []).flatMap(burst => burst.sources || [])]) {
+    const sourceId = item?.sourceId || null;
+    if (!sourceId) continue;
+    const bucket = noiseSuppressionHistory.sourceRuleHits;
+    const existing = bucket[sourceId] && typeof bucket[sourceId] === 'object' ? bucket[sourceId] : null;
+    bucket[sourceId] = {
+      sourceId,
+      sourceName: item.sourceName || existing?.sourceName || sourceId,
+      firstSeenAt: existing?.firstSeenAt || recordedAt,
+      lastSeenAt: recordedAt,
+      repetitiveLowValueCount: Math.max(0, Number(existing?.repetitiveLowValueCount) || 0) + ((item.historyType === 'repetitive-low-value') ? 1 : 0),
+      duplicateBurstCount: Math.max(0, Number(existing?.duplicateBurstCount) || 0) + ((item.historyType === 'duplicate-burst') ? 1 : 0),
+    };
+    bucket[sourceId].totalHitCount = bucket[sourceId].repetitiveLowValueCount + bucket[sourceId].duplicateBurstCount;
+  }
+  noiseSuppressionHistory.updatedAt = recordedAt;
+  noiseSuppressionHistory.lastSweepAt = recordedAt;
+  pruneNoiseSuppressionHistory(noiseSuppressionHistory, recordedAt);
+  saveNoiseSuppressionHistory();
+  return noiseSuppressionHistory;
+}
+
+function resolveSourceInventory(snapshot = currentData || null) {
+  const sourceOps = snapshot?.sourceOps || buildOperatorSourceOps(snapshot || null);
+  const items = Array.isArray(sourceOps?.inventory?.items) ? sourceOps.inventory.items : [];
+  const byToken = new Map();
+  for (const item of items) {
+    for (const candidate of [item.id, item.name]) {
+      const token = normalizeToken(candidate);
+      if (token && !byToken.has(token)) byToken.set(token, item);
+    }
+  }
+  return { sourceOps, items, byToken };
+}
+
+function findSourceByAttribution(sourceName = '', snapshot = currentData || null) {
+  const token = normalizeToken(sourceName);
+  if (!token) return null;
+  const { byToken } = resolveSourceInventory(snapshot);
+  return byToken.get(token) || null;
+}
+
+function findSourceForCluster(cluster = {}, snapshot = currentData || null) {
+  const topSource = cluster?.sourceProvenance?.topSources?.[0] || null;
+  return findSourceByAttribution(topSource?.runtimeSource || topSource?.source || '', snapshot);
+}
+
+function summarizeNoiseSuppressionDecayTelemetry(history = noiseSuppressionHistory, referenceAt = new Date().toISOString()) {
+  const duplicateBursts = Object.values(history?.duplicateBursts || {});
+  const repetitiveLowValueEvents = Object.values(history?.repetitiveLowValueEvents || {});
+  const sourceRuleHits = Object.values(history?.sourceRuleHits || {});
+  const countAgedOut = (items = [], countSelector, lastSeenSelector) => items.reduce((sum, item) => (
+    decayNoiseSuppressionCount(countSelector(item), lastSeenSelector(item), referenceAt) < 1 ? sum + 1 : sum
+  ), 0);
+  return {
+    referenceAt,
+    agedOutSuggestionCount: countAgedOut(duplicateBursts, item => item?.hitCount, item => item?.lastSeenAt)
+      + countAgedOut(repetitiveLowValueEvents, item => item?.hitCount, item => item?.lastSeenAt)
+      + countAgedOut(sourceRuleHits, item => item?.totalHitCount, item => item?.lastSeenAt),
+    bucketCounts: {
+      duplicateBursts: duplicateBursts.length,
+      repetitiveLowValueEvents: repetitiveLowValueEvents.length,
+      sourceRuleHits: sourceRuleHits.length,
+    },
+    agedOutByBucket: {
+      duplicateBursts: countAgedOut(duplicateBursts, item => item?.hitCount, item => item?.lastSeenAt),
+      repetitiveLowValueEvents: countAgedOut(repetitiveLowValueEvents, item => item?.hitCount, item => item?.lastSeenAt),
+      sourceRuleHits: countAgedOut(sourceRuleHits, item => item?.totalHitCount, item => item?.lastSeenAt),
+    },
+  };
+}
+
+function buildNoiseSuppressionTelemetrySnapshot(snapshot = currentData || null, options = {}) {
+  const contract = buildNoiseSuppressionContract(snapshot, options);
+  return {
+    version: 'noise-suppression-history-trend-v1',
+    summary: {
+      agedOutSuggestionCount: contract?.history?.decayTelemetry?.agedOutSuggestionCount || 0,
+      retainedEntries: contract?.history?.pruneTelemetry?.summary?.retainedEntries || 0,
+      totalEntries: contract?.history?.pruneTelemetry?.summary?.totalEntries || 0,
+      expiredEntriesRemoved: contract?.history?.pruneTelemetry?.summary?.expiredEntriesRemoved || 0,
+      overflowEntriesRemoved: contract?.history?.pruneTelemetry?.summary?.overflowEntriesRemoved || 0,
+      pruningActive: Boolean(contract?.history?.pruneTelemetry?.pruningActive),
+    },
+    bucketCounts: {
+      duplicateBursts: contract?.history?.decayTelemetry?.bucketCounts?.duplicateBursts || 0,
+      repetitiveLowValueEvents: contract?.history?.decayTelemetry?.bucketCounts?.repetitiveLowValueEvents || 0,
+      sourceRuleHits: contract?.history?.decayTelemetry?.bucketCounts?.sourceRuleHits || 0,
+    },
+    candidateCounts: {
+      duplicateBursts: contract?.summary?.duplicateBurstCandidateCount || 0,
+      repetitiveLowValueEvents: contract?.summary?.repetitiveLowValueCandidateCount || 0,
+      suggestedSourceRules: contract?.summary?.suggestedSourceRuleCount || 0,
+      activeSourceRules: contract?.summary?.activeSourceRuleCount || 0,
+    },
+  };
+}
+
+function buildNoiseSuppressionContract(snapshot = currentData || null, options = {}) {
+  const activeSnapshot = snapshot || currentData || null;
+  const operatorSettings = loadOperatorSettings();
+  const controls = operatorSettings.preferences.sources.noiseSuppression || operatorSettingsDefaults().preferences.sources.noiseSuppression;
+  const history = options?.history || noiseSuppressionHistory || noiseSuppressionHistoryDefaults();
+  const referenceAt = options?.referenceAt || activeSnapshot?.meta?.timestamp || history?.lastSweepAt || new Date().toISOString();
+  const clusters = Array.isArray(activeSnapshot?.newsClusters) ? activeSnapshot.newsClusters : [];
+  const reviewMetrics = activeSnapshot?.newsClusterQuality?.reviewMetrics || summarizeClusterReviewMetrics(clusters);
+  const duplicatePairs = Array.isArray(reviewMetrics?.suspiciousNearDuplicates) ? reviewMetrics.suspiciousNearDuplicates : [];
+  const sourceRuleUsage = new Map();
+  const duplicateBursts = duplicatePairs
+    .map(pair => {
+      const clusterIds = [pair?.clusterA?.id, pair?.clusterB?.id].filter(Boolean);
+      const sources = clusterIds
+        .map(clusterId => {
+          const cluster = clusters.find(item => item?.id === clusterId);
+          const sourceItem = findSourceForCluster(cluster, activeSnapshot);
+          if (!sourceItem?.id) return null;
+          const next = sourceRuleUsage.get(sourceItem.id) || { sourceId: sourceItem.id, sourceName: sourceItem.name, repetitiveLowValueCount: 0, duplicateBurstCount: 0 };
+          next.duplicateBurstCount += 1;
+          sourceRuleUsage.set(sourceItem.id, next);
+          return { sourceId: sourceItem.id, sourceName: sourceItem.name, historyType: 'duplicate-burst' };
+        })
+        .filter(Boolean);
+      const historyKey = buildNoiseSuppressionHistoryKey(['duplicate-burst', pair?.region, ...clusterIds, pair?.clusterA?.headline || pair?.clusterB?.headline]);
+      const historical = history?.duplicateBursts?.[historyKey] || null;
+      return {
+        id: `${pair?.region || 'Unknown'}::${pair?.clusterA?.id || 'a'}::${pair?.clusterB?.id || 'b'}`,
+        historyKey,
+        region: pair?.region || pair?.clusterA?.region || pair?.clusterB?.region || 'Unknown',
+        similarity: Number((pair?.similarity || 0).toFixed(3)),
+        clusterIds,
+        headline: pair?.clusterA?.headline || pair?.clusterB?.headline || 'duplicate burst',
+        clusterCount: clusterIds.length,
+        historyHitCount: Math.max(0, Number(historical?.hitCount) || 0),
+        decayedHistoryHitCount: decayNoiseSuppressionCount(historical?.hitCount, historical?.lastSeenAt, referenceAt),
+        firstSeenAt: historical?.firstSeenAt || null,
+        lastSeenAt: historical?.lastSeenAt || null,
+        sources,
+      };
+    })
+    .filter(item => item.clusterCount >= (controls?.duplicateBurst?.minSimilarClusters || 2))
+    .slice(0, 6);
+  const repetitiveLowValueEvents = clusters
+    .filter(cluster => (
+      (cluster.storyCount || 0) <= (controls?.repetitiveLowValue?.maxStoryCount || 1) &&
+      (cluster.sourceCount || 0) <= (controls?.repetitiveLowValue?.maxSourceCount || 1) &&
+      ((cluster.quality === 'low') || cluster.confidenceLabel === 'weak' || (cluster.qualityFlags || []).includes('single-source') || (cluster.qualityFlags || []).includes('heuristic-only'))
+    ))
+    .slice(0, 8)
+    .map(cluster => {
+      const sourceItem = findSourceForCluster(cluster, activeSnapshot);
+      if (sourceItem?.id) {
+        const next = sourceRuleUsage.get(sourceItem.id) || { sourceId: sourceItem.id, sourceName: sourceItem.name, repetitiveLowValueCount: 0, duplicateBurstCount: 0 };
+        next.repetitiveLowValueCount += 1;
+        sourceRuleUsage.set(sourceItem.id, next);
+      }
+      const historyKey = buildNoiseSuppressionHistoryKey(['repetitive-low-value', sourceItem?.id || sourceItem?.name || 'unknown', cluster.region, cluster.headline || cluster.id]);
+      const historical = history?.repetitiveLowValueEvents?.[historyKey] || null;
+      return {
+        clusterId: cluster.id,
+        historyKey,
+        headline: cluster.headline || cluster.id,
+        region: cluster.region || 'Unknown',
+        storyCount: cluster.storyCount || 0,
+        sourceCount: cluster.sourceCount || 0,
+        sourceId: sourceItem?.id || null,
+        sourceName: sourceItem?.name || null,
+        historyType: 'repetitive-low-value',
+        historyHitCount: Math.max(0, Number(historical?.hitCount) || 0),
+        decayedHistoryHitCount: decayNoiseSuppressionCount(historical?.hitCount, historical?.lastSeenAt, referenceAt),
+        firstSeenAt: historical?.firstSeenAt || null,
+        lastSeenAt: historical?.lastSeenAt || null,
+      };
+    });
+  const inventory = resolveSourceInventory(activeSnapshot).items;
+  const activeRules = Array.isArray(controls?.sourceRules) ? controls.sourceRules.map(rule => {
+    const hitStats = history?.sourceRuleHits?.[rule.sourceId] || null;
+    return {
+      ...rule,
+      sourceName: inventory.find(item => item.id === rule.sourceId)?.name || rule.sourceId,
+      hitCount: hitStats?.totalHitCount || 0,
+      duplicateBurstCount: hitStats?.duplicateBurstCount || 0,
+      repetitiveLowValueCount: hitStats?.repetitiveLowValueCount || 0,
+      firstSeenAt: hitStats?.firstSeenAt || null,
+      lastSeenAt: hitStats?.lastSeenAt || null,
+    };
+  }) : [];
+  const activeRuleIds = new Set(activeRules.map(rule => rule.sourceId));
+  const suggestedRules = Array.from(sourceRuleUsage.values())
+    .map(item => {
+      const historical = history?.sourceRuleHits?.[item.sourceId] || {};
+      const repetitiveLowValueCount = (historical?.repetitiveLowValueCount || 0) + item.repetitiveLowValueCount;
+      const duplicateBurstCount = (historical?.duplicateBurstCount || 0) + item.duplicateBurstCount;
+      const decayedRepetitiveLowValueCount = decayNoiseSuppressionCount(repetitiveLowValueCount, historical?.lastSeenAt, referenceAt);
+      const decayedDuplicateBurstCount = decayNoiseSuppressionCount(duplicateBurstCount, historical?.lastSeenAt, referenceAt);
+      return {
+        ...item,
+        repetitiveLowValueCount,
+        duplicateBurstCount,
+        hitCount: repetitiveLowValueCount + duplicateBurstCount,
+        decayedRepetitiveLowValueCount,
+        decayedDuplicateBurstCount,
+        decayedHitCount: Number((decayedRepetitiveLowValueCount + decayedDuplicateBurstCount).toFixed(3)),
+        firstSeenAt: historical?.firstSeenAt || null,
+        lastSeenAt: historical?.lastSeenAt || null,
+      };
+    })
+    .filter(item => item.decayedHitCount >= 2 && !activeRuleIds.has(item.sourceId))
+    .sort((a, b) => (b.hitCount - a.hitCount) || String(a.sourceId).localeCompare(String(b.sourceId)))
+    .slice(0, 6)
+    .map(item => ({
+      ...item,
+      suggestedAction: 'suppress',
+      suggestedReason: `Suggested because ${item.sourceName || item.sourceId} repeatedly appears in low-value or duplicate-heavy weak clusters across recent sweeps.`,
+    }));
+  return {
+    version: 'noise-suppression-v1',
+    history: {
+      version: history?.version || 'noise-suppression-history-v2',
+      updatedAt: history?.updatedAt || null,
+      lastSweepAt: history?.lastSweepAt || null,
+      retentionMs: history?.retentionMs || NOISE_SUPPRESSION_HISTORY_RETENTION_MS,
+      halfLifeMs: history?.halfLifeMs || NOISE_SUPPRESSION_HISTORY_HALF_LIFE_MS,
+      decayTelemetry: summarizeNoiseSuppressionDecayTelemetry(history, referenceAt),
+      pruneTelemetry: history?.telemetry || noiseSuppressionHistoryDefaults().telemetry,
+    },
+    controls,
+    tuningBounds: {
+      duplicateBurstMinSimilarClusters: { min: 2, max: 6 },
+      repetitiveLowValueMaxStoryCount: { min: 1, max: 3 },
+      repetitiveLowValueMaxSourceCount: { min: 1, max: 3 },
+    },
+    summary: {
+      duplicateBurstCandidateCount: duplicateBursts.length,
+      repetitiveLowValueCandidateCount: repetitiveLowValueEvents.length,
+      activeSourceRuleCount: activeRules.filter(rule => rule.enabled).length,
+      suggestedSourceRuleCount: suggestedRules.length,
+    },
+    duplicateBursts,
+    repetitiveLowValueEvents,
+    sourceRules: {
+      activeRules,
+      suggestedRules,
+    },
+  };
+}
+
+function getNoiseSuppressionDecision(cluster = {}, noiseSuppression = buildNoiseSuppressionContract(), snapshot = currentData || null) {
+  const duplicateMatch = (noiseSuppression?.duplicateBursts || []).find(item => (item.clusterIds || []).includes(cluster?.id));
+  if (noiseSuppression?.controls?.duplicateBurst?.enabled && duplicateMatch) {
+    return { type: 'duplicate-burst', ruleId: duplicateMatch.id, detail: 'Suppressed by duplicate-burst control.' };
+  }
+  const lowValueMatch = (noiseSuppression?.repetitiveLowValueEvents || []).find(item => item.clusterId === cluster?.id);
+  if (noiseSuppression?.controls?.repetitiveLowValue?.enabled && lowValueMatch) {
+    return { type: 'repetitive-low-value', ruleId: lowValueMatch.clusterId, detail: 'Suppressed by repetitive low-value control.' };
+  }
+  const sourceItem = findSourceForCluster(cluster, snapshot);
+  const sourceRule = (noiseSuppression?.sourceRules?.activeRules || []).find(rule => rule.enabled && rule.action === 'suppress' && rule.sourceId === sourceItem?.id);
+  if (sourceRule) {
+    return { type: 'source-rule', ruleId: sourceRule.sourceId, detail: sourceRule.reason || 'Suppressed by source-specific rule.' };
+  }
+  return null;
+}
+
+function buildReviewWorkflowActions(item = {}, snapshot = currentData || null) {
+  const actions = [];
+  const topSource = item?.sourceProvenance?.topSources?.[0] || null;
+  const sourceItem = findSourceByAttribution(topSource?.runtimeSource || topSource?.source || '', snapshot);
+  if (sourceItem?.id) {
+    actions.push({
+      id: 'quarantine-source',
+      label: 'Quarantine source',
+      method: 'POST',
+      href: '/api/review-workflow/action',
+      detail: `Quarantine ${sourceItem.name} from this review workflow surface.`,
+      sourceId: sourceItem.id,
+      requiresLocalAdmin: true,
+    });
+    actions.push({
+      id: 'suppress-source',
+      label: 'Suppress source',
+      method: 'POST',
+      href: '/api/review-workflow/action',
+      detail: `Suppress ${sourceItem.name} from this review workflow surface.`,
+      sourceId: sourceItem.id,
+      requiresLocalAdmin: true,
+    });
+  }
+  return { actions, sourceItem };
+}
+
+function summarizeWeakClusterReasons(cluster = {}, duplicatePairs = []) {
+  const reasons = [];
+  if (cluster.quality === 'low' || cluster.confidenceLabel === 'weak') reasons.push('Marked weak by current cluster quality scoring.');
+  if ((cluster.qualityFlags || []).includes('heuristic-only')) reasons.push('Heuristic-only cluster, no successful LLM-backed repair or confirmation.');
+  if ((cluster.qualityFlags || []).includes('single-source') || (cluster.sourceCount || 0) <= 1) reasons.push('Single-source or single-publisher cluster, easy to overfit.');
+  if ((cluster.storyCount || 0) <= 1) reasons.push('Only one story item is present, so the cluster may be too narrow or duplicated elsewhere.');
+  if ((cluster.storyCount || 0) >= 4 && (cluster.qualityFlags || []).includes('heuristic-only')) reasons.push('Large heuristic cluster may hide multiple sub-stories that should be split.');
+  if (duplicatePairs.length) reasons.push(`Near-duplicate weak cluster detected in-region (${duplicatePairs.length} bounded merge candidate${duplicatePairs.length === 1 ? '' : 's'}).`);
+  if (cluster.placementClass && cluster.placementClass !== 'precise') reasons.push(`Placement is ${cluster.placementClass}, so geographic placement may need correction.`);
+  if (cluster.placementBasis && String(cluster.placementBasis).toLowerCase().includes('heuristic')) reasons.push('Placement came from heuristic basis rather than a precise anchor.');
+  return reasons.slice(0, 5);
+}
+
+function buildClusterRepairWorkflow(snapshot = currentData || null) {
+  const activeSnapshot = snapshot || currentData || null;
+  const noiseSuppression = buildNoiseSuppressionContract(activeSnapshot);
+  const clusters = Array.isArray(activeSnapshot?.newsClusters) ? activeSnapshot.newsClusters : [];
+  const reviewMetrics = activeSnapshot?.newsClusterQuality?.reviewMetrics || summarizeClusterReviewMetrics(clusters);
+  const duplicatePairs = Array.isArray(reviewMetrics?.suspiciousNearDuplicates) ? reviewMetrics.suspiciousNearDuplicates : [];
+  const duplicatesByCluster = new Map();
+  for (const pair of duplicatePairs) {
+    for (const side of [pair?.clusterA, pair?.clusterB]) {
+      const id = side?.id || null;
+      if (!id) continue;
+      const next = duplicatesByCluster.get(id) || [];
+      next.push(pair);
+      duplicatesByCluster.set(id, next);
+    }
+  }
+  const weakClusters = clusters
+    .filter(cluster => (
+      !clusterRepairActions?.suppressedClusterIds?.includes(cluster?.id) && (
+        cluster?.quality === 'low' ||
+        cluster?.confidenceLabel === 'weak' ||
+        (cluster?.qualityFlags || []).includes('heuristic-only') ||
+        (cluster?.qualityFlags || []).includes('single-source')
+      )
+    ))
+    .map(cluster => {
+      const suppression = getNoiseSuppressionDecision(cluster, noiseSuppression, activeSnapshot);
+      const matches = duplicatesByCluster.get(cluster.id) || [];
+      const reasons = summarizeWeakClusterReasons(cluster, matches);
+      const actions = [];
+      for (const match of matches.slice(0, 2)) {
+        const other = match?.clusterA?.id === cluster.id ? match.clusterB : match.clusterA;
+        if (!other?.id) continue;
+        actions.push({
+          id: 'merge-clusters',
+          label: `Merge with ${other.headline || other.id}`,
+          method: 'POST',
+          href: '/api/review-workflow/action',
+          clusterId: cluster.id,
+          targetClusterId: other.id,
+          similarity: match.similarity || 0,
+          requiresLocalAdmin: true,
+          detail: 'Bounded merge recommendation derived from near-duplicate weak clusters in the same region.',
+        });
+      }
+      if ((cluster.storyCount || 0) >= 4 && (cluster.qualityFlags || []).includes('heuristic-only')) {
+        actions.push({
+          id: 'split-cluster',
+          label: 'Split cluster',
+          method: 'POST',
+          href: '/api/review-workflow/action',
+          clusterId: cluster.id,
+          requiresLocalAdmin: true,
+          detail: 'Large heuristic cluster may be conflating multiple sub-stories.',
+        });
+      }
+      if ((cluster.placementClass && cluster.placementClass !== 'precise') || String(cluster.placementBasis || '').toLowerCase().includes('heuristic')) {
+        actions.push({
+          id: 'correct-placement',
+          label: 'Correct placement',
+          method: 'POST',
+          href: '/api/review-workflow/action',
+          clusterId: cluster.id,
+          requiresLocalAdmin: true,
+          detail: 'Placement precision is weak enough to warrant a direct correction workflow.',
+        });
+      }
+      actions.push({
+        id: 'suppress-cluster',
+        label: 'Suppress cluster',
+        method: 'POST',
+        href: '/api/review-workflow/action',
+        clusterId: cluster.id,
+        requiresLocalAdmin: true,
+        detail: 'Suppress this cluster from the repair workflow surface when it is repetitive or low-value.',
+      });
+      const weaknessScore =
+        ((cluster.quality === 'low' || cluster.confidenceLabel === 'weak') ? 40 : 0) +
+        (((cluster.qualityFlags || []).includes('heuristic-only')) ? 20 : 0) +
+        (((cluster.qualityFlags || []).includes('single-source')) ? 15 : 0) +
+        ((matches.length || 0) * 12) +
+        (((cluster.storyCount || 0) >= 4 && (cluster.qualityFlags || []).includes('heuristic-only')) ? 10 : 0) +
+        ((cluster.placementClass && cluster.placementClass !== 'precise') ? 8 : 0);
+      return {
+        clusterId: cluster.id,
+        headline: cluster.headline || cluster.summary || cluster.id,
+        region: cluster.region || 'Unknown',
+        storyCount: cluster.storyCount || 0,
+        sourceCount: cluster.sourceCount || 0,
+        quality: cluster.quality || null,
+        confidenceLabel: cluster.confidenceLabel || null,
+        qualityFlags: cluster.qualityFlags || [],
+        placementClass: cluster.placementClass || null,
+        placementBasis: cluster.placementBasis || null,
+        sourceProvenance: cluster.sourceProvenance || null,
+        weaknessScore,
+        weaknessReasons: reasons,
+        mergeCandidateCount: matches.length,
+        suppression,
+        actions: actions.slice(0, 4),
+      };
+    })
+    .filter(cluster => !cluster.suppression)
+    .sort((a, b) => (b.weaknessScore || 0) - (a.weaknessScore || 0) || (b.storyCount || 0) - (a.storyCount || 0) || String(a.region || '').localeCompare(String(b.region || '')))
+    .slice(0, 6);
+  return {
+    version: 'cluster-repair-workflow-v1',
+    supportedActions: ['merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'],
+    weakClusterCount: weakClusters.length,
+    suppressedClusterCount: Array.isArray(clusterRepairActions?.suppressedClusterIds) ? clusterRepairActions.suppressedClusterIds.length : 0,
+    metrics: {
+      lowConfidenceCount: reviewMetrics?.lowConfidenceCount || 0,
+      suspiciousNearDuplicateCount: reviewMetrics?.suspiciousNearDuplicateCount || 0,
+      splitCandidateCount: reviewMetrics?.splitCandidateCount || 0,
+      mergeCandidateCount: reviewMetrics?.mergeCandidateCount || 0,
+    },
+    suppression: noiseSuppression,
+    weakClusters,
+    recentDecisions: Array.isArray(clusterRepairActions?.decisions) ? clusterRepairActions.decisions.slice(-8).reverse() : [],
+  };
+}
+
+function buildReviewWorkflowContract(snapshot = currentData || null, review = null) {
+  const activeSnapshot = snapshot || currentData || null;
+  const queue = review?.queue || (activeSnapshot?.reviewQueue || null);
+  const sourceOps = activeSnapshot?.sourceOps || buildOperatorSourceOps(activeSnapshot);
+  const shadowItems = Array.isArray(sourceOps?.shadow?.items) ? sourceOps.shadow.items : [];
+  const promoteCandidates = shadowItems
+    .filter(item => item?.promotionReadiness === 'shadow-ready' || (Array.isArray(item?.eligibleNextStates) && item.eligibleNextStates.includes('approved')))
+    .slice(0, 5)
+    .map(item => ({
+      candidateId: item.id,
+      name: item.name,
+      category: item.category,
+      promotionReadiness: item.promotionReadiness || null,
+      eligibleNextStates: Array.isArray(item.eligibleNextStates) ? item.eligibleNextStates : [],
+      action: {
+        id: 'promote-shadow',
+        label: 'Promote to approved',
+        method: 'POST',
+        href: '/api/review-workflow/action',
+        candidateId: item.id,
+        requiresLocalAdmin: true,
+      },
+    }));
+  const topSources = Array.isArray(sourceOps?.performance?.topImpactSources) ? sourceOps.performance.topImpactSources : [];
+  const lowConfidenceSources = topSources
+    .filter(item => item?.trustOutcome === 'degraded' || (item?.contribution?.suspectSignals || 0) > (item?.contribution?.corroboratedSignals || 0))
+    .slice(0, 5)
+    .map(item => {
+      const sourceItem = findSourceByAttribution(item.name, activeSnapshot);
+      return {
+        name: item.name,
+        sourceId: sourceItem?.id || null,
+        attentionScore: item.attentionScore || 0,
+        trustOutcome: item.trustOutcome || null,
+        contribution: item.contribution || null,
+        actions: sourceItem?.id ? [
+          { id: 'quarantine-source', label: 'Quarantine', method: 'POST', href: '/api/review-workflow/action', sourceId: sourceItem.id, requiresLocalAdmin: true },
+          { id: 'suppress-source', label: 'Suppress', method: 'POST', href: '/api/review-workflow/action', sourceId: sourceItem.id, requiresLocalAdmin: true },
+        ] : [],
+      };
+    });
+  return {
+    version: 'review-workflow-v1',
+    endpoint: '/api/review-workflow/action',
+    auditEndpoint: '/api/review-workflow/audit',
+    requiresLocalAdmin: true,
+    supportedActions: ['ack', 'snooze', 'ack-noise-suppression-pressure', 'snooze-noise-suppression-pressure', 'suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine', 'promote-shadow', 'merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'],
+    queueSummary: queue ? {
+      state: queue.state || null,
+      totalItems: queue.totalItems || 0,
+      topReasons: queue.topReasons || [],
+      metrics: queue.metrics || null,
+    } : null,
+    lowConfidenceSources,
+    promoteCandidates,
+    noiseSuppression: {
+      ...buildNoiseSuppressionContract(activeSnapshot),
+      trend: memory.getNoiseSuppressionTelemetryHistory(),
+      pressureAlert: (() => {
+        const policy = summarizeOperationalAlertState(activeSnapshot).policies?.noiseSuppressionPressure || null;
+        return policy ? {
+          ...policy,
+          operatorDisposition: buildOperationalPolicyDisposition('noiseSuppressionPressure', policy),
+        } : null;
+      })(),
+    },
+    clusterRepair: buildClusterRepairWorkflow(activeSnapshot),
+    auditTrail: reviewWorkflowAuditSnapshot(12),
+  };
+}
+
+function annotateReview(review = {}) {
+  pruneReviewAcks();
+  const reviewItems = Array.isArray(review.reviewItems) ? review.reviewItems : [];
+  const activeItems = [];
+  const dismissedItems = [];
+  for (const item of reviewItems) {
+    const ack = reviewAcks.get(reviewAckKey(item));
+    const annotated = ack
+      ? {
+          ...item,
+          dismissed: true,
+          ack: {
+            note: ack.note,
+            createdAt: new Date(ack.createdAt).toISOString(),
+            expiresAt: new Date(ack.expiresAt).toISOString(),
+          },
+        }
+      : { ...item, dismissed: false, ack: null };
+    if (ack) dismissedItems.push(annotated);
+    else activeItems.push(annotated);
+  }
+  const ackSummary = reviewAckStats();
+  return {
+    ...review,
+    reviewItems: activeItems,
+    dismissedItems,
+    dismissedCount: dismissedItems.length,
+    activeCount: activeItems.length,
+    ackSummary,
+    recentDismissals: ackSummary.recentDismissals,
+  };
+}
+
+function getClusterReviewStatsState() {
+  const state = memory.getSignalState(CLUSTER_REVIEW_STATE_KEY);
+  return state && typeof state === 'object' ? state : { regions: {}, updatedAt: null };
+}
+
+function pruneClusterReviewRegions(regions = {}, now = Date.now()) {
+  const pruned = {};
+  for (const [region, stats] of Object.entries(regions || {})) {
+    const lastSeenAt = new Date(stats?.lastSeenAt || stats?.lastFailureAt || stats?.lastSuccessAt || 0).getTime();
+    if (!lastSeenAt || (now - lastSeenAt) > CLUSTER_REVIEW_RETENTION_MS) continue;
+    pruned[region] = stats;
+  }
+  return pruned;
+}
+
+function summarizeClusterReviewStats(state = getClusterReviewStatsState()) {
+  const now = Date.now();
+  const regions = pruneClusterReviewRegions(state?.regions || {}, now);
+  const entries = Object.entries(regions).map(([region, stats]) => {
+    const failureWindow = Number(stats?.failureWindow || 0);
+    const successWindow = Number(stats?.successWindow || 0);
+    const lastWindowAtMs = new Date(stats?.lastWindowAt || stats?.lastSeenAt || 0).getTime();
+    const decayFactor = lastWindowAtMs && CLUSTER_REVIEW_DECAY_HALF_LIFE_MS > 0
+      ? Math.pow(0.5, Math.max(0, now - lastWindowAtMs) / CLUSTER_REVIEW_DECAY_HALF_LIFE_MS)
+      : 1;
+    const decayedFailureWindow = Number((failureWindow * decayFactor).toFixed(3));
+    const decayedSuccessWindow = Number((successWindow * decayFactor).toFixed(3));
+    const windowTotal = decayedFailureWindow + decayedSuccessWindow;
+    const decayedFailureRate = windowTotal > 0 ? Number((decayedFailureWindow / windowTotal).toFixed(3)) : 0;
+    return {
+      region,
+      ...stats,
+      decayedFailureWindow,
+      decayedSuccessWindow,
+      decayedFailureRate,
+      windowTotal: Number(windowTotal.toFixed(3)),
+    };
+  });
+  const recentFailureCutoff = now - (24 * 60 * 60 * 1000);
+  const topRegions = entries
+    .filter(entry => entry.failureCount || entry.consecutiveFailures || entry.lastFailureAt || entry.decayedFailureWindow > 0.05)
+    .sort((a, b) => (b.decayedFailureRate || 0) - (a.decayedFailureRate || 0) || (b.decayedFailureWindow || 0) - (a.decayedFailureWindow || 0) || (b.consecutiveFailures || 0) - (a.consecutiveFailures || 0) || String(a.region).localeCompare(String(b.region)))
+    .slice(0, 8)
+    .map(entry => ({
+      region: entry.region,
+      totalSeen: entry.totalSeen || 0,
+      failureCount: entry.failureCount || 0,
+      successCount: entry.successCount || 0,
+      consecutiveFailures: entry.consecutiveFailures || 0,
+      lastStatus: entry.lastStatus || null,
+      lastReason: entry.lastReason || null,
+      lastSeenAt: entry.lastSeenAt || null,
+      lastFailureAt: entry.lastFailureAt || null,
+      lastSuccessAt: entry.lastSuccessAt || null,
+      lastWindowAt: entry.lastWindowAt || null,
+      maxItemCount: entry.maxItemCount || 0,
+      reasons: entry.reasons || {},
+      failureWindow: Number((entry.failureWindow || 0).toFixed ? (entry.failureWindow || 0).toFixed(3) : entry.failureWindow || 0),
+      successWindow: Number((entry.successWindow || 0).toFixed ? (entry.successWindow || 0).toFixed(3) : entry.successWindow || 0),
+      decayedFailureWindow: entry.decayedFailureWindow,
+      decayedSuccessWindow: entry.decayedSuccessWindow,
+      decayedFailureRate: entry.decayedFailureRate,
+      chronic: (entry.consecutiveFailures || 0) >= 2 || (entry.decayedFailureRate || 0) >= 0.6,
+      recovering: (entry.successCount || 0) > 0 && (entry.decayedFailureRate || 0) < 0.4,
+      recentlyFailing: entry.lastFailureAt ? new Date(entry.lastFailureAt).getTime() >= recentFailureCutoff : false,
+    }));
+  return {
+    trackedRegionCount: entries.length,
+    chronicFailureCount: topRegions.filter(entry => entry.chronic).length,
+    recentFailureCount: topRegions.filter(entry => entry.recentlyFailing).length,
+    recoveringRegionCount: topRegions.filter(entry => entry.recovering).length,
+    decayHalfLifeHours: CLUSTER_REVIEW_DECAY_HALF_LIFE_MS / (60 * 60 * 1000),
+    retentionDays: CLUSTER_REVIEW_RETENTION_MS / (24 * 60 * 60 * 1000),
+    updatedAt: state?.updatedAt || null,
+    topRegions,
+  };
+}
+
+function recordClusterReviewStats(snapshot = {}) {
+  const perRegion = Array.isArray(snapshot.newsLlmDebug?.perRegion) ? snapshot.newsLlmDebug.perRegion : [];
+  if (!perRegion.length) return summarizeClusterReviewStats();
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const current = getClusterReviewStatsState();
+  const regions = pruneClusterReviewRegions({ ...(current.regions || {}) });
+  for (const entry of perRegion) {
+    const region = String(entry?.region || '').trim();
+    if (!region) continue;
+    const stats = regions[region] && typeof regions[region] === 'object' ? { ...regions[region] } : {
+      firstSeenAt: nowIso,
+      lastSeenAt: null,
+      lastFailureAt: null,
+      lastSuccessAt: null,
+      lastStatus: null,
+      lastReason: null,
+      totalSeen: 0,
+      failureCount: 0,
+      successCount: 0,
+      consecutiveFailures: 0,
+      maxItemCount: 0,
+      reasons: {},
+      failureWindow: 0,
+      successWindow: 0,
+      lastWindowAt: nowIso,
+    };
+    const lastWindowAtMs = new Date(stats.lastWindowAt || stats.lastSeenAt || 0).getTime();
+    const decayFactor = lastWindowAtMs && CLUSTER_REVIEW_DECAY_HALF_LIFE_MS > 0
+      ? Math.pow(0.5, Math.max(0, now - lastWindowAtMs) / CLUSTER_REVIEW_DECAY_HALF_LIFE_MS)
+      : 1;
+    stats.failureWindow = Number(((Number(stats.failureWindow || 0)) * decayFactor).toFixed(6));
+    stats.successWindow = Number(((Number(stats.successWindow || 0)) * decayFactor).toFixed(6));
+    stats.lastWindowAt = nowIso;
+    stats.lastSeenAt = nowIso;
+    stats.lastStatus = entry.status || null;
+    stats.lastReason = entry.reason || null;
+    stats.totalSeen = (stats.totalSeen || 0) + 1;
+    stats.maxItemCount = Math.max(stats.maxItemCount || 0, entry.itemCount || 0);
+    if (entry.status === 'heuristic-fallback') {
+      stats.failureCount = (stats.failureCount || 0) + 1;
+      stats.consecutiveFailures = (stats.consecutiveFailures || 0) + 1;
+      stats.lastFailureAt = nowIso;
+      stats.failureWindow = Number((stats.failureWindow + 1).toFixed(6));
+      const reason = entry.reason || 'unknown';
+      stats.reasons = stats.reasons && typeof stats.reasons === 'object' ? stats.reasons : {};
+      stats.reasons[reason] = (stats.reasons[reason] || 0) + 1;
+    } else {
+      stats.successCount = (stats.successCount || 0) + 1;
+      stats.consecutiveFailures = 0;
+      stats.lastSuccessAt = nowIso;
+      stats.successWindow = Number((stats.successWindow + 1).toFixed(6));
+    }
+    regions[region] = stats;
+  }
+  const nextState = {
+    updatedAt: nowIso,
+    regions: pruneClusterReviewRegions(regions, Date.now()),
+  };
+  memory.setSignalState(CLUSTER_REVIEW_STATE_KEY, nextState);
+  return summarizeClusterReviewStats(nextState);
+}
+
+function attachClusterReviewStats(review = {}) {
+  const statsSummary = summarizeClusterReviewStats();
+  const pressureSummary = summarizeClusterPressureStats();
+  const byRegion = new Map((statsSummary.topRegions || []).map(entry => [entry.region, entry]));
+  const pressureByRegion = new Map((pressureSummary.topRegions || []).map(entry => [entry.region, entry]));
+  const decorate = item => ({
+    ...item,
+    persistent: byRegion.get(item.region) || null,
+    pressure: pressureByRegion.get(item.region) || null,
+  });
+  return {
+    ...review,
+    reviewItems: Array.isArray(review.reviewItems) ? review.reviewItems.map(decorate) : [],
+    dismissedItems: Array.isArray(review.dismissedItems) ? review.dismissedItems.map(decorate) : [],
+    stats: statsSummary,
+    pressure: pressureSummary,
+  };
+}
+
+function buildOperatorReviewQueue(review = {}, { maxItems = 5, quality = null } = {}) {
+  const items = Array.isArray(review.reviewItems) ? review.reviewItems : [];
+  const metrics = quality?.reviewMetrics || {};
+  const stats = review?.stats || {};
+  const pressure = review?.pressure || {};
+  const ackSummary = review?.ackSummary || reviewAckStats();
+  const duplicateByRegion = new Map();
+  for (const entry of Array.isArray(metrics.suspiciousNearDuplicates) ? metrics.suspiciousNearDuplicates : []) {
+    const region = entry?.region || 'Unknown';
+    duplicateByRegion.set(region, Math.max(duplicateByRegion.get(region) || 0, Number(entry?.similarity || 0)));
+  }
+  const splitByRegion = new Map((Array.isArray(metrics.topSplitRegions) ? metrics.topSplitRegions : []).map(entry => [entry.region, entry.count || 0]));
+  const scored = items.map(item => {
+    const region = item?.region || 'Unknown';
+    const pressureScore = Number(item?.pressure?.pressureScore || 0);
+    const duplicateScore = Math.round((duplicateByRegion.get(region) || 0) * 100);
+    const splitCount = Number(splitByRegion.get(region) || 0);
+    const consecutiveFailures = Number(item?.persistent?.consecutiveFailures || 0);
+    const itemCount = Number(item?.itemCount || 0);
+    const chronicBonus = item?.persistent?.chronic ? 25 : 0;
+    const severityBonus = item?.severity === 'high' ? 20 : item?.severity === 'medium' ? 10 : 0;
+    const priorityScore = pressureScore + duplicateScore + (splitCount * 12) + (consecutiveFailures * 3) + (itemCount * 2) + chronicBonus + severityBonus;
+    const drivers = [];
+    if (pressureScore > 0) drivers.push(`pressure ${pressureScore}`);
+    if (duplicateScore > 0) drivers.push(`near-duplicate ${duplicateScore}`);
+    if (splitCount > 0) drivers.push(`split-pattern ${splitCount}`);
+    if (consecutiveFailures > 0) drivers.push(`repeat-fail ${consecutiveFailures}`);
+    return {
+      ...item,
+      priorityScore,
+      drivers,
+      duplicateScore,
+      splitCount,
+      pressureScore,
+    };
+  }).sort((a, b) => (b.priorityScore || 0) - (a.priorityScore || 0) || (b.itemCount || 0) - (a.itemCount || 0) || String(a.region || '').localeCompare(String(b.region || '')));
+  const bounded = scored.slice(0, Math.max(1, maxItems));
+  const reasonCounts = new Map();
+  for (const item of items) {
+    const reason = item?.reason || 'unknown';
+    reasonCounts.set(reason, (reasonCounts.get(reason) || 0) + 1);
+  }
+  const topReasons = Array.from(reasonCounts.entries())
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+    .slice(0, 4)
+    .map(([reason, count]) => ({ reason, count }));
+  const hasElevatedMetrics = Boolean(
+    (stats?.chronicFailureCount || 0) > 0 ||
+    (stats?.recentFailureCount || 0) > 0 ||
+    (metrics?.lowConfidenceCount || 0) > 0 ||
+    (metrics?.suspiciousNearDuplicateCount || 0) > 0 ||
+    (pressure?.pressuredRegionCount || 0) > 0
+  );
+  const state = items.length > 0
+    ? 'active'
+    : hasElevatedMetrics
+      ? 'empty_elevated_metrics'
+      : 'empty_clear';
+  const emptyReason = state === 'empty_elevated_metrics'
+    ? 'No active review items, but review metrics remain elevated from recent or background conditions.'
+    : 'No active review items and no elevated review pressure is currently visible.';
+  return {
+    state,
+    totalItems: items.length,
+    visibleItems: bounded.length,
+    maxItems: Math.max(1, maxItems),
+    hasMore: items.length > Math.max(1, maxItems),
+    bounded: true,
+    hasElevatedMetrics,
+    emptyReason: items.length ? null : emptyReason,
+    summary: items.length
+      ? `${items.length} active review item${items.length === 1 ? '' : 's'} awaiting operator triage.`
+      : emptyReason,
+    topReasons,
+    ackSummary: {
+      active: ackSummary?.active || 0,
+      repeatAckCount: ackSummary?.repeatAckCount || 0,
+      nextExpiry: ackSummary?.nextExpiry || null,
+      recentDismissalCount: ackSummary?.recentDismissalCount || 0,
+    },
+    metrics: {
+      chronicFailureCount: stats?.chronicFailureCount || 0,
+      recentFailureCount: stats?.recentFailureCount || 0,
+      lowConfidenceCount: metrics?.lowConfidenceCount || 0,
+      suspiciousNearDuplicateCount: metrics?.suspiciousNearDuplicateCount || 0,
+      pressuredRegionCount: pressure?.pressuredRegionCount || 0,
+    },
+    items: bounded.map(item => {
+      const region = item.region || null;
+      const reason = item.reason || 'unknown';
+      const artifactRegion = encodeURIComponent(region || '');
+      const artifactReason = encodeURIComponent(reason);
+      const workflow = buildReviewWorkflowActions(item);
+      return {
+        region,
+        reason,
+        severity: item.severity || 'medium',
+        itemCount: item.itemCount || 0,
+        retried: Boolean(item.retried),
+        repairAttempted: Boolean(item.repairAttempted),
+        chronic: Boolean(item.persistent?.chronic),
+        consecutiveFailures: item.persistent?.consecutiveFailures || 0,
+        lastStatus: item.persistent?.lastStatus || item.status || null,
+        priorityScore: item.priorityScore || 0,
+        priorityDrivers: item.drivers || [],
+        pressureScore: item.pressureScore || 0,
+        duplicateScore: item.duplicateScore || 0,
+        splitCount: item.splitCount || 0,
+        sourceProvenance: item.sourceProvenance || null,
+        dominantSource: workflow.sourceItem ? { id: workflow.sourceItem.id, name: workflow.sourceItem.name } : null,
+        suggestedAction: reason === 'no-json-match'
+          ? 'Inspect response shape and retry/repair behavior.'
+          : reason === 'shape-mismatch'
+            ? 'Review schema mismatch and fallback parsing path.'
+            : 'Inspect clustered output and operator review evidence.',
+        actions: [
+          {
+            id: 'ack',
+            label: 'Ack',
+            method: 'POST',
+            href: `/api/brief/news/review/ack?region=${artifactRegion}&reason=${artifactReason}`,
+            intent: 'dismiss',
+            detail: 'Dismiss this queue item until the normal ack TTL expires.',
+          },
+          {
+            id: 'snooze',
+            label: 'Snooze 24h',
+            method: 'POST',
+            href: `/api/brief/news/review/snooze?region=${artifactRegion}&reason=${artifactReason}&hours=24`,
+            intent: 'snooze',
+            detail: 'Dismiss this queue item for 24 hours, then automatically return it if still present.',
+          },
+          ...workflow.actions,
+          {
+            id: 'artifacts',
+            label: 'Artifacts',
+            method: 'GET',
+            href: `/api/brief/news/review/artifacts?region=${artifactRegion}&reason=${artifactReason}`,
+            intent: 'inspect',
+            detail: 'Open recent repair artifacts for this region and reason.',
+          },
+        ],
+      };
+    }),
+  };
+}
+
+function getClusterPressureStatsState() {
+  const state = memory.getSignalState(CLUSTER_PRESSURE_STATE_KEY);
+  return state && typeof state === 'object' ? state : { updatedAt: null, regions: {} };
+}
+
+function pruneClusterPressureRegions(regions = {}, now = Date.now()) {
+  const pruned = {};
+  for (const [region, stats] of Object.entries(regions || {})) {
+    const lastSeenAt = new Date(stats?.lastSeenAt || 0).getTime();
+    if (!lastSeenAt || (now - lastSeenAt) > CLUSTER_PRESSURE_RETENTION_MS) continue;
+    pruned[region] = stats;
+  }
+  return pruned;
+}
+
+function summarizeClusterPressureStats(state = getClusterPressureStatsState()) {
+  const now = Date.now();
+  const regions = pruneClusterPressureRegions(state?.regions || {}, now);
+  const entries = Object.entries(regions).map(([region, stats]) => ({ region, ...stats }));
+  const topRegions = entries
+    .filter(entry => (entry.retryCount || 0) > 0 || (entry.backoffCount || 0) > 0 || (entry.tunedCount || 0) > 0 || (entry.repairAttemptCount || 0) > 0)
+    .sort((a, b) => (b.retryCount || 0) - (a.retryCount || 0) || (b.backoffCount || 0) - (a.backoffCount || 0) || (b.tunedCount || 0) - (a.tunedCount || 0) || String(a.region).localeCompare(String(b.region)))
+    .slice(0, 8)
+    .map(entry => ({
+      region: entry.region,
+      totalSeen: entry.totalSeen || 0,
+      tunedCount: entry.tunedCount || 0,
+      retryCount: entry.retryCount || 0,
+      backoffCount: entry.backoffCount || 0,
+      repairAttemptCount: entry.repairAttemptCount || 0,
+      heuristicFallbackCount: entry.heuristicFallbackCount || 0,
+      successCount: entry.successCount || 0,
+      lastStatus: entry.lastStatus || null,
+      lastReason: entry.lastReason || null,
+      lastSeenAt: entry.lastSeenAt || null,
+      lastTunedAt: entry.lastTunedAt || null,
+      lastRetryAt: entry.lastRetryAt || null,
+      lastBackoffAt: entry.lastBackoffAt || null,
+      maxRetriesConfigured: entry.maxRetriesConfigured || 0,
+      maxRepairTimeout: entry.maxRepairTimeout || 0,
+      currentTuning: entry.currentTuning || { maxRetries: 0, repairTimeout: 45000 },
+      pressureScore: (entry.retryCount || 0) + (entry.backoffCount || 0) + (entry.repairAttemptCount || 0),
+    }));
+  return {
+    trackedRegionCount: entries.length,
+    pressuredRegionCount: topRegions.length,
+    totalRetries: entries.reduce((sum, entry) => sum + (entry.retryCount || 0), 0),
+    totalBackoffs: entries.reduce((sum, entry) => sum + (entry.backoffCount || 0), 0),
+    totalTunedRegions: entries.reduce((sum, entry) => sum + ((entry.tunedCount || 0) > 0 ? 1 : 0), 0),
+    totalRepairAttempts: entries.reduce((sum, entry) => sum + (entry.repairAttemptCount || 0), 0),
+    retentionDays: CLUSTER_PRESSURE_RETENTION_MS / (24 * 60 * 60 * 1000),
+    updatedAt: state?.updatedAt || null,
+    topRegions,
+  };
+}
+
+function recordClusterPressureStats(snapshot = {}) {
+  const perRegion = Array.isArray(snapshot.newsLlmDebug?.perRegion) ? snapshot.newsLlmDebug.perRegion : [];
+  if (!perRegion.length) return summarizeClusterPressureStats();
+  const nowIso = new Date().toISOString();
+  const current = getClusterPressureStatsState();
+  const regions = pruneClusterPressureRegions({ ...(current.regions || {}) });
+  for (const entry of perRegion) {
+    const region = String(entry?.region || '').trim();
+    if (!region) continue;
+    const tuning = entry?.tuning && typeof entry.tuning === 'object' ? entry.tuning : {};
+    const stats = regions[region] && typeof regions[region] === 'object' ? { ...regions[region] } : {
+      firstSeenAt: nowIso,
+      lastSeenAt: null,
+      lastTunedAt: null,
+      lastRetryAt: null,
+      lastBackoffAt: null,
+      lastStatus: null,
+      lastReason: null,
+      totalSeen: 0,
+      tunedCount: 0,
+      retryCount: 0,
+      backoffCount: 0,
+      repairAttemptCount: 0,
+      heuristicFallbackCount: 0,
+      successCount: 0,
+      maxRetriesConfigured: 0,
+      maxRepairTimeout: 0,
+      currentTuning: { maxRetries: 0, repairTimeout: 45000 },
+    };
+    stats.lastSeenAt = nowIso;
+    stats.lastStatus = entry.status || null;
+    stats.lastReason = entry.reason || null;
+    stats.totalSeen = (stats.totalSeen || 0) + 1;
+    stats.currentTuning = {
+      maxRetries: Number(tuning.maxRetries || 0),
+      repairTimeout: Number(tuning.repairTimeout || 45000),
+    };
+    stats.maxRetriesConfigured = Math.max(stats.maxRetriesConfigured || 0, Number(tuning.maxRetries || 0));
+    stats.maxRepairTimeout = Math.max(stats.maxRepairTimeout || 0, Number(tuning.repairTimeout || 45000));
+    if ((tuning.maxRetries || 0) > 0 || Number(tuning.repairTimeout || 45000) !== 45000) {
+      stats.tunedCount = (stats.tunedCount || 0) + 1;
+      stats.lastTunedAt = nowIso;
+    }
+    if (entry.retried) {
+      stats.retryCount = (stats.retryCount || 0) + 1;
+      stats.lastRetryAt = nowIso;
+      stats.backoffCount = (stats.backoffCount || 0) + 1;
+      stats.lastBackoffAt = nowIso;
+    }
+    if (entry.repairAttempted) stats.repairAttemptCount = (stats.repairAttemptCount || 0) + 1;
+    if (entry.status === 'heuristic-fallback') stats.heuristicFallbackCount = (stats.heuristicFallbackCount || 0) + 1;
+    else stats.successCount = (stats.successCount || 0) + 1;
+    regions[region] = stats;
+  }
+  const nextState = {
+    updatedAt: nowIso,
+    regions: pruneClusterPressureRegions(regions, Date.now()),
+  };
+  memory.setSignalState(CLUSTER_PRESSURE_STATE_KEY, nextState);
+  return summarizeClusterPressureStats(nextState);
+}
+
+function attachClusterPressureStats(llm = {}) {
+  const statsSummary = summarizeClusterPressureStats();
+  const byRegion = new Map((statsSummary.topRegions || []).map(entry => [entry.region, entry]));
+  return {
+    ...llm,
+    perRegion: Array.isArray(llm.perRegion) ? llm.perRegion.map(entry => ({
+      ...entry,
+      persistent: byRegion.get(entry.region) || null,
+    })) : [],
+    persistentPressure: statsSummary,
+  };
+}
+
+function getClusterRepairArtifactsState() {
+  const state = memory.getSignalState(CLUSTER_REPAIR_ARTIFACTS_STATE_KEY);
+  return Array.isArray(state) ? state : [];
+}
+
+function pruneClusterRepairArtifacts(artifacts = [], now = Date.now()) {
+  return (Array.isArray(artifacts) ? artifacts : [])
+    .filter(entry => {
+      const ts = new Date(entry?.recordedAt || 0).getTime();
+      return ts && (now - ts) <= CLUSTER_REPAIR_ARTIFACT_RETENTION_MS;
+    })
+    .slice(-CLUSTER_REPAIR_ARTIFACT_MAX_ENTRIES);
+}
+
+function summarizeClusterRepairArtifacts(artifacts = getClusterRepairArtifactsState()) {
+  const pruned = pruneClusterRepairArtifacts(artifacts);
+  const byReason = {};
+  const byRegion = {};
+  for (const entry of pruned) {
+    const reason = entry.reason || 'unknown';
+    const region = entry.region || 'unknown';
+    byReason[reason] = (byReason[reason] || 0) + 1;
+    byRegion[region] = (byRegion[region] || 0) + 1;
+  }
+  return {
+    totalArtifacts: pruned.length,
+    retentionDays: CLUSTER_REPAIR_ARTIFACT_RETENTION_MS / (24 * 60 * 60 * 1000),
+    maxEntries: CLUSTER_REPAIR_ARTIFACT_MAX_ENTRIES,
+    topReasons: Object.entries(byReason).map(([reason, count]) => ({ reason, count })).sort((a,b)=>b.count-a.count).slice(0,6),
+    topRegions: Object.entries(byRegion).map(([region, count]) => ({ region, count })).sort((a,b)=>b.count-a.count).slice(0,6),
+    items: pruned.slice(-12).reverse(),
+  };
+}
+
+function recordClusterRepairArtifacts(snapshot = {}) {
+  const artifacts = Array.isArray(snapshot.newsLlmDebug?.repairArtifacts) ? snapshot.newsLlmDebug.repairArtifacts : [];
+  const current = getClusterRepairArtifactsState();
+  if (!artifacts.length) {
+    const pruned = pruneClusterRepairArtifacts(current);
+    if (pruned.length !== current.length) memory.setSignalState(CLUSTER_REPAIR_ARTIFACTS_STATE_KEY, pruned);
+    return summarizeClusterRepairArtifacts(pruned);
+  }
+  const nowIso = new Date().toISOString();
+  const merged = pruneClusterRepairArtifacts([
+    ...current,
+    ...artifacts.map(entry => ({ ...entry, recordedAt: nowIso })),
+  ]);
+  memory.setSignalState(CLUSTER_REPAIR_ARTIFACTS_STATE_KEY, merged);
+  return summarizeClusterRepairArtifacts(merged);
+}
+
+function signalId(kind = 'signal', item = {}, index = 0) {
+  const raw = `${kind}:${item.signal || item.category || 'item'}:${index}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 96);
+  return raw || `${kind}-${index}`;
+}
+
+function attachSignalIds(kind = 'signal', list = []) {
+  return list.map((item, index) => ({ ...item, id: item.id || signalId(kind, item, index) }));
+}
+
+function formatSignalTrustLabel(item = {}) {
+  const labels = [];
+  if (item.sourceHealth) labels.push(item.sourceHealth);
+  if (item.evidenceSource) labels.push(item.evidenceSource);
+  return labels.length ? ` {${labels.join(' · ')}}` : '';
+}
+
+function signalProvenanceLabel(item = {}) {
+  const sourceHealth = String(item.sourceHealth || '').toLowerCase();
+  const evidenceSource = String(item.evidenceSource || '').toLowerCase();
+  if (sourceHealth === 'hard-data') return 'hard-data corroboration';
+  if (sourceHealth === 'clean' && evidenceSource.includes('mixed')) return 'multi-source corroboration';
+  if (sourceHealth === 'clean') return 'clean source corroboration';
+  if (sourceHealth === 'degraded-air-ok' || sourceHealth === 'degraded') return 'degraded but partially corroborated';
+  if (sourceHealth === 'single-source') return 'single-source signal';
+  if (sourceHealth === 'osint-only') return 'osint-only signal';
+  if (sourceHealth === 'air-missing') return 'air picture missing';
+  if (evidenceSource.includes('telegram')) return 'telegram-led osint';
+  if (evidenceSource.includes('news')) return 'news-led evidence';
+  return sourceHealth || evidenceSource ? `${sourceHealth || 'unknown'} via ${evidenceSource || 'mixed'}` : 'unknown provenance';
+}
+
+function summarizeEvidenceProvenance(snapshot = {}) {
+  const evidence = snapshot.evidenceSummary || {};
+  const counts = evidence.counts || {};
+  const labels = [];
+  if ((counts.carriedForward || 0) > 0) labels.push(`${counts.carriedForward} carried-forward`);
+  if ((counts.cached || 0) > 0) labels.push(`${counts.cached} cached/fallback`);
+  if ((counts.degraded || 0) > 0) labels.push(`${counts.degraded} degraded`);
+  if ((counts.failedSources || 0) > 0) labels.push(`${counts.failedSources} failed sources`);
+  return labels.length ? labels.join(', ') : 'mostly live evidence';
+}
+
+function trustPhrase(item = {}) {
+  const sourceHealth = item.sourceHealth || 'unknown';
+  const evidenceSource = item.evidenceSource || 'mixed';
+  return `${sourceHealth} via ${evidenceSource}`;
+}
+
+function touchSelection(contextKey = '', remembered = null) {
+  if (!contextKey || !remembered) return remembered;
+  const touched = {
+    ...remembered,
+    lastAccessAt: Date.now(),
+  };
+  selectionMemory.delete(contextKey);
+  selectionMemory.set(contextKey, touched);
+  selectionMemoryTelemetry.touchHits += 1;
+  return touched;
+}
+
+function pruneSelectionMemory() {
+  const now = Date.now();
+  let pruned = 0;
+  for (const [key, value] of selectionMemory.entries()) {
+    if (!value || value.expiresAt <= now) {
+      selectionMemory.delete(key);
+      selectionMemoryTelemetry.ttlExpired += 1;
+      pruned += 1;
+    }
+  }
+  while (selectionMemory.size > SELECTION_MEMORY_MAX_ENTRIES) {
+    const lruKey = selectionMemory.keys().next().value;
+    if (!lruKey) break;
+    selectionMemory.delete(lruKey);
+    selectionMemoryTelemetry.capacityEvicted += 1;
+    pruned += 1;
+  }
+  return pruned;
+}
+
+function resetSelectionMemoryTelemetry() {
+  selectionMemoryTelemetry.ttlExpired = 0;
+  selectionMemoryTelemetry.capacityEvicted = 0;
+  selectionMemoryTelemetry.manualCleared = 0;
+  selectionMemoryTelemetry.touchHits = 0;
+  selectionMemoryTelemetry.misses = 0;
+}
+
+function selectionMemorySnapshot(limit = 5) {
+  pruneSelectionMemory();
+  return Array.from(selectionMemory.entries())
+    .slice(-Math.max(1, Math.min(Number(limit) || 5, 20)))
+    .map(([context, value]) => ({
+      context,
+      kind: value.kind,
+      index: value.index,
+      id: value.id,
+      expiresAt: new Date(value.expiresAt).toISOString(),
+      lastAccessAt: value.lastAccessAt ? new Date(value.lastAccessAt).toISOString() : null,
+    }));
+}
+
+function selectionMemoryStats() {
+  pruneSelectionMemory();
+  let nextExpiry = null;
+  for (const value of selectionMemory.values()) {
+    if (!nextExpiry || value.expiresAt < nextExpiry) nextExpiry = value.expiresAt;
+  }
+  const oldestKey = selectionMemory.keys().next().value || null;
+  const newestKey = selectionMemory.size ? Array.from(selectionMemory.keys()).at(-1) : null;
+  return {
+    activeContexts: selectionMemory.size,
+    maxEntries: SELECTION_MEMORY_MAX_ENTRIES,
+    ttlMs: SELECTION_MEMORY_TTL_MS,
+    nextExpiry: nextExpiry ? new Date(nextExpiry).toISOString() : null,
+    oldestContext: oldestKey,
+    newestContext: newestKey,
+    telemetry: { ...selectionMemoryTelemetry },
+  };
+}
+
+function rememberSelection(contextKey = '', selection = null) {
+  if (!contextKey || !selection?.id) return;
+  pruneSelectionMemory();
+  selectionMemory.delete(contextKey);
+  selectionMemory.set(contextKey, {
+    ...selection,
+    expiresAt: Date.now() + SELECTION_MEMORY_TTL_MS,
+    lastAccessAt: Date.now(),
+  });
+  pruneSelectionMemory();
+}
+
+function recallSelection(contextKey = '') {
+  if (!contextKey) return null;
+  const remembered = selectionMemory.get(contextKey);
+  if (!remembered) {
+    selectionMemoryTelemetry.misses += 1;
+    return null;
+  }
+  if (remembered.expiresAt <= Date.now()) {
+    selectionMemory.delete(contextKey);
+    selectionMemoryTelemetry.ttlExpired += 1;
+    selectionMemoryTelemetry.misses += 1;
+    return null;
+  }
+  return touchSelection(contextKey, remembered);
+}
+
+function clearSelection(contextKey = '') {
+  if (!contextKey) return false;
+  pruneSelectionMemory();
+  const cleared = selectionMemory.delete(contextKey);
+  if (cleared) selectionMemoryTelemetry.manualCleared += 1;
+  return cleared;
+}
+
+function selectionMeta(contextKey = '') {
+  pruneSelectionMemory();
+  const remembered = recallSelection(contextKey);
+  if (!remembered) return null;
+  return {
+    kind: remembered.kind,
+    index: remembered.index,
+    id: remembered.id,
+    expiresAt: new Date(remembered.expiresAt).toISOString(),
+    lastAccessAt: remembered.lastAccessAt ? new Date(remembered.lastAccessAt).toISOString() : null,
+    ttlMs: Math.max(0, remembered.expiresAt - Date.now()),
+  };
+}
+
+function getSignalList(snapshot = {}, kind = 'corroborated') {
+  return attachSignalIds(
+    kind,
+    kind === 'suspect' ? (snapshot.suspectSignals || []) : (snapshot.corroboratedSignals || [])
+  );
+}
+
+function resolveSignalRef(snapshot = {}, ref = '', preferredKind = 'corroborated', contextKey = '') {
+  const normalized = String(ref || '').trim().toLowerCase();
+  const corroborated = getSignalList(snapshot, 'corroborated');
+  const suspects = getSignalList(snapshot, 'suspect');
+  const combined = [...corroborated, ...suspects];
+
+  if (!normalized) return { kind: preferredKind, index: 0, id: null };
+  if (normalized === 'top-suspect' || normalized === 'suspect-one' || normalized === 'the-suspect-one') {
+    return { kind: 'suspect', index: 0, id: suspects[0]?.id || null };
+  }
+  if (normalized === 'top-corroborated' || normalized === 'corroborated-one' || normalized === 'the-corroborated-one') {
+    return { kind: 'corroborated', index: 0, id: corroborated[0]?.id || null };
+  }
+  if (normalized === 'that-one' || normalized === 'top-one') {
+    const remembered = recallSelection(contextKey);
+    if (remembered?.id) return { kind: remembered.kind || preferredKind, index: remembered.index || 0, id: remembered.id };
+    return { kind: preferredKind, index: 0, id: getSignalList(snapshot, preferredKind)[0]?.id || null };
+  }
+  const itemMatch = normalized.match(/^item-(\d+)$/);
+  if (itemMatch) {
+    const n = Math.max(0, Number.parseInt(itemMatch[1], 10) - 1);
+    const list = getSignalList(snapshot, preferredKind);
+    return { kind: preferredKind, index: n, id: list[n]?.id || null };
+  }
+  const direct = combined.find(item => item.id === normalized);
+  if (direct) {
+    return {
+      kind: suspects.some(item => item.id === normalized) ? 'suspect' : 'corroborated',
+      index: 0,
+      id: direct.id,
+    };
+  }
+  return { kind: preferredKind, index: 0, id: null };
+}
+
+function getSignalSelection(snapshot = {}, kind = 'corroborated', index = 0, id = null) {
+  const list = getSignalList(snapshot, kind);
+  if (id) return list.find(item => item.id === id) || null;
+  return list[index] || null;
+}
+
+function buildIMessengerDrilldown(snapshot = {}, { kind = 'corroborated', action = 'why', index = 0, id = null } = {}) {
+  const item = getSignalSelection(snapshot, kind, index, id);
+  if (!item) return `No ${kind} signal available.`;
+
+  if (action === 'sources') {
+    return [
+      `${item.signal}`,
+      `Sources: ${item.evidenceSource || 'mixed'}`,
+      `Trust: ${item.sourceHealth || 'unknown'}`,
+      item.freshestTs ? `Freshest evidence: ${item.freshestTs}` : null,
+    ].filter(Boolean).join('\n');
+  }
+
+  if (action === 'expand') {
+    return [
+      `${item.signal} (${item.confidence})`,
+      `Trust: ${trustPhrase(item)}`,
+      `Why it matters: ${item.reason || 'No explanation available.'}`,
+      item.region ? `Region: ${item.region}` : null,
+      item.urgentPosts != null ? `Urgent posts: ${item.urgentPosts}` : null,
+      item.airTotal != null ? `Air activity: ${item.airTotal}` : null,
+      item.cpm != null ? `CPM: ${item.cpm}` : null,
+      item.readings != null ? `Readings: ${item.readings}` : null,
+    ].filter(Boolean).join('\n');
+  }
+
+  return [
+    `${item.signal}`,
+    `Why: ${item.reason || 'No explanation available.'}`,
+    `Trust: ${trustPhrase(item)}`,
+  ].join('\n');
+}
+
+function summarizeClusterReviewMetrics(clusters = []) {
+  const lowConfidenceClusters = clusters.filter(cluster =>
+    cluster.quality === 'low' ||
+    cluster.confidenceLabel === 'weak' ||
+    (cluster.qualityFlags || []).includes('heuristic-only') ||
+    (cluster.qualityFlags || []).includes('single-source')
+  );
+  const mergeCandidateCount = clusters.filter(cluster =>
+    (cluster.storyCount || 0) >= 3 &&
+    (((cluster.qualityFlags || []).includes('heuristic-only')) || (cluster.llmConfidence || 'heuristic') === 'heuristic')
+  ).length;
+  const splitCandidates = clusters.filter(cluster =>
+    (cluster.storyCount || 0) <= 1 &&
+    (cluster.sourceCount || 0) <= 1 &&
+    (cluster.qualityFlags || []).includes('heuristic-only')
+  );
+  const topSplitRegions = Array.from(splitCandidates.reduce((acc, cluster) => {
+    const region = cluster.region || 'Unknown';
+    acc.set(region, (acc.get(region) || 0) + 1);
+    return acc;
+  }, new Map()).entries())
+    .filter(([, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 5)
+    .map(([region, count]) => ({ region, count }));
+
+  const normalizeDuplicateTokens = text => String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(token => token && !['the','and','for','with','from','that','this','into','after','amid','over','under','will','have','has','had','says','say','news','latest','live','update','updates'].includes(token))
+    .slice(0, 8);
+  const duplicateSimilarity = (a, b) => {
+    const A = new Set(normalizeDuplicateTokens(a));
+    const B = new Set(normalizeDuplicateTokens(b));
+    if (!A.size || !B.size) return 0;
+    let overlap = 0;
+    for (const token of A) if (B.has(token)) overlap += 1;
+    return overlap / Math.max(Math.min(A.size, B.size), 1);
+  };
+
+  const suspiciousNearDuplicates = [];
+  for (let i = 0; i < splitCandidates.length; i++) {
+    for (let j = i + 1; j < splitCandidates.length; j++) {
+      const a = splitCandidates[i];
+      const b = splitCandidates[j];
+      if ((a.region || '') !== (b.region || '')) continue;
+      const similarity = duplicateSimilarity(a.headline || a.summary || '', b.headline || b.summary || '');
+      if (similarity < 0.5) continue;
+      suspiciousNearDuplicates.push({
+        region: a.region || 'Unknown',
+        similarity: Number(similarity.toFixed(2)),
+        clusterA: { id: a.id || null, headline: a.headline || a.summary || null, sourceCount: a.sourceCount || 0, storyCount: a.storyCount || 0 },
+        clusterB: { id: b.id || null, headline: b.headline || b.summary || null, sourceCount: b.sourceCount || 0, storyCount: b.storyCount || 0 },
+      });
+    }
+  }
+  suspiciousNearDuplicates.sort((a, b) => b.similarity - a.similarity || String(a.region).localeCompare(String(b.region)));
+
+  return {
+    lowConfidenceCount: lowConfidenceClusters.length,
+    mergeCandidateCount,
+    splitCandidateCount: splitCandidates.length,
+    topSplitRegions,
+    suspiciousNearDuplicateCount: suspiciousNearDuplicates.length,
+    suspiciousNearDuplicates: suspiciousNearDuplicates.slice(0, 8),
+  };
+}
+
+function buildReasoningSourceContext(snapshot = {}) {
+  const sourceOps = snapshot?.sourceOps || (typeof buildSourceOpsSurface === 'function' && typeof ROOT === 'string'
+    ? buildSourceOpsSurface({ rootDir: ROOT, snapshot })
+    : null);
+  const fusionRoles = sourceOps?.fusionRoles;
+  const inventory = sourceOps?.inventory;
+  if (!fusionRoles || !inventory) return null;
+  return {
+    totalSources: fusionRoles.total,
+    trustMix: inventory.byTrustClass || null,
+    anchorCount: fusionRoles.byRole?.anchor || 0,
+    corroboratorCount: fusionRoles.byRole?.corroborator || 0,
+    anomalyDetectorCount: fusionRoles.byRole?.['anomaly-detector'] || 0,
+    contextCount: fusionRoles.byRole?.context || 0,
+    exploratoryCount: fusionRoles.byRole?.exploratory || 0,
+    anchorTrustMix: fusionRoles.byRoleAndTrust?.anchor || null,
+    exploratoryTrustMix: fusionRoles.byRoleAndTrust?.exploratory || null,
+    guidance: {
+      groundingPriority: ['anchor', 'corroborator', 'anomaly-detector', 'context', 'exploratory'],
+      cautionRoles: ['exploratory'],
+      notes: [
+        'Anchor evidence should carry more grounding weight than exploratory or context-only feeds.',
+        'Exploratory sources are discovery inputs, not direct confirmation.',
+        'Anomaly-detector sources are escalation cues that should be confirmed with anchor or corroborator evidence when possible.',
+      ],
+    },
+  };
+}
+
+function buildNewsClusterSummary(snapshot = {}) {
+  const clusters = Array.isArray(snapshot.newsClusters) ? snapshot.newsClusters : [];
+  const top = clusters[0] || null;
+  if (!top) return null;
+  return {
+    totalClusters: clusters.length,
+    quality: snapshot.newsClusterQuality || {
+      high: clusters.filter(c => c.quality === 'high').length,
+      medium: clusters.filter(c => c.quality === 'medium').length,
+      low: clusters.filter(c => c.quality === 'low').length,
+      llmBacked: clusters.filter(c => (c.qualityFlags || []).includes('llm-backed')).length,
+      heuristicOnly: clusters.filter(c => (c.qualityFlags || []).includes('heuristic-only')).length,
+      singleSource: clusters.filter(c => (c.qualityFlags || []).includes('single-source')).length,
+      reviewMetrics: summarizeClusterReviewMetrics(clusters),
+    },
+    topCluster: {
+      id: top.id,
+      headline: top.headline,
+      region: top.region,
+      storyCount: top.storyCount,
+      sourceCount: top.sourceCount,
+      sourceProvenance: top.sourceProvenance || null,
+      latestDate: top.latestDate || null,
+      llmConfidence: top.llmConfidence || null,
+      quality: top.quality || null,
+      confidenceLabel: top.confidenceLabel || null,
+      qualityFlags: top.qualityFlags || [],
+      placementPrecision: top.placementPrecision || null,
+      placementBasis: top.placementBasis || null,
+      placementClass: top.placementClass || null,
+    },
+    clusters: clusters.slice(0, 5).map(cluster => ({
+      id: cluster.id,
+      headline: cluster.headline,
+      region: cluster.region,
+      storyCount: cluster.storyCount,
+      sourceCount: cluster.sourceCount,
+      sourceProvenance: cluster.sourceProvenance || null,
+      latestDate: cluster.latestDate || null,
+      llmConfidence: cluster.llmConfidence || null,
+      quality: cluster.quality || null,
+      confidenceLabel: cluster.confidenceLabel || null,
+      qualityFlags: cluster.qualityFlags || [],
+      placementPrecision: cluster.placementPrecision || null,
+      placementBasis: cluster.placementBasis || null,
+      placementClass: cluster.placementClass || null,
+    })),
+    sourceReasoning: buildReasoningSourceContext(snapshot),
+    llm: snapshot.newsLlmDebug ? attachClusterPressureStats({
+      requestedMode: snapshot.newsLlmDebug.requestedMode || 'auto',
+      provider: snapshot.newsLlmDebug.provider || null,
+      providerConfigured: Boolean(snapshot.newsLlmDebug.providerConfigured),
+      attempted: Boolean(snapshot.newsLlmDebug.attempted),
+      used: Boolean(snapshot.newsLlmDebug.used),
+      fallbackReason: snapshot.newsLlmDebug.fallbackReason || null,
+      candidateSetCount: snapshot.newsLlmDebug.candidateSetCount || (Array.isArray(snapshot.newsLlmDebug.candidateSets) ? snapshot.newsLlmDebug.candidateSets.length : 0),
+      llmSuccessCount: snapshot.newsLlmDebug.llmSuccessCount || 0,
+      llmErrorCount: snapshot.newsLlmDebug.llmErrorCount || 0,
+      heuristicFallbackCount: snapshot.newsLlmDebug.heuristicFallbackCount || 0,
+      repairAttemptCount: snapshot.newsLlmDebug.repairAttemptCount || 0,
+      repairSuccessCount: snapshot.newsLlmDebug.repairSuccessCount || 0,
+      repairArtifactCount: snapshot.newsLlmDebug.repairArtifactCount || (Array.isArray(snapshot.newsLlmDebug.repairArtifacts) ? snapshot.newsLlmDebug.repairArtifacts.length : 0),
+      retryCount: snapshot.newsLlmDebug.retryCount || 0,
+      backoffCount: snapshot.newsLlmDebug.backoffCount || 0,
+      tunedRegionCount: snapshot.newsLlmDebug.tunedRegionCount || 0,
+      review: snapshot.newsLlmDebug.review ? attachClusterReviewStats(annotateReview({
+        failedRegionCount: snapshot.newsLlmDebug.review.failedRegionCount || 0,
+        topReasons: Array.isArray(snapshot.newsLlmDebug.review.topReasons) ? snapshot.newsLlmDebug.review.topReasons.slice(0, 4) : [],
+        reviewItems: Array.isArray(snapshot.newsLlmDebug.review.reviewItems) ? snapshot.newsLlmDebug.review.reviewItems.slice(0, 6) : [],
+      })) : null,
+      perRegion: Array.isArray(snapshot.newsLlmDebug.perRegion) ? snapshot.newsLlmDebug.perRegion.slice(0, 8) : [],
+    }) : null,
+  };
+}
+
+const ANALYSIS_STALE_CURRENT_MS = 6 * 60 * 60 * 1000;
+const AGENT_ANALYSIS_REFINEMENT_TIMEOUT_MS = 90 * 1000;
+let agentAnalysisRefinementSeq = 0;
+
+function clampText(value = '', limit = 220) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
+}
+
+function normalizeEnum(value, allowed = [], fallback = null) {
+  return allowed.includes(value) ? value : fallback;
+}
+
+function parseIsoMs(value = null) {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function isCurrentSnapshotStale(snapshot = {}, nowMs = Date.now()) {
+  const snapshotMs = parseIsoMs(snapshot?.meta?.timestamp || lastSweepTime || null);
+  if (!snapshotMs) return false;
+  return nowMs - snapshotMs > ANALYSIS_STALE_CURRENT_MS;
+}
+
+function reconcileTippingPointLifecycle(analysis = {}, nowMs = Date.now()) {
+  const normalized = normalizeAgentAnalysis(analysis);
+  return {
+    ...normalized,
+    tippingPoints: normalized.tippingPoints.map(item => {
+      const windowEndMs = parseIsoMs(item.windowEnd);
+      if (item.status === 'active' && windowEndMs && windowEndMs < nowMs) {
+        return {
+          ...item,
+          status: 'expired',
+          resolutionNote: item.resolutionNote || 'Automatically expired after window end passed without a newer superseding update.',
+        };
+      }
+      return item;
+    }),
+  };
+}
+
+function normalizeEvidenceRefs(refs = []) {
+  return (Array.isArray(refs) ? refs : [])
+    .map(ref => ({
+      type: normalizeEnum(ref?.type, ['signal', 'trend', 'news-cluster', 'source-health', 'delta', 'baseline'], 'signal'),
+      id: clampText(ref?.id || 'unknown', 80),
+      label: clampText(ref?.label || ref?.id || 'unknown', 160),
+    }))
+    .slice(0, 8);
+}
+
+function normalizeAgentAnalysis(input = {}) {
+  const normalized = {
+    status: normalizeEnum(input?.status, ['ready', 'thin-history', 'llm-unavailable', 'degraded'], 'thin-history'),
+    generatedAt: input?.generatedAt || new Date().toISOString(),
+    freshness: {
+      generatedAt: input?.freshness?.generatedAt || input?.generatedAt || new Date().toISOString(),
+      lastSweep: input?.freshness?.lastSweep || lastSweepTime || null,
+      sweepInProgress: Boolean(input?.freshness?.sweepInProgress),
+      trendUpdatedAt: input?.freshness?.trendUpdatedAt || input?.trendWindowSummary?.updatedAt || null,
+    },
+    confidenceLabel: normalizeEnum(input?.confidenceLabel, ['high', 'medium', 'low'], 'low'),
+    horizons: (Array.isArray(input?.horizons) ? input.horizons : []).slice(0, 4).map(h => ({
+      id: clampText(h?.id || `h${h?.windowHours || 'x'}`, 32),
+      label: clampText(h?.label || 'Window', 80),
+      windowHours: Math.max(1, Number(h?.windowHours) || 0),
+      status: normalizeEnum(h?.status, ['ready', 'thin-history', 'empty'], 'empty'),
+      summary: clampText(h?.summary || '', 220),
+    })),
+    outlook: (Array.isArray(input?.outlook) ? input.outlook : []).slice(0, 4).map(item => ({
+      horizonId: clampText(item?.horizonId || 'short', 32),
+      text: clampText(item?.text || '', 240),
+      confidence: normalizeEnum(item?.confidence, ['high', 'medium', 'low'], 'low'),
+      evidenceRefs: normalizeEvidenceRefs(item?.evidenceRefs),
+    })).filter(item => item.text),
+    risks: (Array.isArray(input?.risks) ? input.risks : []).slice(0, 5).map(item => ({
+      title: clampText(item?.title || '', 120),
+      severity: normalizeEnum(item?.severity, ['high', 'medium', 'low'], 'low'),
+      confidence: normalizeEnum(item?.confidence, ['high', 'medium', 'low'], 'low'),
+      summary: clampText(item?.summary || '', 220),
+      evidenceRefs: normalizeEvidenceRefs(item?.evidenceRefs),
+    })).filter(item => item.title && item.summary),
+    tippingPoints: (Array.isArray(input?.tippingPoints) ? input.tippingPoints : []).slice(0, 8).map(item => ({
+      title: clampText(item?.title || '', 120),
+      windowStart: item?.windowStart || null,
+      windowEnd: item?.windowEnd || null,
+      validFor: clampText(item?.validFor || '', 80) || null,
+      probability: normalizeEnum(item?.probability, ['HIGH', 'MEDIUM', 'LOW'], 'LOW'),
+      condition: clampText(item?.condition || '', 220),
+      expectedImpact: clampText(item?.expectedImpact || '', 220),
+      whyItMatters: clampText(item?.whyItMatters || '', 220),
+      evidenceRefs: normalizeEvidenceRefs(item?.evidenceRefs),
+      status: normalizeEnum(item?.status, ['active', 'hit', 'cleared', 'expired', 'superseded'], 'active'),
+      resolutionNote: clampText(item?.resolutionNote || '', 220) || null,
+      invalidationOrClearSignal: clampText(item?.invalidationOrClearSignal || '', 220) || null,
+    })).filter(item => item.title && item.condition && item.expectedImpact),
+    sourceReasoning: input?.sourceReasoning && typeof input.sourceReasoning === 'object' ? {
+      totalSources: Number(input.sourceReasoning.totalSources) || 0,
+      trustMix: input.sourceReasoning.trustMix && typeof input.sourceReasoning.trustMix === 'object' ? {
+        high: Number(input.sourceReasoning.trustMix.high) || 0,
+        medium: Number(input.sourceReasoning.trustMix.medium) || 0,
+        low: Number(input.sourceReasoning.trustMix.low) || 0,
+        unknown: Number(input.sourceReasoning.trustMix.unknown) || 0,
+      } : null,
+      anchorCount: Number(input.sourceReasoning.anchorCount) || 0,
+      corroboratorCount: Number(input.sourceReasoning.corroboratorCount) || 0,
+      anomalyDetectorCount: Number(input.sourceReasoning.anomalyDetectorCount) || 0,
+      contextCount: Number(input.sourceReasoning.contextCount) || 0,
+      exploratoryCount: Number(input.sourceReasoning.exploratoryCount) || 0,
+      anchorTrustMix: input.sourceReasoning.anchorTrustMix && typeof input.sourceReasoning.anchorTrustMix === 'object' ? {
+        high: Number(input.sourceReasoning.anchorTrustMix.high) || 0,
+        medium: Number(input.sourceReasoning.anchorTrustMix.medium) || 0,
+        low: Number(input.sourceReasoning.anchorTrustMix.low) || 0,
+        unknown: Number(input.sourceReasoning.anchorTrustMix.unknown) || 0,
+      } : null,
+      exploratoryTrustMix: input.sourceReasoning.exploratoryTrustMix && typeof input.sourceReasoning.exploratoryTrustMix === 'object' ? {
+        high: Number(input.sourceReasoning.exploratoryTrustMix.high) || 0,
+        medium: Number(input.sourceReasoning.exploratoryTrustMix.medium) || 0,
+        low: Number(input.sourceReasoning.exploratoryTrustMix.low) || 0,
+        unknown: Number(input.sourceReasoning.exploratoryTrustMix.unknown) || 0,
+      } : null,
+      guidance: input.sourceReasoning.guidance && typeof input.sourceReasoning.guidance === 'object' ? {
+        groundingPriority: Array.isArray(input.sourceReasoning.guidance.groundingPriority) ? input.sourceReasoning.guidance.groundingPriority.slice(0, 5) : [],
+        cautionRoles: Array.isArray(input.sourceReasoning.guidance.cautionRoles) ? input.sourceReasoning.guidance.cautionRoles.slice(0, 3) : [],
+        notes: Array.isArray(input.sourceReasoning.guidance.notes) ? input.sourceReasoning.guidance.notes.slice(0, 4).map(note => clampText(note, 180)) : [],
+      } : null,
+    } : null,
+    evidenceSummary: (Array.isArray(input?.evidenceSummary) ? input.evidenceSummary : []).slice(0, 6).map(item => ({
+      text: clampText(item?.text || '', 220),
+      kind: normalizeEnum(item?.kind, ['current', 'trend', 'health', 'delta', 'source-mix'], 'current'),
+      evidenceRefs: normalizeEvidenceRefs(item?.evidenceRefs),
+    })).filter(item => item.text),
+    caveats: (Array.isArray(input?.caveats) ? input.caveats : []).slice(0, 6).map(item => ({
+      text: clampText(item?.text || '', 220),
+      level: normalizeEnum(item?.level, ['info', 'warning', 'critical'], 'info'),
+    })).filter(item => item.text),
+    trendWindowSummary: {
+      updatedAt: input?.trendWindowSummary?.updatedAt || new Date().toISOString(),
+      availableWindows: (Array.isArray(input?.trendWindowSummary?.availableWindows) ? input.trendWindowSummary.availableWindows : []).slice(0, 6),
+      primaryWindowHours: Math.max(1, Number(input?.trendWindowSummary?.primaryWindowHours) || 24),
+      primaryStatus: normalizeEnum(input?.trendWindowSummary?.primaryStatus, ['ready', 'thin-history', 'empty'], 'empty'),
+    },
+    iMessageSummary: (Array.isArray(input?.iMessageSummary) ? input.iMessageSummary : []).slice(0, 5).map(line => clampText(line, 160)).filter(Boolean),
+  };
+  return normalized;
+}
+
+function buildDeterministicAgentAnalysis(snapshot = {}) {
+  const trend = snapshot.trendSummary || memory.getTrendSummary();
+  const windows = Array.isArray(trend?.windows) ? trend.windows : [];
+  const primary = windows[0] || { hours: 24, status: 'empty' };
+  const evidenceRefs = [];
+  const newsSummary = buildNewsClusterSummary(snapshot);
+  const topSuspect = (snapshot.suspectSignals || [])[0] || null;
+  const topCorroborated = (snapshot.corroboratedSignals || [])[0] || null;
+  const health = snapshot.healthSummary || {};
+  const activeHighTippingPoints = [];
+  const staleCurrent = isCurrentSnapshotStale(snapshot);
+
+  if (topSuspect) evidenceRefs.push({ type: 'signal', id: topSuspect.signal, label: topSuspect.signal });
+  if (topCorroborated) evidenceRefs.push({ type: 'signal', id: topCorroborated.signal, label: topCorroborated.signal });
+  if (newsSummary?.topCluster) evidenceRefs.push({ type: 'news-cluster', id: newsSummary.topCluster.id, label: newsSummary.topCluster.headline });
+  evidenceRefs.push({ type: 'trend', id: `trend-${primary.hours}h`, label: `${primary.hours}h trend window` });
+
+  const outlook = [];
+  if ((primary.signals?.suspectCurrent || 0) > 0) {
+    outlook.push({
+      horizonId: 'short',
+      text: `Short horizon remains cautionary, suspect pressure sits at ${primary.signals.suspectCurrent} active items with limited corroboration.`,
+      confidence: topCorroborated ? 'medium' : 'low',
+      evidenceRefs,
+    });
+  }
+  if (newsSummary?.topCluster) {
+    outlook.push({
+      horizonId: 'short',
+      text: `News flow is concentrated around ${newsSummary.topCluster.region}, led by "${newsSummary.topCluster.headline}".`,
+      confidence: newsSummary.topCluster.confidenceLabel === 'strong' ? 'high' : 'medium',
+      evidenceRefs: [{ type: 'news-cluster', id: newsSummary.topCluster.id, label: newsSummary.topCluster.headline }],
+    });
+  }
+  if ((primary.marketRegime?.vix?.current || 0) > 0 || (primary.commodityDrift?.energy?.brentCurrent || 0) > 0) {
+    outlook.push({
+      horizonId: 'medium',
+      text: `Medium horizon is sensitive to macro shock repricing, with VIX at ${primary.marketRegime?.vix?.current ?? '--'} and Brent at ${primary.commodityDrift?.energy?.brentCurrent ?? '--'}.`,
+      confidence: 'medium',
+      evidenceRefs: [{ type: 'trend', id: 'market-regime', label: 'Market regime and commodity drift' }],
+    });
+  }
+
+  const risks = [];
+  if (topSuspect) {
+    risks.push({
+      title: topSuspect.signal,
+      severity: topSuspect.confidence === 'high' ? 'high' : 'medium',
+      confidence: topSuspect.confidence === 'low' ? 'low' : 'medium',
+      summary: clampText(topSuspect.reason || 'Suspect signal requires corroboration.', 220),
+      evidenceRefs: [{ type: 'signal', id: topSuspect.signal, label: topSuspect.signal }],
+    });
+  }
+  if ((health.failed || 0) > 0) {
+    risks.push({
+      title: 'Source degradation',
+      severity: (health.failed || 0) >= 4 ? 'high' : 'medium',
+      confidence: 'high',
+      summary: `${health.failed || 0} sources are currently failed, which can weaken current-picture confidence.`,
+      evidenceRefs: [{ type: 'source-health', id: 'source-health', label: 'Current source health summary' }],
+    });
+  }
+  if ((primary.anomalyPersistence?.nuclearRuns || 0) > 0) {
+    risks.push({
+      title: 'Persistent nuclear anomaly watch',
+      severity: 'medium',
+      confidence: 'low',
+      summary: `Nuclear anomaly markers appear in ${primary.anomalyPersistence.nuclearRuns} runs, but single-source caution still applies.`,
+      evidenceRefs: [{ type: 'trend', id: 'nuclear-persistence', label: 'Nuclear anomaly persistence' }],
+    });
+  }
+
+  if ((primary.commodityDrift?.energy?.brentCurrent || 0) >= 95) {
+    activeHighTippingPoints.push({
+      title: 'Energy shock escalation',
+      windowStart: snapshot.meta?.timestamp || null,
+      windowEnd: null,
+      validFor: 'next 24h',
+      probability: 'HIGH',
+      condition: 'Brent remains elevated near or above current levels while suspect geopolitical pressure persists.',
+      expectedImpact: 'Higher macro stress, wider risk-off bias, and stronger supply-shock narrative.',
+      whyItMatters: 'Energy pricing is one of the fastest ways regional conflict pressure spills into broader operator risk.',
+      evidenceRefs: [{ type: 'trend', id: 'energy-drift', label: 'Energy drift and Brent level' }],
+      status: 'active',
+      resolutionNote: null,
+      invalidationOrClearSignal: 'Clear if Brent normalizes materially lower and conflict-related suspect pressure fades.',
+    });
+  }
+
+  const sourceReasoning = buildReasoningSourceContext(snapshot);
+  const caveats = [];
+  if (primary.status !== 'ready') caveats.push({ text: 'Trend history is still thin, so outlook confidence is constrained.', level: 'warning' });
+  if (staleCurrent) caveats.push({ text: 'Current snapshot is stale relative to retained trend memory, so current-picture conclusions are degraded.', level: 'critical' });
+  if ((health.failed || 0) > 0) caveats.push({ text: `${health.failed} failed sources are reducing current-picture completeness.`, level: 'warning' });
+  if (topSuspect && !topCorroborated) caveats.push({ text: 'Current risk picture leans on suspect or OSINT-only signals more than corroborated evidence.', level: 'warning' });
+  if ((snapshot.newsLlmDebug?.review?.failedRegionCount || 0) > 0) caveats.push({ text: 'News clustering still has active failed-review regions, so topic grouping is not fully clean.', level: 'info' });
+
+  const confidenceLabel = staleCurrent ? 'low' : (topCorroborated && (health.failed || 0) < 3 ? 'medium' : 'low');
+  const status = !llmProvider?.isConfigured ? 'llm-unavailable' : primary.status === 'ready' ? ((health.failed || 0) >= 5 || staleCurrent ? 'degraded' : 'ready') : 'thin-history';
+
+  const schema = {
+    status,
+    generatedAt: new Date().toISOString(),
+    freshness: {
+      generatedAt: new Date().toISOString(),
+      lastSweep: snapshot.meta?.timestamp || lastSweepTime || null,
+      sweepInProgress,
+      trendUpdatedAt: trend?.generatedAt || null,
+    },
+    confidenceLabel,
+    horizons: windows.slice(0, 3).map((window, idx) => ({
+      id: idx === 0 ? 'short' : idx === 1 ? 'medium' : 'extended',
+      label: idx === 0 ? `Next ${window.hours}h` : idx === 1 ? `Next ${window.hours}h` : `Next ${Math.round(window.hours / 24)}d`,
+      windowHours: window.hours,
+      status: window.status || 'empty',
+      summary: idx === 0
+        ? `Suspects ${window.signals?.suspectCurrent || 0}, urgent tempo ${window.urgentTempo?.current || 0}, failed sources ${window.sourceHealth?.currentFailed || 0}.`
+        : `Runs ${window.runCount || 0}, air persistence ${window.anomalyPersistence?.airRuns || 0}, nuclear persistence ${window.anomalyPersistence?.nuclearRuns || 0}.`,
+    })),
+    outlook,
+    risks,
+    tippingPoints: activeHighTippingPoints,
+    sourceReasoning,
+    evidenceSummary: [
+      { text: `Current sweep shows ${snapshot.suspectSignals?.length || 0} suspect and ${snapshot.corroboratedSignals?.length || 0} corroborated signals.`, kind: 'current', evidenceRefs },
+      { text: `${primary.hours || 24}h trend window has ${primary.runCount || 0} runs with urgent tempo ${primary.urgentTempo?.current || 0}.`, kind: 'trend', evidenceRefs: [{ type: 'trend', id: `trend-${primary.hours || 24}h`, label: `${primary.hours || 24}h trend window` }] },
+      { text: `Source health currently reports ${health.failed || 0} failed and ${health.degraded || 0} degraded sources.`, kind: 'health', evidenceRefs: [{ type: 'source-health', id: 'source-health', label: 'Current source health summary' }] },
+      ...(sourceReasoning ? [{ text: `Reasoning source mix: ${sourceReasoning.anchorCount} anchors, ${sourceReasoning.corroboratorCount} corroborators, ${sourceReasoning.anomalyDetectorCount} anomaly detectors, ${sourceReasoning.exploratoryCount} exploratory sources.`, kind: 'source-mix', evidenceRefs: [{ type: 'source-health', id: 'source-fusion-roles', label: 'Source fusion-role summary' }] }] : []),
+    ],
+    caveats,
+    trendWindowSummary: {
+      updatedAt: trend?.generatedAt || new Date().toISOString(),
+      availableWindows: windows.map(window => window.hours),
+      primaryWindowHours: primary.hours || 24,
+      primaryStatus: primary.status || 'empty',
+    },
+    iMessageSummary: [
+      `Status: ${status.replace(/-/g, ' ')}, confidence ${confidenceLabel}.`,
+      `Outlook: ${outlook[0]?.text || 'Trend history is building but still cautious.'}`.slice(0, 160),
+      `Top risk: ${risks[0] ? `${risks[0].title}, ${risks[0].summary}` : 'No dominant risk isolated yet.'}`.slice(0, 160),
+      `Tipping point: ${activeHighTippingPoints[0]?.title || 'No active HIGH-probability tipping point published yet.'}`.slice(0, 160),
+      `Caveat: ${caveats[0]?.text || 'No extra caveat.'}`.slice(0, 160),
+    ],
+  };
+
+  return normalizeAgentAnalysis(schema);
+}
+
+function confidenceRank(value = 'low') {
+  return value === 'high' ? 3 : value === 'medium' ? 2 : 1;
+}
+
+function tippingProbabilityRank(value = 'LOW') {
+  return value === 'HIGH' ? 3 : value === 'MEDIUM' ? 2 : 1;
+}
+
+function getAgentAnalysisTuning() {
+  const operatorSettings = loadOperatorSettings();
+  return operatorSettings.preferences.agentAnalysis || operatorSettingsDefaults().preferences.agentAnalysis;
+}
+
+function buildFallbackSuppressedAgentAnalysis(snapshot = {}, tuning = getAgentAnalysisTuning()) {
+  const trend = snapshot.trendSummary || memory.getTrendSummary();
+  const windows = Array.isArray(trend?.windows) ? trend.windows : [];
+  const configured = Boolean(llmProvider?.isConfigured || config.llm?.provider);
+  return normalizeAgentAnalysis({
+    status: configured ? 'degraded' : 'llm-unavailable',
+    generatedAt: new Date().toISOString(),
+    freshness: {
+      generatedAt: new Date().toISOString(),
+      lastSweep: snapshot.meta?.timestamp || lastSweepTime || null,
+      sweepInProgress,
+      trendUpdatedAt: trend?.generatedAt || null,
+    },
+    confidenceLabel: 'low',
+    horizons: windows.slice(0, 3).map((window, idx) => ({
+      id: idx === 0 ? 'short' : idx === 1 ? 'medium' : 'extended',
+      label: idx === 0 ? `Next ${window.hours}h` : idx === 1 ? `Next ${window.hours}h` : `Next ${Math.round(window.hours / 24)}d`,
+      windowHours: window.hours,
+      status: window.status || 'empty',
+      summary: 'Published analysis withheld by deterministic fallback policy until an LLM result is available.',
+    })),
+    risks: [{
+      title: 'Fallback policy withholding analysis',
+      severity: 'medium',
+      confidence: 'high',
+      summary: tuning.deterministicFallbackMode === 'disabled'
+        ? 'Deterministic fallback is disabled, so no draft analysis is published until LLM output is available.'
+        : 'Deterministic fallback is limited to LLM-unavailable states, so no draft analysis is published while LLM refinement is expected.',
+      evidenceRefs: [{ type: 'source-health', id: 'agent-analysis-policy', label: 'Agent analysis tuning policy' }],
+    }],
+    caveats: [{
+      text: tuning.deterministicFallbackMode === 'disabled'
+        ? 'Deterministic fallback is disabled by operator policy.'
+        : 'Deterministic fallback is restricted to true LLM-unavailable conditions by operator policy.',
+      level: 'warning',
+    }],
+    trendWindowSummary: {
+      updatedAt: trend?.generatedAt || new Date().toISOString(),
+      availableWindows: windows.map(window => window.hours),
+      primaryWindowHours: windows[0]?.hours || 24,
+      primaryStatus: windows[0]?.status || 'empty',
+    },
+    iMessageSummary: [
+      'Status: analysis withheld by policy.',
+      'Reason: deterministic fallback is not publishing a draft right now.',
+      'Wait for LLM completion or relax the admin tuning policy.',
+    ],
+  });
+}
+
+function dedupePublishedOutlook(analysis = {}, tuning = getAgentAnalysisTuning()) {
+  const normalized = normalizeAgentAnalysis(analysis);
+  const horizonOrder = new Map((normalized.horizons || []).map((item, index) => [item.id, index]));
+  const selected = new Map();
+
+  for (const item of normalized.outlook || []) {
+    const key = item.horizonId || 'unknown';
+    const existing = selected.get(key);
+    if (!existing) {
+      selected.set(key, item);
+      continue;
+    }
+    const itemRank = confidenceRank(item.confidence);
+    const existingRank = confidenceRank(existing.confidence);
+    if (itemRank > existingRank) {
+      selected.set(key, item);
+      continue;
+    }
+    if (itemRank === existingRank && (item.evidenceRefs?.length || 0) > (existing.evidenceRefs?.length || 0)) {
+      selected.set(key, item);
+    }
+  }
+
+  const minConfidenceRank = tuning.publishPolicy === 'strict' ? 2 : tuning.publishPolicy === 'balanced' ? 1 : 1;
+  const allowedHorizonIds = tuning.horizonBehavior === 'short-only'
+    ? new Set(['short'])
+    : tuning.horizonBehavior === 'extended'
+      ? null
+      : null;
+  const maxItems = tuning.horizonBehavior === 'short-only' ? 1 : tuning.horizonBehavior === 'extended' ? 4 : 3;
+  return Array.from(selected.values())
+    .filter(item => confidenceRank(item.confidence) >= minConfidenceRank)
+    .filter(item => !allowedHorizonIds || allowedHorizonIds.has(item.horizonId))
+    .sort((a, b) => {
+      const aOrder = horizonOrder.has(a.horizonId) ? horizonOrder.get(a.horizonId) : Number.MAX_SAFE_INTEGER;
+      const bOrder = horizonOrder.has(b.horizonId) ? horizonOrder.get(b.horizonId) : Number.MAX_SAFE_INTEGER;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return confidenceRank(b.confidence) - confidenceRank(a.confidence);
+    })
+    .slice(0, maxItems);
+}
+
+function buildPublishedAgentAnalysis(analysis = {}, tuning = getAgentAnalysisTuning()) {
+  const normalized = reconcileTippingPointLifecycle(analysis);
+  const minProbabilityRank = tippingProbabilityRank(tuning.tippingPointMinProbability || 'HIGH');
+  const allowDegradedTippingPoints = tuning.publishPolicy !== 'strict';
+  const publishedTippingPoints = normalized.tippingPoints
+    .filter(item => item.status === 'active')
+    .filter(item => tippingProbabilityRank(item.probability) >= minProbabilityRank)
+    .filter(item => allowDegradedTippingPoints || normalized.status === 'ready' || normalized.status === 'thin-history')
+    .slice(0, tuning.maxPublishedTippingPoints || 5);
+  return {
+    ...normalized,
+    outlook: dedupePublishedOutlook(normalized, tuning),
+    tippingPoints: publishedTippingPoints,
+  };
+}
+
+function compactAgentAnalysisContext(snapshot = {}, fallback = null) {
+  const trend = snapshot.trendSummary || {};
+  const primary = Array.isArray(trend.windows) ? trend.windows[0] || null : null;
+  const sections = [];
+  const suspects = (snapshot.suspectSignals || []).slice(0, 4).map(item => `${item.signal} [${item.confidence}] ${clampText(item.reason || '', 140)}`);
+  const corroborated = (snapshot.corroboratedSignals || []).slice(0, 3).map(item => `${item.signal} [${item.confidence}] ${clampText(item.reason || '', 140)}`);
+  const risks = (fallback?.risks || []).slice(0, 3).map(item => `${item.title} (${item.severity}/${item.confidence}): ${item.summary}`);
+  const outlook = (fallback?.outlook || []).slice(0, 3).map(item => `${item.horizonId}: ${item.text}`);
+  const news = buildNewsClusterSummary(snapshot);
+
+  sections.push(`META: sweep=${snapshot.meta?.timestamp || 'unknown'}, llmConfigured=${Boolean(llmProvider?.isConfigured)}`);
+  if (snapshot.evidenceSummary?.headline) sections.push(`EVIDENCE: ${snapshot.evidenceSummary.headline}`);
+  if (suspects.length) sections.push(`SUSPECTS:\n- ${suspects.join('\n- ')}`);
+  if (corroborated.length) sections.push(`CORROBORATED:\n- ${corroborated.join('\n- ')}`);
+  if (news?.topCluster) sections.push(`TOP_NEWS: ${news.topCluster.headline} | ${news.topCluster.region} | ${news.topCluster.storyCount} stories | ${news.topCluster.sourceCount} sources | quality=${news.topCluster.confidenceLabel || news.topCluster.quality || 'unknown'}`);
+  if (news?.sourceReasoning) sections.push(`SOURCE_CONTEXT: anchors=${news.sourceReasoning.anchorCount}, corroborators=${news.sourceReasoning.corroboratorCount}, anomalyDetectors=${news.sourceReasoning.anomalyDetectorCount}, context=${news.sourceReasoning.contextCount}, exploratory=${news.sourceReasoning.exploratoryCount}; trust high=${news.sourceReasoning.trustMix?.high || 0}, medium=${news.sourceReasoning.trustMix?.medium || 0}, low=${news.sourceReasoning.trustMix?.low || 0}; caution=${(news.sourceReasoning.guidance?.cautionRoles || []).join(',') || 'none'}`);
+  if (primary) sections.push(`TREND_${primary.hours}H: urgent=${primary.urgentTempo?.current || 0}, suspect=${primary.signals?.suspectCurrent || 0}, corroborated=${primary.signals?.corroboratedCurrent || 0}, failedSources=${primary.sourceHealth?.currentFailed || 0}, vix=${primary.marketRegime?.vix?.current ?? 'n/a'}, brent=${primary.commodityDrift?.energy?.brentCurrent ?? 'n/a'}`);
+  if (snapshot.delta?.summary) sections.push(`DELTA: direction=${snapshot.delta.summary.direction}, changes=${snapshot.delta.summary.totalChanges}, critical=${snapshot.delta.summary.criticalChanges}`);
+  if (snapshot.baseline6h?.summary?.headline) sections.push(`BASELINE6H: ${snapshot.baseline6h.summary.headline}`);
+  if (risks.length) sections.push(`FALLBACK_RISKS:\n- ${risks.join('\n- ')}`);
+  if (outlook.length) sections.push(`FALLBACK_OUTLOOK:\n- ${outlook.join('\n- ')}`);
+  return sections.join('\n');
+}
+
+function parseAgentAnalysisResponse(text = '') {
+  const cleaned = String(text || '').trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+  const candidates = [cleaned];
+  const objMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (objMatch) candidates.push(objMatch[0]);
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object') return parsed.agentAnalysis && typeof parsed.agentAnalysis === 'object' ? parsed.agentAnalysis : parsed;
+    } catch {}
+  }
+  return null;
+}
+
+async function generateLLMAgentAnalysis(provider, snapshot = {}) {
+  if (!provider?.isConfigured) return { analysis: null, meta: { source: 'deterministic', used: false, error: 'llm-unavailable', llmTelemetry: buildLlmCallTelemetry({ surface: 'agent-analysis', provider: provider?.name || null, model: provider?.model || null, completion: 'unavailable', timeoutMs: 90000 }) } };
+  const fallback = buildDeterministicAgentAnalysis(snapshot);
+  const systemPrompt = `You are an intelligence analyst producing structured operator-facing analysis from current signals, trend memory, and source-health context.
+
+Rules:
+- Return ONLY valid JSON.
+- Do not overstate OSINT chatter as confirmed fact.
+- Keep confidence conservative when corroboration is weak or source health is degraded.
+- Main-surface tipping points must be HIGH probability and ACTIVE only.
+- Every outlook, risk, and tipping point should cite concrete evidenceRefs from the input context.
+- Prefer the provided fallback draft when uncertain, but improve specificity if the evidence supports it.
+
+Return this object shape:
+{
+  "agentAnalysis": {
+    "status": "ready|thin-history|llm-unavailable|degraded",
+    "generatedAt": "ISO timestamp",
+    "freshness": {"generatedAt": "ISO", "lastSweep": "ISO|null", "sweepInProgress": true, "trendUpdatedAt": "ISO|null"},
+    "confidenceLabel": "high|medium|low",
+    "horizons": [{"id":"short","label":"Next 24h","windowHours":24,"status":"ready|thin-history|empty","summary":"..."}],
+    "outlook": [{"horizonId":"short","text":"...","confidence":"high|medium|low","evidenceRefs":[{"type":"signal|trend|news-cluster|source-health|delta|baseline","id":"...","label":"..."}]}],
+    "risks": [{"title":"...","severity":"high|medium|low","confidence":"high|medium|low","summary":"...","evidenceRefs":[]}],
+    "tippingPoints": [{"title":"...","windowStart":"ISO|null","windowEnd":"ISO|null","validFor":"...","probability":"HIGH|MEDIUM|LOW","condition":"...","expectedImpact":"...","whyItMatters":"...","evidenceRefs":[],"status":"active|hit|cleared|expired|superseded","resolutionNote":null,"invalidationOrClearSignal":"..."}],
+    "evidenceSummary": [{"text":"...","kind":"current|trend|health|delta","evidenceRefs":[]}],
+    "caveats": [{"text":"...","level":"info|warning|critical"}],
+    "trendWindowSummary": {"updatedAt":"ISO","availableWindows":[24,72,168],"primaryWindowHours":24,"primaryStatus":"ready|thin-history|empty"},
+    "iMessageSummary": ["line1","line2","line3","line4","line5"]
+  }
+}`;
+
+  const userPrompt = `${compactAgentAnalysisContext(snapshot, fallback)}
+
+FALLBACK_DRAFT:
+${JSON.stringify(fallback, null, 2)}`;
+
+  try {
+    const requestStartedAt = Date.now();
+    const result = await provider.complete(systemPrompt, userPrompt, { maxTokens: 4096, timeout: 90000 });
+    const latencyMs = Date.now() - requestStartedAt;
+    const parsed = parseAgentAnalysisResponse(result.text);
+    const llmTelemetry = buildLlmCallTelemetry({ surface: 'agent-analysis', provider: provider?.name || null, model: result.model || provider.model || null, usage: result?.usage || {}, latencyMs, timeoutMs: 90000, completion: parsed ? 'completed' : 'parse-failed' });
+    if (!parsed) return { analysis: null, meta: { source: 'llm-failed', used: false, error: 'parse-failed', model: result.model || provider.model || null, llmTelemetry } };
+    return { analysis: parsed, meta: { source: 'llm', used: true, error: null, model: result.model || provider.model || null, llmTelemetry } };
+  } catch (err) {
+    return { analysis: null, meta: { source: 'llm-failed', used: false, error: err.message, model: provider.model || null, llmTelemetry: buildLlmCallTelemetry({ surface: 'agent-analysis', provider: provider?.name || null, model: provider?.model || null, timeoutMs: 90000, completion: /timeout|timed out|abort/i.test(err.message || '') ? 'timed-out' : 'failed' }) } };
+  }
+}
+
+function buildAgentAnalysis(snapshot = {}, candidate = null, options = {}) {
+  const published = options.published !== false;
+  const tuning = getAgentAnalysisTuning();
+  const hasCandidate = Boolean(candidate);
+  const fallbackSuppressed = !hasCandidate && (
+    tuning.deterministicFallbackMode === 'disabled' ||
+    (tuning.deterministicFallbackMode === 'llm-unavailable-only' && Boolean(config.llm?.provider || llmProvider?.isConfigured))
+  );
+  const base = fallbackSuppressed ? buildFallbackSuppressedAgentAnalysis(snapshot, tuning) : (candidate || buildDeterministicAgentAnalysis(snapshot));
+  const normalized = normalizeAgentAnalysis(base);
+  return published ? buildPublishedAgentAnalysis(normalized, tuning) : normalized;
+}
+
+function buildAgentAnalysisSummary(snapshot = {}) {
+  const analysis = snapshot.agentAnalysis || buildAgentAnalysis(snapshot);
+  return {
+    status: analysis.status,
+    confidenceLabel: analysis.confidenceLabel,
+    sourceReasoning: analysis.sourceReasoning || null,
+    source: snapshot.agentAnalysisMeta?.source || 'deterministic',
+    refinementState: snapshot.agentAnalysisMeta?.refinementState || 'not-requested',
+    outlook: analysis.outlook.slice(0, 2),
+    risks: analysis.risks.slice(0, 3),
+    tippingPoints: analysis.tippingPoints.slice(0, 3),
+    caveats: analysis.caveats.slice(0, 3),
+    iMessageSummary: analysis.iMessageSummary.slice(0, 5),
+  };
+}
+
+function buildAgentAnalysisMeta(overrides = {}) {
+  return {
+    source: 'deterministic',
+    used: false,
+    error: null,
+    model: llmProvider?.model || null,
+    refinementState: 'not-requested',
+    refinementAttemptId: null,
+    refinementStartedAt: null,
+    refinementCompletedAt: null,
+    refinementDurationMs: null,
+    refinementTimeoutMs: AGENT_ANALYSIS_REFINEMENT_TIMEOUT_MS,
+    refinementCancelled: false,
+    refinementTimedOut: false,
+    refinementCompletion: null,
+    llmTelemetry: null,
+    ...overrides,
+  };
+}
+
+function buildRuntimeLlmStatus(snapshot = {}, { provider = config.llm?.provider || null, model = llmProvider?.model || null } = {}) {
+  const configured = Boolean(provider);
+  const analysisMeta = snapshot.agentAnalysisMeta || {};
+  const ideasSource = snapshot.ideasSource || 'disabled';
+  const analysisAttempted = Boolean(analysisMeta.refinementAttemptId || analysisMeta.refinementStartedAt || analysisMeta.refinementCompletedAt || analysisMeta.refinementState === 'failed' || analysisMeta.refinementState === 'timed-out' || analysisMeta.refinementState === 'completed');
+  const analysisApplied = analysisMeta.source === 'llm';
+  const analysisPending = analysisMeta.refinementState === 'pending' || analysisMeta.refinementState === 'queued';
+  const analysisSupported = configured;
+  const analysisAvailable = configured && analysisMeta.error !== 'llm-unavailable' && analysisMeta.refinementState !== 'unavailable';
+  const analysisUnavailable = !analysisAvailable;
+  const analysisReason = analysisUnavailable
+    ? 'unavailable'
+    : analysisPending
+      ? 'pending'
+      : analysisApplied
+        ? 'applied'
+        : analysisAttempted || analysisMeta.source === 'deterministic'
+          ? 'fallback'
+          : 'not-invoked';
+  const analysisExplanation = analysisUnavailable
+    ? 'Analysis refinement unavailable, deterministic analysis only.'
+    : analysisPending
+      ? 'Analysis refinement queued, deterministic draft currently published.'
+      : analysisApplied
+        ? `Analysis refinement applied${model ? ` via ${model}` : ''}.`
+        : analysisAttempted
+          ? `Analysis refinement attempted, deterministic fallback kept${analysisMeta.error ? ` (${analysisMeta.error})` : ''}.`
+          : `Analysis refinement supported but not invoked${model ? ` (${model})` : ''}.`;
+
+  const ideasApplied = ideasSource === 'llm';
+  const ideasPending = ideasSource === 'pending';
+  const ideasSupported = configured;
+  const ideasAvailable = configured;
+  const ideasStaticByDesign = configured && ideasSource === 'disabled';
+  const ideasNotInvoked = configured && (ideasSource === 'disabled' || ideasSource === 'not-invoked');
+  const ideasUnavailable = !ideasAvailable;
+  const ideasReason = ideasUnavailable
+    ? 'unavailable'
+    : ideasPending
+      ? 'pending'
+      : ideasApplied
+        ? 'applied'
+        : ideasSource === 'llm-failed'
+          ? 'fallback'
+          : ideasStaticByDesign
+            ? 'static-by-design'
+            : ideasNotInvoked
+              ? 'not-invoked'
+              : 'available';
+  const ideasExplanation = ideasUnavailable
+    ? 'Ideas LLM unavailable, static ideas only.'
+    : ideasPending
+      ? 'Ideas generation still pending.'
+      : ideasApplied
+        ? `Ideas generated with LLM${model ? ` via ${model}` : ''}.`
+        : ideasSource === 'llm-failed'
+          ? 'Ideas LLM attempted but fallback/static output remained active.'
+          : ideasStaticByDesign
+            ? 'Ideas are currently static by design, despite LLM support being available.'
+            : 'Ideas LLM support is available but was not invoked this cycle.';
+
+  const status = !configured
+    ? 'unavailable'
+    : analysisPending || ideasPending
+      ? 'pending'
+      : analysisApplied || ideasApplied
+        ? 'applied'
+        : analysisAttempted || ideasSource === 'llm-failed'
+          ? 'fallback'
+          : 'available';
+  const label = {
+    unavailable: 'LLM UNAVAILABLE',
+    pending: 'LLM PENDING',
+    applied: 'LLM APPLIED',
+    fallback: 'LLM FALLBACK',
+    available: 'LLM AVAILABLE',
+  }[status] || 'LLM STATUS';
+  const summary = !configured
+    ? 'LLM is not configured, deterministic analysis and static ideas are active.'
+    : analysisPending || ideasPending
+      ? 'LLM is configured, but published output still includes pending deterministic fallback.'
+      : analysisApplied || ideasApplied
+        ? 'LLM is configured and participated in the current published output.'
+        : analysisAttempted || ideasSource === 'llm-failed'
+          ? 'LLM is configured, but published output remains on deterministic or static fallback.'
+          : 'LLM is configured, but no current published surface required it yet.';
+
+  return {
+    configured,
+    provider,
+    model,
+    status,
+    label,
+    summary,
+    analysis: {
+      label: {
+        unavailable: 'LLM UNAVAILABLE',
+        pending: 'LLM PENDING',
+        applied: 'LLM APPLIED',
+        fallback: 'LLM FALLBACK',
+        'not-invoked': 'LLM AVAILABLE',
+      }[analysisReason] || 'LLM STATUS',
+      reason: analysisReason,
+      configured,
+      supported: analysisSupported,
+      available: analysisAvailable,
+      attempted: analysisAttempted,
+      participated: analysisApplied,
+      explanation: analysisExplanation,
+    },
+    ideas: {
+      label: {
+        unavailable: 'LLM UNAVAILABLE',
+        pending: 'LLM PENDING',
+        applied: 'LLM APPLIED',
+        fallback: 'LLM FALLBACK',
+        'static-by-design': 'STATIC BY DESIGN',
+        'not-invoked': 'LLM AVAILABLE',
+        available: 'LLM AVAILABLE',
+      }[ideasReason] || 'LLM STATUS',
+      reason: ideasReason,
+      configured,
+      supported: ideasSupported,
+      available: ideasAvailable,
+      attempted: configured && (ideasPending || ideasApplied || ideasSource === 'llm-failed'),
+      participated: ideasApplied,
+      explanation: ideasExplanation,
+    },
+  };
+}
+
+function buildOperatorLlmStateContract(snapshot = {}, options = {}) {
+  const runtimeLlm = buildRuntimeLlmStatus(snapshot, options);
+  return {
+    version: 'llm-operator-state-v1',
+    status: runtimeLlm.status,
+    label: runtimeLlm.label,
+    summary: runtimeLlm.summary,
+    configured: runtimeLlm.configured,
+    provider: runtimeLlm.provider,
+    model: runtimeLlm.model,
+    surfaces: {
+      analysis: runtimeLlm.analysis,
+      ideas: runtimeLlm.ideas,
+    },
+    support: {
+      analysis: {
+        supported: Boolean(runtimeLlm.analysis?.supported),
+        available: Boolean(runtimeLlm.analysis?.available),
+      },
+      ideas: {
+        supported: Boolean(runtimeLlm.ideas?.supported),
+        available: Boolean(runtimeLlm.ideas?.available),
+      },
+    },
+    participation: {
+      analysis: {
+        attempted: Boolean(runtimeLlm.analysis?.attempted),
+        participated: Boolean(runtimeLlm.analysis?.participated),
+      },
+      ideas: {
+        attempted: Boolean(runtimeLlm.ideas?.attempted),
+        participated: Boolean(runtimeLlm.ideas?.participated),
+      },
+    },
+    runtimeLlm,
+  };
+}
+
+async function runAgentAnalysisValidationSummary() {
+  return await new Promise((resolve, reject) => {
+    exec(`/opt/homebrew/opt/node/bin/node "${AGENT_ANALYSIS_VALIDATION_SCRIPT}" --json`, { cwd: ROOT, timeout: 120000 }, (error, stdout, stderr) => {
+      const raw = String(stdout || '').trim();
+      if (error && !raw) {
+        reject(new Error(String(stderr || error.message || 'validation-summary-failed').trim()));
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw || '{}');
+        resolve(parsed);
+      } catch (parseErr) {
+        reject(new Error(`validation-summary-parse-failed: ${parseErr.message}`));
+      }
+    });
+  });
+}
+
+function buildIMessengerBrief(snapshot = {}) {
+  const lines = [];
+  const evidence = snapshot.evidenceSummary || {};
+  const counts = evidence.counts || {};
+  const corroborated = attachSignalIds('corroborated', snapshot.corroboratedSignals || []);
+  const suspects = attachSignalIds('suspect', snapshot.suspectSignals || []);
+  const topCorroborated = corroborated[0] || null;
+  const topSuspect = suspects[0] || null;
+  const tgUrgent = snapshot.tg?.urgent || [];
+  const newsSummary = buildNewsClusterSummary(snapshot);
+  const agentAnalysis = snapshot.agentAnalysis || buildAgentAnalysis(snapshot);
+
+  if (Array.isArray(agentAnalysis?.iMessageSummary) && agentAnalysis.iMessageSummary.length) {
+    lines.push(...agentAnalysis.iMessageSummary.slice(0, 5));
+  }
+
+  if (evidence.headline) {
+    lines.push(`Evidence: ${evidence.headline}`);
+    lines.push(`Provenance: ${summarizeEvidenceProvenance(snapshot)}`);
+    lines.push(`Fresh ${counts.fresh || 0}, aging ${counts.aging || 0}, stale ${counts.stale || 0}, carried ${counts.carriedForward || 0}, failed ${counts.failedSources || 0}`);
+  }
+
+  if (topCorroborated) {
+    lines.push(`Top corroborated [${topCorroborated.id}]: ${topCorroborated.signal} (${topCorroborated.confidence}, ${signalProvenanceLabel(topCorroborated)})`);
+  }
+
+  if (topSuspect) {
+    lines.push(`Top suspect [${topSuspect.id}]: ${topSuspect.signal} (${topSuspect.confidence}, ${signalProvenanceLabel(topSuspect)})`);
+    if (topSuspect.synopsis) {
+      lines.push(`Synopsis: ${topSuspect.synopsis}`);
+    }
+  }
+
+  if (tgUrgent.length) {
+    lines.push(`OSINT urgent: ${tgUrgent.length} items`);
+  }
+
+  if (newsSummary?.topCluster) {
+    const top = newsSummary.topCluster;
+    lines.push(`Top news cluster: ${top.headline} (${top.region}, ${top.storyCount} stories/${top.sourceCount} sources, ${top.confidenceLabel || 'unknown'})`);
+    if (newsSummary.quality) {
+      lines.push(`News cluster quality: ${newsSummary.quality.high || 0} strong, ${newsSummary.quality.medium || 0} moderate, ${newsSummary.quality.low || 0} weak`);
+    }
+    if (newsSummary.llm) {
+      const newsLlmState = !newsSummary.llm.providerConfigured
+        ? 'LLM unavailable'
+        : newsSummary.llm.used && !newsSummary.llm.heuristicFallbackCount
+          ? 'LLM applied'
+          : newsSummary.llm.used && newsSummary.llm.heuristicFallbackCount
+            ? 'LLM partial fallback'
+            : 'LLM fallback';
+      lines.push(`News LLM: ${newsLlmState}${newsSummary.llm.requestedMode ? `, mode ${newsSummary.llm.requestedMode}` : ''}${newsSummary.llm.candidateSetCount != null ? `, candidates ${newsSummary.llm.candidateSetCount}` : ''}${newsSummary.llm.heuristicFallbackCount != null ? `, fallbacks ${newsSummary.llm.heuristicFallbackCount}` : ''}${newsSummary.llm.retryCount ? `, retries ${newsSummary.llm.retryCount}` : ''}${newsSummary.llm.repairSuccessCount ? `, repairs ${newsSummary.llm.repairSuccessCount}` : ''}`);
+      if (newsSummary.llm.review?.failedRegionCount) {
+        const topReason = newsSummary.llm.review.topReasons?.[0];
+        lines.push(`Cluster review: ${newsSummary.llm.review.failedRegionCount} failed regions${topReason ? `, top reason ${topReason.reason} (${topReason.count})` : ''}`);
+      }
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function buildBriefSections(snapshot = {}, { markdown = false } = {}) {
+  const tg = snapshot.tg || {};
+  const energy = snapshot.energy || {};
+  const metals = snapshot.metals || {};
+  const delta = memory.getLastDelta();
+  const ideas = (snapshot.ideas || []).slice(0, 3);
+  const sections = [
+    markdown ? `**📋 CRUCIX BRIEF**\n_${new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC_\n`
+             : `📋 *CRUCIX BRIEF*\n_${new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC_\n`
+  ];
+
+  if (snapshot.evidenceSummary?.headline) {
+    const counts = snapshot.evidenceSummary.counts || {};
+    sections.push(`🧾 Evidence: ${snapshot.evidenceSummary.headline}`);
+    sections.push(`   Fresh: ${counts.fresh || 0} | Aging: ${counts.aging || 0} | Stale: ${counts.stale || 0} | Carried: ${counts.carriedForward || 0} | Failed sources: ${counts.failedSources || 0}`);
+    sections.push('');
+  }
+
+  if (delta?.summary) {
+    const dirEmoji = { 'risk-off': '📉', 'risk-on': '📈', 'mixed': '↔️' }[delta.summary.direction] || '↔️';
+    sections.push(`${dirEmoji} Direction: ${markdown ? `**${delta.summary.direction.toUpperCase()}**` : `*${delta.summary.direction.toUpperCase()}*`} | ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical`);
+    sections.push('');
+  }
+
+  const vix = snapshot.fred?.find(f => f.id === 'VIXCLS');
+  const hy = snapshot.fred?.find(f => f.id === 'BAMLH0A0HYM2');
+  if (vix || energy.wti || metals.gold || metals.silver) {
+    sections.push(`📊 VIX: ${vix?.value || '--'} | WTI: $${energy.wti || '--'} | Brent: $${energy.brent || '--'}`);
+    sections.push(`   Gold: $${metals.gold || '--'} | Silver: $${metals.silver || '--'}${hy ? ` | HY Spread: ${hy.value}` : ''}`);
+    sections.push(`   NatGas: $${energy.natgas || '--'}`);
+    sections.push('');
+  }
+
+  if (tg.urgent?.length > 0) {
+    sections.push(`📡 OSINT: ${tg.urgent.length} urgent signals, ${tg.posts || 0} total posts`);
+    for (const p of tg.urgent.slice(0, 2)) sections.push(`  • ${(p.text || '').substring(0, 80)}`);
+    sections.push('');
+  }
+
+  if (snapshot.corroboratedSignals?.length) {
+    sections.push(`✅ Corroborated signals:`);
+    for (const item of snapshot.corroboratedSignals.slice(0, 3)) {
+      sections.push(`  • ${item.signal} [${item.confidence}]${formatSignalTrustLabel(item)} ${item.reason.substring(0, 90)}`);
+    }
+    sections.push('');
+  }
+
+  if (snapshot.suspectSignals?.length) {
+    sections.push(`⚠️ Suspect signals:`);
+    for (const item of snapshot.suspectSignals.slice(0, 3)) {
+      sections.push(`  • ${item.signal} [${item.confidence}]${formatSignalTrustLabel(item)} ${item.reason.substring(0, 90)}`);
+    }
+    sections.push('');
+  }
+
+  if (ideas.length > 0) {
+    sections.push(markdown ? `**💡 Top Ideas:**` : `💡 *Top Ideas:*`);
+    for (const idea of ideas) sections.push(`  ${idea.type === 'long' ? '📈' : idea.type === 'hedge' ? '🛡️' : '👁️'} ${idea.title}`);
+  }
+
+  return sections.join('\n');
+}
 
 // === Delta/Memory ===
 const memory = new MemoryManager(RUNS_DIR);
 
 // === LLM + Telegram + Discord ===
 const llmProvider = createLLMProvider(config.llm);
+llmProviderProbeState = {
+  ...llmProviderProbeState,
+  available: Boolean(llmProvider?.isConfigured),
+  status: !config.llm?.provider ? 'disabled' : (llmProvider?.isConfigured ? 'unknown' : 'misconfigured'),
+  summary: !config.llm?.provider
+    ? 'No LLM provider configured.'
+    : (llmProvider?.isConfigured ? 'No active readiness probe has completed yet.' : 'Provider configuration is incomplete.'),
+  lastModel: llmProvider?.model || config.llm?.model || null,
+};
 const telegramAlerter = new TelegramAlerter(config.telegram);
 const discordAlerter = new DiscordAlerter(config.discord || {});
+
+if (!startupValidation.valid) {
+  console.error('[Crucix] Startup configuration validation failed:');
+  for (const issue of startupValidation.issues) console.error(`  - ${issue.key}: ${issue.message}`);
+}
+if (startupValidation.warnings.length) {
+  console.warn('[Crucix] Startup configuration warnings:');
+  for (const warning of startupValidation.warnings) console.warn(`  - ${warning.key}: ${warning.message}`);
+}
 
 if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
 if (telegramAlerter.isConfigured) {
@@ -84,55 +3987,7 @@ if (telegramAlerter.isConfigured) {
 
   telegramAlerter.onCommand('/brief', async () => {
     if (!currentData) return '⏳ No data yet — waiting for first sweep to complete.';
-
-    const tg = currentData.tg || {};
-    const energy = currentData.energy || {};
-    const metals = currentData.metals || {};
-    const delta = memory.getLastDelta();
-    const ideas = (currentData.ideas || []).slice(0, 3);
-
-    const sections = [
-      `📋 *CRUCIX BRIEF*`,
-      `_${new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC_`,
-      ``,
-    ];
-
-    // Delta direction
-    if (delta?.summary) {
-      const dirEmoji = { 'risk-off': '📉', 'risk-on': '📈', 'mixed': '↔️' }[delta.summary.direction] || '↔️';
-      sections.push(`${dirEmoji} Direction: *${delta.summary.direction.toUpperCase()}* | ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical`);
-      sections.push('');
-    }
-
-    // Key metrics
-    const vix = currentData.fred?.find(f => f.id === 'VIXCLS');
-    const hy = currentData.fred?.find(f => f.id === 'BAMLH0A0HYM2');
-    if (vix || energy.wti || metals.gold || metals.silver) {
-      sections.push(`📊 VIX: ${vix?.value || '--'} | WTI: $${energy.wti || '--'} | Brent: $${energy.brent || '--'}`);
-      sections.push(`   Gold: $${metals.gold || '--'} | Silver: $${metals.silver || '--'}${hy ? ` | HY Spread: ${hy.value}` : ''}`);
-      sections.push(`   NatGas: $${energy.natgas || '--'}`);
-      sections.push('');
-    }
-
-    // OSINT
-    if (tg.urgent?.length > 0) {
-      sections.push(`📡 OSINT: ${tg.urgent.length} urgent signals, ${tg.posts || 0} total posts`);
-      // Top 2 urgent
-      for (const p of tg.urgent.slice(0, 2)) {
-        sections.push(`  • ${(p.text || '').substring(0, 80)}`);
-      }
-      sections.push('');
-    }
-
-    // Top ideas
-    if (ideas.length > 0) {
-      sections.push(`💡 *Top Ideas:*`);
-      for (const idea of ideas) {
-        sections.push(`  ${idea.type === 'long' ? '📈' : idea.type === 'hedge' ? '🛡️' : '👁️'} ${idea.title}`);
-      }
-    }
-
-    return sections.join('\n');
+    return buildBriefSections(currentData, { markdown: false });
   });
 
   telegramAlerter.onCommand('/portfolio', async () => {
@@ -181,45 +4036,7 @@ if (discordAlerter.isConfigured) {
 
   discordAlerter.onCommand('brief', async () => {
     if (!currentData) return '⏳ No data yet — waiting for first sweep to complete.';
-
-    const tg = currentData.tg || {};
-    const energy = currentData.energy || {};
-    const metals = currentData.metals || {};
-    const delta = memory.getLastDelta();
-    const ideas = (currentData.ideas || []).slice(0, 3);
-
-    const sections = [`**📋 CRUCIX BRIEF**\n_${new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC_\n`];
-
-    if (delta?.summary) {
-      const dirEmoji = { 'risk-off': '📉', 'risk-on': '📈', 'mixed': '↔️' }[delta.summary.direction] || '↔️';
-      sections.push(`${dirEmoji} Direction: **${delta.summary.direction.toUpperCase()}** | ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical\n`);
-    }
-
-    const vix = currentData.fred?.find(f => f.id === 'VIXCLS');
-    const hy = currentData.fred?.find(f => f.id === 'BAMLH0A0HYM2');
-    if (vix || energy.wti || metals.gold || metals.silver) {
-      sections.push(`📊 VIX: ${vix?.value || '--'} | WTI: $${energy.wti || '--'} | Brent: $${energy.brent || '--'}`);
-      sections.push(`   Gold: $${metals.gold || '--'} | Silver: $${metals.silver || '--'}${hy ? ` | HY Spread: ${hy.value}` : ''}`);
-      sections.push(`   NatGas: $${energy.natgas || '--'}`);
-      sections.push('');
-    }
-
-    if (tg.urgent?.length > 0) {
-      sections.push(`📡 OSINT: ${tg.urgent.length} urgent signals, ${tg.posts || 0} total posts`);
-      for (const p of tg.urgent.slice(0, 2)) {
-        sections.push(`  • ${(p.text || '').substring(0, 80)}`);
-      }
-      sections.push('');
-    }
-
-    if (ideas.length > 0) {
-      sections.push(`**💡 Top Ideas:**`);
-      for (const idea of ideas) {
-        sections.push(`  ${idea.type === 'long' ? '📈' : idea.type === 'hedge' ? '🛡️' : '👁️'} ${idea.title}`);
-      }
-    }
-
-    return sections.join('\n');
+    return buildBriefSections(currentData, { markdown: true });
   });
 
   discordAlerter.onCommand('portfolio', async () => {
@@ -234,7 +4051,19 @@ if (discordAlerter.isConfigured) {
 
 // === Express Server ===
 const app = express();
+app.use(express.json({ limit: '1mb' }));
 app.use(express.static(join(ROOT, 'dashboard/public')));
+
+function injectDashboardRuntimeHtml(html = '') {
+  const locale = getLocale();
+  const operatorSettings = loadOperatorSettings();
+  const workspacePresetLibrary = buildWorkspacePresetLibrary(operatorSettings);
+  const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
+  const runtimeScript = `<script>window.__CRUCIX_RUNTIME__ = ${JSON.stringify({ refreshIntervalMinutes: config.refreshIntervalMinutes, settingsUrl: '/settings', diagnosticsUrl: '/diagnostics', adminSettingsUrl: '/admin/settings', operatorSettings: operatorSettings.preferences, workspacePresetLibrary }).replace(/<\/script>/gi, '<\\/script>')};</script>`;
+  return html.replace('</head>', `${localeScript}
+${runtimeScript}
+</head>`);
+}
 
 // Serve loading page until first sweep completes, then the dashboard with injected locale
 app.get('/', (req, res) => {
@@ -242,41 +4071,3203 @@ app.get('/', (req, res) => {
     res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
   } else {
     const htmlPath = join(ROOT, 'dashboard/public/jarvis.html');
-    let html = readFileSync(htmlPath, 'utf-8');
-    
-    // Inject locale data into the HTML
-    const locale = getLocale();
-    const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
-    html = html.replace('</head>', `${localeScript}\n</head>`);
-    
-    res.type('html').send(html);
+    const html = readFileSync(htmlPath, 'utf-8');
+    res.type('html').send(injectDashboardRuntimeHtml(html));
   }
 });
 
+app.get('/settings', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
+  const htmlPath = join(ROOT, 'dashboard/public/settings.html');
+  const html = readFileSync(htmlPath, 'utf-8');
+  res.type('html').send(injectDashboardRuntimeHtml(html));
+});
+
+app.get('/source-ops', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
+  const htmlPath = join(ROOT, 'dashboard/public/source-ops.html');
+  const html = readFileSync(htmlPath, 'utf-8');
+  res.type('html').send(injectDashboardRuntimeHtml(html));
+});
+
+app.get('/llm-ops', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
+  const htmlPath = join(ROOT, 'dashboard/public/llm-ops.html');
+  const html = readFileSync(htmlPath, 'utf-8');
+  res.type('html').send(injectDashboardRuntimeHtml(html));
+});
+
+app.get('/diagnostics', requireDebugAccess, async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
+  const htmlPath = join(ROOT, 'dashboard/public/diagnostics.html');
+  const html = readFileSync(htmlPath, 'utf-8');
+  res.type('html').send(injectDashboardRuntimeHtml(html));
+});
+
+app.get('/admin/settings', requireDebugAccess, async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
+  const htmlPath = join(ROOT, 'dashboard/public/admin-settings.html');
+  const html = readFileSync(htmlPath, 'utf-8');
+  res.type('html').send(injectDashboardRuntimeHtml(html));
+});
+
+function markRuntimePhase(phase, nowIso = new Date().toISOString()) {
+  runtimeJobState = {
+    ...runtimeJobState,
+    phase,
+    phaseStartedAt: nowIso,
+  };
+}
+
+function beginRuntimeJob(jobKey, { attemptId = null, startedAt = new Date().toISOString(), isRetry = false } = {}) {
+  const prev = runtimeJobTelemetry[jobKey] || {};
+  runtimeJobTelemetry[jobKey] = {
+    ...prev,
+    active: true,
+    attemptCount: Number(prev.attemptCount || 0) + 1,
+    retryCount: Number(prev.retryCount || 0) + (isRetry ? 1 : 0),
+    lastAttemptId: attemptId,
+    lastStartedAt: startedAt,
+    lastOutcome: 'running',
+    lastError: null,
+    lastTimedOut: false,
+  };
+}
+
+function completeRuntimeJob(jobKey, { completedAt = new Date().toISOString(), durationMs = null, outcome = 'completed', error = null, timedOut = false, cancelled = false } = {}) {
+  const prev = runtimeJobTelemetry[jobKey] || {};
+  runtimeJobTelemetry[jobKey] = {
+    ...prev,
+    active: false,
+    cancellationCount: Number(prev.cancellationCount || 0) + (cancelled ? 1 : 0),
+    lastCompletedAt: completedAt,
+    lastDurationMs: durationMs,
+    lastOutcome: outcome,
+    lastError: error,
+    lastTimedOut: Boolean(timedOut),
+  };
+}
+
+function finalizeSweepCycle(success = true, nowIso = new Date().toISOString()) {
+  const activePhase = runtimeJobState.phase;
+  sweepInProgress = false;
+  sweepStartedAt = null;
+  if (success) {
+    if (activePhase && activePhase !== 'idle' && activePhase !== 'llm-analysis-refinement' && activePhase !== 'llm-ideas-refinement') {
+      completeRuntimePhase(activePhase, nowIso);
+    }
+  } else if (activePhase && activePhase !== 'idle' && activePhase !== 'llm-analysis-refinement' && activePhase !== 'llm-ideas-refinement') {
+    completeRuntimePhase(activePhase, nowIso);
+  }
+  syncSnapshotRuntimeFreshness(currentData);
+}
+
+function shouldDeferStartupPreviewAnalysis() {
+  return Boolean(
+    sweepInProgress ||
+    runtimeJobTelemetry?.synthesis?.active ||
+    runtimeJobTelemetry?.analysis?.active ||
+    (runtimeJobState.phase && runtimeJobState.phase !== 'idle')
+  );
+}
+
+function shouldPublishSnapshotUpdate(targetSnapshot, liveSnapshot = currentData) {
+  if (!targetSnapshot) return false;
+  if (!liveSnapshot || liveSnapshot === targetSnapshot) return true;
+  const targetTimestamp = targetSnapshot?.meta?.timestamp || null;
+  const liveTimestamp = liveSnapshot?.meta?.timestamp || null;
+  if (!liveTimestamp) return true;
+  if (!targetTimestamp) return false;
+  return new Date(targetTimestamp).getTime() >= new Date(liveTimestamp).getTime();
+}
+
+function getRuntimeJobsSnapshot() {
+  return {
+    synthesis: { ...runtimeJobTelemetry.synthesis },
+    ideas: { ...runtimeJobTelemetry.ideas },
+    analysis: { ...runtimeJobTelemetry.analysis },
+  };
+}
+
+function completeRuntimePhase(phase = runtimeJobState.phase, nowIso = new Date().toISOString()) {
+  runtimeJobState = {
+    ...runtimeJobState,
+    phase: 'idle',
+    phaseStartedAt: null,
+    lastCompletedPhase: phase,
+    lastCompletedAt: nowIso,
+  };
+}
+
+function failRuntimePhase(reason, phase = runtimeJobState.phase, nowIso = new Date().toISOString()) {
+  runtimeJobState = {
+    ...runtimeJobState,
+    phase: 'idle',
+    phaseStartedAt: null,
+    lastFailurePhase: phase,
+    lastFailureAt: nowIso,
+    lastFailureReason: reason || null,
+  };
+}
+
+function getSweepWatchdogSnapshot(nowMs = Date.now()) {
+  const startedAtMs = sweepStartedAt ? new Date(sweepStartedAt).getTime() : null;
+  const phaseStartedAtMs = runtimeJobState.phaseStartedAt ? new Date(runtimeJobState.phaseStartedAt).getTime() : startedAtMs;
+  const deferredPhaseActive = runtimeJobState.phase === 'llm-analysis-refinement' || runtimeJobState.phase === 'llm-ideas-refinement';
+  const active = Boolean((sweepInProgress && startedAtMs) || (deferredPhaseActive && phaseStartedAtMs));
+  const overdueMs = active && phaseStartedAtMs ? Math.max(0, nowMs - phaseStartedAtMs - SWEEP_WATCHDOG_TIMEOUT_MS) : 0;
+  const overdue = Boolean(active && overdueMs > 0);
+  return {
+    timeoutMs: SWEEP_WATCHDOG_TIMEOUT_MS,
+    pollMs: SWEEP_WATCHDOG_POLL_MS,
+    active,
+    overdue,
+    overdueMs,
+    timeoutMinutes: Math.round(SWEEP_WATCHDOG_TIMEOUT_MS / 60000),
+    phase: runtimeJobState.phase,
+    phaseStartedAt: runtimeJobState.phaseStartedAt,
+    lastCompletedPhase: runtimeJobState.lastCompletedPhase,
+    lastCompletedAt: runtimeJobState.lastCompletedAt,
+    lastFailurePhase: runtimeJobState.lastFailurePhase,
+    lastFailureAt: runtimeJobState.lastFailureAt,
+    lastFailureReason: runtimeJobState.lastFailureReason,
+    lastRecoveryPhase: runtimeJobState.lastRecoveryPhase,
+    lastRecoveryAt: runtimeJobState.lastRecoveryAt,
+    lastRecoveryReason: runtimeJobState.lastRecoveryReason,
+    recoveryClassification: overdue ? (runtimeJobState.phase === 'llm-analysis-refinement' ? 'deferred-analysis-hang' : runtimeJobState.phase === 'llm-ideas-refinement' ? 'deferred-ideas-hang' : runtimeJobState.phase === 'synthesis' ? 'synthesis-hang' : runtimeJobState.phase === 'briefing' ? 'source-sweep-hang' : 'sweep-gate-hang') : null,
+    lastOverdueAt: overdue ? new Date(nowMs).toISOString() : sweepWatchdogTelemetry.lastOverdueAt,
+    telemetry: { ...sweepWatchdogTelemetry },
+  };
+}
+
+function recoverHungSweep(reason = 'watchdog-overdue', nowMs = Date.now()) {
+  const deferredPhaseActive = runtimeJobState.phase === 'llm-analysis-refinement' || runtimeJobState.phase === 'llm-ideas-refinement';
+  if (!sweepInProgress && !deferredPhaseActive) return false;
+  const recoveredSweepStartedAt = sweepStartedAt;
+  const recoveredPhase = runtimeJobState.phase || 'unknown';
+  const nowIso = new Date(nowMs).toISOString();
+  sweepWatchdogTelemetry.recoveryCount += 1;
+  sweepWatchdogTelemetry.lastRecoveryAt = nowIso;
+  sweepWatchdogTelemetry.lastRecoveryReason = reason;
+  sweepWatchdogTelemetry.lastRecoveredSweepStartedAt = recoveredSweepStartedAt || null;
+  sweepWatchdogTelemetry.lastOverdueAt = nowIso;
+  if (recoveredPhase === 'llm-ideas-refinement') {
+    completeRuntimeJob('ideas', { completedAt: nowIso, durationMs: runtimeJobTelemetry.ideas?.lastStartedAt ? Math.max(0, nowMs - new Date(runtimeJobTelemetry.ideas.lastStartedAt).getTime()) : null, outcome: 'watchdog-recovered', error: reason, timedOut: true, cancelled: true });
+  }
+  if (recoveredPhase === 'llm-analysis-refinement') {
+    completeRuntimeJob('analysis', { completedAt: nowIso, durationMs: runtimeJobTelemetry.analysis?.lastStartedAt ? Math.max(0, nowMs - new Date(runtimeJobTelemetry.analysis.lastStartedAt).getTime()) : null, outcome: 'watchdog-recovered', error: reason, timedOut: true, cancelled: true });
+  }
+  if (recoveredPhase === 'synthesis' || recoveredPhase === 'briefing') {
+    completeRuntimeJob('synthesis', { completedAt: nowIso, durationMs: sweepStartedAt ? Math.max(0, nowMs - new Date(sweepStartedAt).getTime()) : null, outcome: 'watchdog-recovered', error: reason, timedOut: true, cancelled: true });
+  }
+  runtimeJobState = {
+    ...runtimeJobState,
+    phase: 'idle',
+    phaseStartedAt: null,
+    lastRecoveryPhase: recoveredPhase,
+    lastRecoveryAt: nowIso,
+    lastRecoveryReason: reason,
+  };
+  sweepInProgress = false;
+  sweepStartedAt = null;
+  syncSnapshotRuntimeFreshness(currentData);
+  broadcast({
+    type: 'sweep_watchdog_recovered',
+    recoveredAt: nowIso,
+    reason,
+    recoveredSweepStartedAt,
+    recoveredPhase,
+  });
+  console.warn(`[Crucix] Sweep watchdog recovered hung sweep gate (${reason}) phase=${recoveredPhase} started at ${recoveredSweepStartedAt || runtimeJobState.phaseStartedAt || 'unknown'}`);
+  return true;
+}
+
+function runSweepWatchdog(nowMs = Date.now()) {
+  const watchdog = getSweepWatchdogSnapshot(nowMs);
+  if (!watchdog.overdue) {
+    return { recovered: false, watchdog };
+  }
+  const recovered = recoverHungSweep(watchdog.recoveryClassification || 'watchdog-overdue', nowMs);
+  return {
+    recovered,
+    watchdog: getSweepWatchdogSnapshot(nowMs),
+    telemetry: { ...sweepWatchdogTelemetry },
+  };
+}
+
+function syncSnapshotRuntimeFreshness(snapshot = null) {
+  if (!snapshot || typeof snapshot !== 'object') return snapshot;
+  if (!snapshot.agentAnalysis) return snapshot;
+  const lastSweep = snapshot.meta?.timestamp || lastSweepTime || snapshot.agentAnalysis?.freshness?.lastSweep || null;
+  snapshot.agentAnalysis = normalizeAgentAnalysis({
+    ...snapshot.agentAnalysis,
+    freshness: {
+      ...(snapshot.agentAnalysis?.freshness || {}),
+      lastSweep,
+      sweepInProgress,
+    },
+  });
+  return snapshot;
+}
+
+async function ensureCurrentData() {
+  return syncSnapshotRuntimeFreshness(currentData);
+}
+
+function buildOperatorSourceOps(snapshot = null) {
+  return buildSourceOpsSurface({ rootDir: ROOT, snapshot });
+}
+
+function buildRuntimeConfigContract() {
+  const env = process?.env || {};
+  const parseIntOr = (value, fallback) => {
+    const num = Number.parseInt(value, 10);
+    return Number.isFinite(num) ? num : fallback;
+  };
+  const boolFromPresence = value => Boolean(value);
+  const rootDefaultRefresh = 15;
+  const rootEffectiveRefresh = Number(config.refreshIntervalMinutes) || rootDefaultRefresh;
+  const defaults = {
+    port: 3117,
+    refreshIntervalMinutes: rootDefaultRefresh,
+    llm: {
+      provider: null,
+      apiKey: null,
+      model: null,
+      baseUrl: null,
+    },
+    telegram: {
+      botToken: null,
+      chatId: null,
+      botPollingInterval: 5000,
+      channels: null,
+    },
+    discord: {
+      botToken: null,
+      channelId: null,
+      guildId: null,
+      webhookUrl: null,
+    },
+    review: {
+      ackTtlHours: 72,
+      ackMaxEntries: 100,
+      repairArtifactMaxSamples: 12,
+      repairArtifactRetentionDays: 14,
+      repairArtifactMaxEntries: 50,
+      sweepWatchdogTimeoutMinutes: Math.max(rootDefaultRefresh * 2, 45),
+      sweepWatchdogPollSeconds: 30,
+    },
+    debugEndpoints: {
+      exposure: 'local-only',
+    },
+    freshnessPolicy: {
+      defaultFreshnessMinutes: 60,
+      sources: {},
+      areas: {},
+    },
+  };
+
+  const entries = [
+    { key: 'port', section: 'runtime', env: 'PORT', defaultValue: defaults.port, effectiveValue: config.port, sensitive: false },
+    { key: 'refreshIntervalMinutes', section: 'runtime', env: 'REFRESH_INTERVAL_MINUTES', defaultValue: defaults.refreshIntervalMinutes, effectiveValue: config.refreshIntervalMinutes, sensitive: false },
+    { key: 'llm.provider', section: 'llm', env: 'LLM_PROVIDER', defaultValue: defaults.llm.provider, effectiveValue: config.llm?.provider || null, sensitive: false },
+    { key: 'llm.apiKey', section: 'llm', env: 'LLM_API_KEY', defaultValue: defaults.llm.apiKey, effectiveValue: boolFromPresence(config.llm?.apiKey) ? '[configured]' : null, sensitive: true },
+    { key: 'llm.model', section: 'llm', env: 'LLM_MODEL', defaultValue: defaults.llm.model, effectiveValue: config.llm?.model || null, sensitive: false },
+    { key: 'llm.baseUrl', section: 'llm', env: 'OLLAMA_BASE_URL', defaultValue: defaults.llm.baseUrl, effectiveValue: config.llm?.baseUrl || null, sensitive: false },
+    { key: 'telegram.botToken', section: 'alerts', env: 'TELEGRAM_BOT_TOKEN', defaultValue: defaults.telegram.botToken, effectiveValue: boolFromPresence(config.telegram?.botToken) ? '[configured]' : null, sensitive: true },
+    { key: 'telegram.chatId', section: 'alerts', env: 'TELEGRAM_CHAT_ID', defaultValue: defaults.telegram.chatId, effectiveValue: boolFromPresence(config.telegram?.chatId) ? '[configured]' : null, sensitive: true },
+    { key: 'telegram.botPollingInterval', section: 'alerts', env: 'TELEGRAM_POLL_INTERVAL', defaultValue: defaults.telegram.botPollingInterval, effectiveValue: config.telegram?.botPollingInterval, sensitive: false },
+    { key: 'telegram.channels', section: 'alerts', env: 'TELEGRAM_CHANNELS', defaultValue: defaults.telegram.channels, effectiveValue: config.telegram?.channels || null, sensitive: false },
+    { key: 'discord.botToken', section: 'alerts', env: 'DISCORD_BOT_TOKEN', defaultValue: defaults.discord.botToken, effectiveValue: boolFromPresence(config.discord?.botToken) ? '[configured]' : null, sensitive: true },
+    { key: 'discord.channelId', section: 'alerts', env: 'DISCORD_CHANNEL_ID', defaultValue: defaults.discord.channelId, effectiveValue: config.discord?.channelId || null, sensitive: false },
+    { key: 'discord.guildId', section: 'alerts', env: 'DISCORD_GUILD_ID', defaultValue: defaults.discord.guildId, effectiveValue: config.discord?.guildId || null, sensitive: false },
+    { key: 'discord.webhookUrl', section: 'alerts', env: 'DISCORD_WEBHOOK_URL', defaultValue: defaults.discord.webhookUrl, effectiveValue: boolFromPresence(config.discord?.webhookUrl) ? '[configured]' : null, sensitive: true },
+    { key: 'review.ackTtlHours', section: 'review', env: 'REVIEW_ACK_TTL_HOURS', defaultValue: defaults.review.ackTtlHours, effectiveValue: config.review?.ackTtlHours, sensitive: false },
+    { key: 'review.ackMaxEntries', section: 'review', env: 'REVIEW_ACK_MAX_ENTRIES', defaultValue: defaults.review.ackMaxEntries, effectiveValue: config.review?.ackMaxEntries, sensitive: false },
+    { key: 'review.repairArtifactMaxSamples', section: 'review', env: 'REPAIR_ARTIFACT_MAX_SAMPLES', defaultValue: defaults.review.repairArtifactMaxSamples, effectiveValue: config.review?.repairArtifactMaxSamples, sensitive: false },
+    { key: 'review.repairArtifactRetentionDays', section: 'review', env: 'REPAIR_ARTIFACT_RETENTION_DAYS', defaultValue: defaults.review.repairArtifactRetentionDays, effectiveValue: config.review?.repairArtifactRetentionDays, sensitive: false },
+    { key: 'review.repairArtifactMaxEntries', section: 'review', env: 'REPAIR_ARTIFACT_MAX_ENTRIES', defaultValue: defaults.review.repairArtifactMaxEntries, effectiveValue: config.review?.repairArtifactMaxEntries, sensitive: false },
+    { key: 'review.sweepWatchdogTimeoutMinutes', section: 'review', env: 'SWEEP_WATCHDOG_TIMEOUT_MINUTES', defaultValue: defaults.review.sweepWatchdogTimeoutMinutes, effectiveValue: config.review?.sweepWatchdogTimeoutMinutes, sensitive: false },
+    { key: 'review.sweepWatchdogPollSeconds', section: 'review', env: 'SWEEP_WATCHDOG_POLL_SECONDS', defaultValue: defaults.review.sweepWatchdogPollSeconds, effectiveValue: config.review?.sweepWatchdogPollSeconds, sensitive: false },
+    { key: 'debugEndpoints.exposure', section: 'debug', env: 'DEBUG_ENDPOINT_EXPOSURE', defaultValue: defaults.debugEndpoints.exposure, effectiveValue: config.debugEndpoints?.exposure || 'local-only', sensitive: false },
+    { key: 'freshnessPolicy.defaultFreshnessMinutes', section: 'freshness', env: 'DEFAULT_FRESHNESS_MINUTES', defaultValue: defaults.freshnessPolicy.defaultFreshnessMinutes, effectiveValue: config.freshnessPolicy?.defaultFreshnessMinutes, sensitive: false },
+    { key: 'freshnessPolicy.sources.OpenSky.freshnessTargetMinutes', section: 'freshness', env: 'OPENSKY_FRESHNESS_MINUTES', defaultValue: null, effectiveValue: config.freshnessPolicy?.sources?.OpenSky?.freshnessTargetMinutes ?? null, sensitive: false },
+    { key: 'freshnessPolicy.sources.YFinance.freshnessTargetMinutes', section: 'freshness', env: 'YFINANCE_FRESHNESS_MINUTES', defaultValue: null, effectiveValue: config.freshnessPolicy?.sources?.YFinance?.freshnessTargetMinutes ?? null, sensitive: false },
+    { key: 'freshnessPolicy.sources.Telegram.freshnessTargetMinutes', section: 'freshness', env: 'TELEGRAM_FRESHNESS_MINUTES', defaultValue: null, effectiveValue: config.freshnessPolicy?.sources?.Telegram?.freshnessTargetMinutes ?? null, sensitive: false },
+    { key: 'freshnessPolicy.sources.GDELT.freshnessTargetMinutes', section: 'freshness', env: 'GDELT_FRESHNESS_MINUTES', defaultValue: null, effectiveValue: config.freshnessPolicy?.sources?.GDELT?.freshnessTargetMinutes ?? null, sensitive: false },
+    { key: 'freshnessPolicy.areas.air.freshnessWarnMinutes', section: 'freshness', env: 'AIR_FRESHNESS_WARN_MINUTES', defaultValue: null, effectiveValue: config.freshnessPolicy?.areas?.air?.freshnessWarnMinutes ?? null, sensitive: false },
+    { key: 'freshnessPolicy.areas.markets.freshnessWarnMinutes', section: 'freshness', env: 'MARKETS_FRESHNESS_WARN_MINUTES', defaultValue: null, effectiveValue: config.freshnessPolicy?.areas?.markets?.freshnessWarnMinutes ?? null, sensitive: false },
+    { key: 'freshnessPolicy.areas.telegram.freshnessWarnMinutes', section: 'freshness', env: 'TELEGRAM_FRESHNESS_WARN_MINUTES', defaultValue: null, effectiveValue: config.freshnessPolicy?.areas?.telegram?.freshnessWarnMinutes ?? null, sensitive: false },
+    { key: 'freshnessPolicy.areas.news.freshnessWarnMinutes', section: 'freshness', env: 'NEWS_FRESHNESS_WARN_MINUTES', defaultValue: null, effectiveValue: config.freshnessPolicy?.areas?.news?.freshnessWarnMinutes ?? null, sensitive: false },
+  ];
+
+  const normalizedEntries = entries.map(entry => {
+    const envPresent = Object.prototype.hasOwnProperty.call(env, entry.env) && env[entry.env] !== '';
+    const source = envPresent ? 'env' : 'default';
+    const drifted = entry.effectiveValue !== entry.defaultValue;
+    return {
+      ...entry,
+      source,
+      envPresent,
+      drifted,
+      envValuePreview: envPresent ? (entry.sensitive ? '[configured]' : String(env[entry.env])) : null,
+    };
+  });
+
+  const bySection = normalizedEntries.reduce((acc, entry) => {
+    if (!acc[entry.section]) acc[entry.section] = [];
+    acc[entry.section].push(entry);
+    return acc;
+  }, {});
+
+  const schema = {
+    version: 'runtime-config-schema-v1',
+    sections: ['runtime', 'llm', 'alerts', 'review', 'debug', 'freshness'],
+    allowedDebugExposure: ['local-only', 'open'],
+    llmProviders: ['anthropic', 'openai', 'gemini', 'codex', 'openrouter', 'minimax', 'mistral', 'ollama', 'grok', null],
+    invariants: {
+      portMin: 1,
+      portMax: 65535,
+      refreshIntervalMinutesMin: 1,
+      reviewAckTtlHoursMin: 1,
+      reviewAckMaxEntriesMin: 1,
+      sweepWatchdogTimeoutMinutesMin: 5,
+      sweepWatchdogPollSecondsMin: 5,
+      freshnessMinutesMin: 1,
+    },
+  };
+
+  const validation = {
+    valid: true,
+    issues: [],
+    warnings: [],
+  };
+
+  const effective = {
+    port: config.port,
+    refreshIntervalMinutes: config.refreshIntervalMinutes,
+    llm: {
+      provider: config.llm?.provider || null,
+      model: config.llm?.model || null,
+      baseUrl: config.llm?.baseUrl || null,
+      apiKeyConfigured: boolFromPresence(config.llm?.apiKey),
+    },
+    telegram: {
+      enabled: boolFromPresence(config.telegram?.botToken) && boolFromPresence(config.telegram?.chatId),
+      botPollingInterval: config.telegram?.botPollingInterval,
+      channelsConfigured: boolFromPresence(config.telegram?.channels),
+    },
+    discord: {
+      botEnabled: boolFromPresence(config.discord?.botToken),
+      webhookEnabled: boolFromPresence(config.discord?.webhookUrl),
+      guildIdConfigured: boolFromPresence(config.discord?.guildId),
+      channelIdConfigured: boolFromPresence(config.discord?.channelId),
+    },
+    review: {
+      ackTtlHours: config.review?.ackTtlHours,
+      ackMaxEntries: config.review?.ackMaxEntries,
+      repairArtifactMaxSamples: config.review?.repairArtifactMaxSamples,
+      repairArtifactRetentionDays: config.review?.repairArtifactRetentionDays,
+      repairArtifactMaxEntries: config.review?.repairArtifactMaxEntries,
+      sweepWatchdogTimeoutMinutes: config.review?.sweepWatchdogTimeoutMinutes,
+      sweepWatchdogPollSeconds: config.review?.sweepWatchdogPollSeconds,
+    },
+    debugEndpoints: {
+      exposure: config.debugEndpoints?.exposure || 'local-only',
+    },
+    freshnessPolicy: config.freshnessPolicy || {},
+  };
+
+  if (!Number.isInteger(effective.port) || effective.port < schema.invariants.portMin || effective.port > schema.invariants.portMax) {
+    validation.valid = false;
+    validation.issues.push({ key: 'port', message: 'Port must be an integer between 1 and 65535.' });
+  }
+  if (!Number.isInteger(effective.refreshIntervalMinutes) || effective.refreshIntervalMinutes < schema.invariants.refreshIntervalMinutesMin) {
+    validation.valid = false;
+    validation.issues.push({ key: 'refreshIntervalMinutes', message: 'Refresh interval must be at least 1 minute.' });
+  }
+  if (!schema.allowedDebugExposure.includes(effective.debugEndpoints.exposure)) {
+    validation.valid = false;
+    validation.issues.push({ key: 'debugEndpoints.exposure', message: 'Debug endpoint exposure must be local-only or open.' });
+  }
+  if (effective.llm.provider && !schema.llmProviders.includes(effective.llm.provider)) {
+    validation.valid = false;
+    validation.issues.push({ key: 'llm.provider', message: 'LLM provider is outside the supported provider set.' });
+  }
+  if (effective.llm.provider && !effective.llm.model) {
+    validation.warnings.push({ key: 'llm.model', message: 'LLM provider is configured without an explicit model override.' });
+  }
+  if (effective.llm.provider && !effective.llm.apiKeyConfigured && effective.llm.provider !== 'ollama') {
+    validation.warnings.push({ key: 'llm.apiKey', message: 'Remote LLM provider appears configured without an API key.' });
+  }
+  if (effective.telegram.enabled === false && boolFromPresence(config.telegram?.botToken) !== boolFromPresence(config.telegram?.chatId)) {
+    validation.warnings.push({ key: 'telegram', message: 'Telegram token and chat ID are not both configured, so Telegram alerting remains disabled.' });
+  }
+  if (effective.review.sweepWatchdogTimeoutMinutes < Math.max(effective.refreshIntervalMinutes * 2, 5)) {
+    validation.warnings.push({ key: 'review.sweepWatchdogTimeoutMinutes', message: 'Sweep watchdog timeout is tighter than twice the refresh interval and may trip during normal slow sweeps.' });
+  }
+
+  return {
+    version: 'runtime-config-v1',
+    generatedAt: new Date().toISOString(),
+    schema,
+    defaults,
+    effective,
+    validation,
+    driftSummary: {
+      totalEntries: normalizedEntries.length,
+      driftedEntries: normalizedEntries.filter(entry => entry.drifted).length,
+      envOverrides: normalizedEntries.filter(entry => entry.envPresent).length,
+      defaultedEntries: normalizedEntries.filter(entry => !entry.envPresent).length,
+    },
+    entries: normalizedEntries,
+    bySection,
+    notes: [
+      'Sensitive values are redacted to configured-state markers rather than raw secrets.',
+      'Drift here means the effective runtime value differs from the built-in default, usually because an env override is active.',
+    ],
+  };
+}
+
+
+const OPERATIONAL_ALERTS_STATE_KEY = 'operational-alerts:state';
+
+function summarizeNoiseSuppressionPressure(snapshot = null, prefs = {}) {
+  const activeSnapshot = snapshot || currentData || {};
+  const history = memory.getNoiseSuppressionTelemetryHistory(6);
+  const snapshots = Array.isArray(history?.snapshots) ? history.snapshots : [];
+  const latest = snapshots[0] || null;
+  const deltaViews = Array.isArray(history?.deltaViews) ? history.deltaViews : [];
+  let consecutiveGrowthSweeps = 0;
+  for (const delta of deltaViews) {
+    if ((delta?.summaryDelta?.retainedEntries || 0) >= (prefs.minRetainedDelta || 1)) consecutiveGrowthSweeps += 1;
+    else break;
+  }
+  let consecutivePruneSweeps = 0;
+  for (const item of snapshots) {
+    if (item?.summary?.pruningActive) consecutivePruneSweeps += 1;
+    else break;
+  }
+  const retainedEntries = latest?.summary?.retainedEntries || activeSnapshot?.noiseSuppressionTelemetrySnapshot?.summary?.retainedEntries || 0;
+  const latestRetainedDelta = deltaViews[0]?.summaryDelta?.retainedEntries || 0;
+  const pressureReasons = [];
+  if (retainedEntries >= (prefs.minRetainedEntries || 1) && consecutiveGrowthSweeps >= (prefs.minConsecutiveGrowthSweeps || 1)) {
+    pressureReasons.push(`retained history is growing (${retainedEntries} entries, Δ${latestRetainedDelta} latest)`);
+  }
+  if (consecutivePruneSweeps >= (prefs.minConsecutivePruneSweeps || 1)) {
+    pressureReasons.push(`pruning stayed active for ${consecutivePruneSweeps} consecutive sweep${consecutivePruneSweeps === 1 ? '' : 's'}`);
+  }
+  const active = pressureReasons.length > 0;
+  const severeGrowth = retainedEntries >= Math.max((prefs.minRetainedEntries || 1) * 2, (prefs.minRetainedEntries || 1) + (prefs.minRetainedDelta || 1));
+  const severePrune = consecutivePruneSweeps >= Math.max((prefs.minConsecutivePruneSweeps || 1) + 1, 3);
+  return {
+    active,
+    severity: active ? ((severeGrowth || severePrune) ? 'critical' : 'warning') : 'ok',
+    summary: active
+      ? `Noise-suppression pressure needs operator attention because ${pressureReasons.join(' and ')}.`
+      : 'Noise-suppression history pressure is below the operator action threshold.',
+    metrics: {
+      retainedEntries,
+      latestRetainedDelta,
+      snapshotCount: snapshots.length,
+      consecutiveGrowthSweeps,
+      consecutivePruneSweeps,
+      latestPruningActive: Boolean(latest?.summary?.pruningActive),
+      agedOutSuggestionCount: latest?.summary?.agedOutSuggestionCount || 0,
+      thresholds: {
+        minRetainedEntries: prefs.minRetainedEntries || 1,
+        minRetainedDelta: prefs.minRetainedDelta || 1,
+        minConsecutiveGrowthSweeps: prefs.minConsecutiveGrowthSweeps || 1,
+        minConsecutivePruneSweeps: prefs.minConsecutivePruneSweeps || 1,
+      },
+      reasons: pressureReasons,
+    },
+    latestSnapshot: latest,
+    latestDelta: deltaViews[0] || null,
+  };
+}
+
+function getCriticalEventQueueState() {
+  const stateKey = typeof CRITICAL_EVENT_QUEUE_STATE_KEY === 'string' ? CRITICAL_EVENT_QUEUE_STATE_KEY : 'critical-events:queue';
+  const state = typeof memory?.getSignalState === 'function' ? memory.getSignalState(stateKey) : null;
+  return state && typeof state === 'object'
+    ? state
+    : { version: 'critical-event-queue-state-v1', updatedAt: null, candidates: {} };
+}
+
+function getCriticalEventQueueAuditState() {
+  const stateKey = typeof CRITICAL_EVENT_QUEUE_AUDIT_STATE_KEY === 'string' ? CRITICAL_EVENT_QUEUE_AUDIT_STATE_KEY : 'critical-events:queue-audit';
+  const state = typeof memory?.getSignalState === 'function' ? memory.getSignalState(stateKey) : null;
+  return state && typeof state === 'object'
+    ? state
+    : { version: 'critical-event-queue-audit-v1', updatedAt: null, entries: [] };
+}
+
+function saveCriticalEventQueueAuditState(state = null) {
+  if (!state || typeof memory?.setSignalState !== 'function') return state;
+  memory.setSignalState(typeof CRITICAL_EVENT_QUEUE_AUDIT_STATE_KEY === 'string' ? CRITICAL_EVENT_QUEUE_AUDIT_STATE_KEY : 'critical-events:queue-audit', state);
+  return state;
+}
+
+function buildCriticalEventQueueAuditEntry(candidate = {}, previous = null, nowIso = new Date().toISOString()) {
+  const previousStatus = previous?.status || null;
+  const nextStatus = candidate?.status || null;
+  const previousConfidence = previous?.confidenceLabel || null;
+  const nextConfidence = candidate?.confidenceLabel || null;
+  const previousPromotionState = previous?.promotion?.state || null;
+  const nextPromotionState = candidate?.promotion?.state || null;
+  return {
+    id: `${candidate.candidateId || 'candidate'}:${nowIso}`,
+    at: nowIso,
+    candidateId: candidate.candidateId || null,
+    classId: candidate.classId || null,
+    label: candidate.label || null,
+    region: candidate.region || null,
+    signalId: candidate.signalId || null,
+    transition: `${previousStatus || 'new'}->${nextStatus || 'unknown'}`,
+    previousStatus,
+    nextStatus,
+    previousConfidence,
+    nextConfidence,
+    previousPromotionState,
+    nextPromotionState,
+    basis: candidate?.promotion?.basis || [],
+    unresolved: candidate?.promotion?.unresolved || [],
+    summary: candidate?.evidenceSummary?.summary || candidate?.promotion?.summary || null,
+  };
+}
+
+function appendCriticalEventQueueAuditEntries(entries = [], nowIso = new Date().toISOString()) {
+  if (!Array.isArray(entries) || !entries.length) return getCriticalEventQueueAuditState();
+  const maxEntries = 200;
+  const current = getCriticalEventQueueAuditState();
+  const merged = {
+    version: 'critical-event-queue-audit-v1',
+    updatedAt: nowIso,
+    entries: [...(Array.isArray(current.entries) ? current.entries : []), ...entries].slice(-maxEntries),
+  };
+  return saveCriticalEventQueueAuditState(merged);
+}
+
+function getCriticalEventDeliveryState() {
+  const stateKey = typeof CRITICAL_EVENT_DELIVERY_STATE_KEY === 'string' ? CRITICAL_EVENT_DELIVERY_STATE_KEY : 'critical-events:delivery';
+  const state = typeof memory?.getSignalState === 'function' ? memory.getSignalState(stateKey) : null;
+  return state && typeof state === 'object'
+    ? state
+    : { version: 'critical-event-delivery-audit-v1', updatedAt: null, records: {} };
+}
+
+function saveCriticalEventDeliveryState(state = null) {
+  if (!state || typeof memory?.setSignalState !== 'function') return state;
+  memory.setSignalState(typeof CRITICAL_EVENT_DELIVERY_STATE_KEY === 'string' ? CRITICAL_EVENT_DELIVERY_STATE_KEY : 'critical-events:delivery', state);
+  return state;
+}
+
+function reconcileCriticalEventDeliveryAudit(queue = null, routing = null, nowIso = new Date().toISOString()) {
+  const current = getCriticalEventDeliveryState();
+  const nextRecords = { ...(current.records || {}) };
+  const queueCandidates = Array.isArray(queue?.candidates) ? queue.candidates : [];
+  const routingCandidates = Array.isArray(routing?.eligibleCandidates) ? routing.eligibleCandidates : [];
+  const routingById = new Map(routingCandidates.map(item => [item.candidateId, item]));
+  for (const candidate of queueCandidates) {
+    const existing = nextRecords[candidate.candidateId] && typeof nextRecords[candidate.candidateId] === 'object' ? nextRecords[candidate.candidateId] : null;
+    const routeInfo = routingById.get(candidate.candidateId) || null;
+    const shouldNotify = Boolean(routeInfo?.shouldNotify);
+    const dispatchMode = routing?.dispatchMode || 'contract-only';
+    const routePlan = routeInfo?.routePlan || { defaultRoute: [], escalationRoute: [], activeRoutes: [] };
+    nextRecords[candidate.candidateId] = {
+      candidateId: candidate.candidateId,
+      classId: candidate.classId,
+      label: candidate.label,
+      status: candidate.status,
+      confidenceLabel: candidate.confidenceLabel,
+      deliveryState: dispatchMode === 'contract-only'
+        ? (candidate.status === 'promoted' ? 'preview-only' : 'not-eligible')
+        : (shouldNotify ? 'ready' : 'blocked-no-route'),
+      dispatchMode,
+      shouldNotify,
+      resendEligible: Boolean(existing?.deliveryState === 'failed' || existing?.deliveryState === 'sent'),
+      lastAttemptAt: existing?.lastAttemptAt || null,
+      lastDeliveredAt: existing?.lastDeliveredAt || null,
+      lastOutcome: existing?.lastOutcome || (dispatchMode === 'contract-only' ? 'not-sent-contract-only' : null),
+      attemptCount: Number(existing?.attemptCount || 0),
+      routePlan,
+      messagePreview: routeInfo?.messagePreview || null,
+      updatedAt: nowIso,
+    };
+  }
+  const bounded = Object.fromEntries(Object.values(nextRecords)
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+    .slice(0, 200)
+    .map(item => [item.candidateId, item]));
+  return saveCriticalEventDeliveryState({ version: 'critical-event-delivery-audit-v1', updatedAt: nowIso, records: bounded });
+}
+
+function slugCriticalEventValue(value = '') {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120) || 'unknown';
+}
+
+function buildCriticalEventClassificationText(signal = {}) {
+  return [
+    signal.signal,
+    signal.reason,
+    signal.label,
+    signal.region,
+    signal.evidenceSource,
+    signal.sourceName,
+    signal.sourceId,
+    signal.category,
+    signal.type,
+    signal.kind,
+    signal.topic,
+    Array.isArray(signal.topics) ? signal.topics.join(' ') : null,
+    Array.isArray(signal.tags) ? signal.tags.join(' ') : null,
+    Array.isArray(signal.keywords) ? signal.keywords.join(' ') : null,
+    Array.isArray(signal.entities) ? signal.entities.map(item => item?.name || item).join(' ') : null,
+    signal.metadata && typeof signal.metadata === 'object'
+      ? [
+          signal.metadata.topic,
+          signal.metadata.category,
+          signal.metadata.type,
+          signal.metadata.kind,
+          signal.metadata.sourceName,
+          signal.metadata.sourceId,
+          Array.isArray(signal.metadata.tags) ? signal.metadata.tags.join(' ') : null,
+          Array.isArray(signal.metadata.topics) ? signal.metadata.topics.join(' ') : null,
+        ].filter(Boolean).join(' ')
+      : null,
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function inspectCriticalEventClassification(signal = {}) {
+  const text = buildCriticalEventClassificationText(signal);
+  const score = {
+    radiationAnomaly: 0,
+    aviationIncident: 0,
+    governmentSiteViolence: 0,
+    chokepointDisruption: 0,
+  };
+  const basis = {
+    radiationAnomaly: [],
+    aviationIncident: [],
+    governmentSiteViolence: [],
+    chokepointDisruption: [],
+  };
+  const add = (key, points, reason) => {
+    score[key] = Number(score[key] || 0) + Number(points || 0);
+    if (reason) basis[key].push(reason);
+  };
+  if (!text) {
+    return { text, winner: null, winnerScore: 0, secondScore: 0, ambiguous: false, weakMatch: true, score, basis, accepted: false };
+  }
+
+  if (/(radiation|radioactive|nuclear|reactor|meltdown|cpm|npp|safecast|chernobyl|fukushima|zaporizhzhia|bushehr|dimona|yongbyon|iaea|gamma)/.test(text)) add('radiationAnomaly', 3, 'radiation or reactor terms matched');
+  if (/(sensor network|radiation dashboard|dosimeter|monitoring station)/.test(text)) add('radiationAnomaly', 2, 'radiation monitoring evidence terms matched');
+
+  if (/(aircraft|airliner|airplane|plane|flight|airport|helicopter|jet|aviation|ads-b|opensky|transponder|runway|airspace)/.test(text)) add('aviationIncident', 2, 'aviation platform terms matched');
+  if (/(crash|collision|downed|shot down|missing|fire|explosion|destroyed|incident|emergency landing|diversion)/.test(text)) add('aviationIncident', 2, 'aviation incident terms matched');
+  if (/(air crash|aviation incident|air disaster|flight incident)/.test(text)) add('aviationIncident', 3, 'explicit aviation incident phrase matched');
+
+  if (/(white house|capitol|congress|parliament|embassy|consulate|ministry|government|president(?:ial)? palace|kremlin|state department|supreme court|governor(?:'s)? mansion|city hall)/.test(text)) add('governmentSiteViolence', 2, 'government site terms matched');
+  if (/(shoot|shot|attack|assault|explosion|breach|storm|violence|gunfire|drone|strike|riot|intrusion)/.test(text)) add('governmentSiteViolence', 2, 'government-site violence terms matched');
+  if (/(secret service|executive protection|government compound|state building)/.test(text)) add('governmentSiteViolence', 1, 'executive protection or compound terms matched');
+
+  if (/(strait of hormuz|suez|malacca|bab el-mandeb|gibraltar|bosphorus|panama canal|chokepoint|shipping lane|canal|red sea|taiwan strait|black sea corridor)/.test(text)) add('chokepointDisruption', 2, 'maritime chokepoint terms matched');
+  if (/(blockade|closed|closure|mine|mines|disruption|strike|attack|collision|grounded|halt|diverted shipping|tanker|maritime security)/.test(text)) add('chokepointDisruption', 2, 'shipping disruption terms matched');
+  if (/(shipping disruption|maritime chokepoint|port closure)/.test(text)) add('chokepointDisruption', 3, 'explicit shipping disruption phrase matched');
+
+  if (/(no incident reported|exercise only|drill only|routine policy update|funding announcement)/.test(text)) {
+    score.aviationIncident = Math.max(0, score.aviationIncident - 2);
+    score.governmentSiteViolence = Math.max(0, score.governmentSiteViolence - 2);
+    score.chokepointDisruption = Math.max(0, score.chokepointDisruption - 2);
+    basis.aviationIncident.push('down-weighted by benign or drill-only language');
+    basis.governmentSiteViolence.push('down-weighted by benign or drill-only language');
+    basis.chokepointDisruption.push('down-weighted by benign or drill-only language');
+  }
+
+  const ranked = Object.entries(score).sort((a, b) => b[1] - a[1]);
+  const [winner, winnerScore] = ranked[0] || [];
+  const secondScore = ranked[1]?.[1] || 0;
+  const weakMatch = !winner || winnerScore < 3;
+  const ambiguous = Boolean(winner && winnerScore === secondScore && winnerScore < 4);
+  return {
+    text,
+    winner: weakMatch || ambiguous ? null : winner,
+    winnerScore: Number(winnerScore || 0),
+    secondScore: Number(secondScore || 0),
+    ambiguous,
+    weakMatch,
+    score,
+    basis,
+    ranked: ranked.map(([classId, points]) => ({ classId, points, basis: basis[classId] || [] })),
+    accepted: !weakMatch && !ambiguous,
+  };
+}
+
+function classifyCriticalEventSignal(signal = {}) {
+  return inspectCriticalEventClassification(signal).winner;
+}
+
+function inferCriticalEventTrustTier(signal = {}) {
+  const sourceHealth = String(signal.sourceHealth || '').toLowerCase();
+  const evidenceSource = String(signal.evidenceSource || '').toLowerCase();
+  const confidence = String(signal.confidence || '').toLowerCase();
+  if (sourceHealth === 'hard-data' || evidenceSource.includes('official') || evidenceSource.includes('curated') || evidenceSource.includes('satellite')) return 'high';
+  if (sourceHealth === 'clean' || evidenceSource.includes('sensor') || evidenceSource.includes('mixed') || confidence === 'high') return 'medium';
+  return 'low';
+}
+
+function detectCriticalEventOfficial(signal = {}) {
+  const evidenceSource = String(signal.evidenceSource || '').toLowerCase();
+  const text = [signal.signal, signal.reason].filter(Boolean).join(' ').toLowerCase();
+  return evidenceSource.includes('official') || /official|government confirmed|ministry confirmed|authority confirmed/.test(text);
+}
+
+function buildCriticalEventPromotion(entry = {}) {
+  const thresholds = entry.thresholds || {};
+  const evidence = entry.evidence || {};
+  const highNeeded = Number(thresholds.minHighTrustCorroboration || 1);
+  const mediumNeeded = Number(thresholds.minMediumTrustCorroboration || 1);
+  const highCount = Number(evidence.highTrustCount || 0);
+  const mediumCount = Number(evidence.mediumTrustCount || 0);
+  const officialCount = Number(evidence.officialCount || 0);
+  const officialRequired = Boolean(thresholds.officialConfirmationRequired);
+  const highMet = highCount >= highNeeded;
+  const mediumMet = mediumCount >= mediumNeeded;
+  const officialMet = !officialRequired || officialCount >= 1;
+  const crossedThreshold = officialMet && (highMet || mediumMet);
+  const unresolved = [];
+  if (!highMet && !mediumMet) {
+    unresolved.push(`needs ${highNeeded} high-trust or ${mediumNeeded} medium-trust corroboration`);
+  }
+  if (officialRequired && !officialMet) unresolved.push('awaiting official confirmation');
+  if (entry.status === 'discarded') unresolved.push('candidate expired before meeting promotion threshold');
+  const basis = [];
+  if (highMet) basis.push(`${highCount} high-trust corroboration hit${highCount === 1 ? '' : 's'}`);
+  if (mediumMet) basis.push(`${mediumCount} medium-trust corroboration hit${mediumCount === 1 ? '' : 's'}`);
+  if (officialMet && officialRequired) basis.push('official confirmation present');
+  if (!basis.length && highCount > 0) basis.push(`${highCount} high-trust corroboration observed so far`);
+  if (!basis.length && mediumCount > 0) basis.push(`${mediumCount} medium-trust corroboration observed so far`);
+  if (!basis.length && Number(evidence.lowTrustCount || 0) > 0) basis.push(`${Number(evidence.lowTrustCount || 0)} low-trust tripwire hit${Number(evidence.lowTrustCount || 0) === 1 ? '' : 's'}`);
+  const state = entry.status === 'discarded'
+    ? 'discarded'
+    : (crossedThreshold ? (officialRequired ? 'official-confirmation' : 'corroborated') : 'preliminary');
+  const summary = crossedThreshold
+    ? `${entry.label || 'Candidate'} crossed the paging threshold via ${basis.join(' and ')}.`
+    : entry.status === 'discarded'
+      ? `${entry.label || 'Candidate'} was discarded because ${unresolved.join(' and ')}.`
+      : `${entry.label || 'Candidate'} remains preliminary because ${unresolved.join(' and ')}.`;
+  return {
+    state,
+    crossedThreshold,
+    crossedAt: crossedThreshold ? (entry.promotedAt || entry.lastEvaluatedAt || entry.lastSeenAt || null) : null,
+    basis,
+    unresolved,
+    summary,
+  };
+}
+
+function buildCriticalEventEvidenceSummary(entry = {}) {
+  const evidence = entry.evidence || {};
+  const promotion = buildCriticalEventPromotion(entry);
+  const reasons = Array.isArray(evidence.reasons) ? evidence.reasons.slice(0, 3) : [];
+  const sources = Array.isArray(evidence.sources) ? evidence.sources.slice(0, 4) : [];
+  return {
+    summary: promotion.summary,
+    basis: promotion.basis,
+    unresolved: promotion.unresolved,
+    reasons,
+    sources,
+    counts: {
+      highTrust: Number(evidence.highTrustCount || 0),
+      mediumTrust: Number(evidence.mediumTrustCount || 0),
+      lowTrust: Number(evidence.lowTrustCount || 0),
+      official: Number(evidence.officialCount || 0),
+      corroboratedHits: Number(evidence.corroboratedHits || 0),
+      suspectHits: Number(evidence.suspectHits || 0),
+    },
+  };
+}
+
+function pruneCriticalEventQueueState(state = getCriticalEventQueueState(), referenceMs = Date.now()) {
+  const retentionMs = typeof CRITICAL_EVENT_QUEUE_RETENTION_MS === 'number' ? CRITICAL_EVENT_QUEUE_RETENTION_MS : 24 * 60 * 60 * 1000;
+  const nextCandidates = {};
+  for (const [candidateId, entry] of Object.entries(state?.candidates || {})) {
+    const lastSeenMs = new Date(entry?.lastSeenAt || entry?.firstSeenAt || 0).getTime();
+    if (!lastSeenMs) continue;
+    if ((referenceMs - lastSeenMs) > retentionMs) continue;
+    if (entry?.status === 'discarded' && (referenceMs - lastSeenMs) > (2 * 60 * 60 * 1000)) continue;
+    nextCandidates[candidateId] = entry;
+  }
+  return {
+    version: 'critical-event-queue-state-v1',
+    updatedAt: state?.updatedAt || null,
+    candidates: nextCandidates,
+  };
+}
+
+function processCriticalEventQueue(snapshot = {}) {
+  const operatorSettings = loadOperatorSettings();
+  const prefs = operatorSettings.preferences.alerts?.criticalEvents || operatorSettingsDefaults().preferences.alerts.criticalEvents;
+  const retryIntervalMs = typeof CRITICAL_EVENT_QUEUE_RETRY_INTERVAL_MS === 'number' ? CRITICAL_EVENT_QUEUE_RETRY_INTERVAL_MS : 5 * 60 * 1000;
+  const maxRetries = typeof CRITICAL_EVENT_QUEUE_MAX_RETRIES === 'number' ? CRITICAL_EVENT_QUEUE_MAX_RETRIES : 6;
+  const maxItems = typeof CRITICAL_EVENT_QUEUE_MAX_ITEMS === 'number' ? CRITICAL_EVENT_QUEUE_MAX_ITEMS : 80;
+  const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+  const state = pruneCriticalEventQueueState(getCriticalEventQueueState(), nowMs);
+  const previousCandidates = { ...(state.candidates || {}) };
+  const nextCandidates = { ...(state.candidates || {}) };
+  const auditEntries = [];
+  const normalizeSignals = (kind, items = []) => {
+    if (typeof attachSignalIds === 'function') return attachSignalIds(kind, items || []);
+    return (items || []).map((item, index) => ({ ...item, id: item?.id || `${kind}-${index}` }));
+  };
+  const signals = [
+    ...normalizeSignals('corroborated', snapshot.corroboratedSignals || []).map(item => ({ ...item, queueKind: 'corroborated' })),
+    ...normalizeSignals('suspect', snapshot.suspectSignals || []).map(item => ({ ...item, queueKind: 'suspect' })),
+  ];
+
+  for (const signal of signals) {
+    const classification = inspectCriticalEventClassification(signal);
+    const classId = classification.winner;
+    if (!classId) continue;
+    const classPolicy = prefs.classes?.[classId];
+    if (!prefs.enabled || !classPolicy?.enabled) continue;
+    const freshnessMinutes = Number(classPolicy.freshnessMinutes || 30);
+    const freshestMs = new Date(signal.freshestTs || signal.timestamp || nowIso).getTime();
+    if (freshestMs && (nowMs - freshestMs) > (freshnessMinutes * 60 * 1000)) continue;
+    const candidateId = `${classId}:${slugCriticalEventValue(signal.signal || signal.reason || signal.id || 'event')}`;
+    const trustTier = inferCriticalEventTrustTier(signal);
+    const official = detectCriticalEventOfficial(signal);
+    const existing = nextCandidates[candidateId] && typeof nextCandidates[candidateId] === 'object'
+      ? { ...nextCandidates[candidateId] }
+      : {
+          candidateId,
+          classId,
+          label: signal.signal || signal.reason || classId,
+          signalId: signal.id || null,
+          region: signal.region || null,
+          firstSeenAt: nowIso,
+          firstFreshestAt: freshestMs ? new Date(freshestMs).toISOString() : null,
+          lastSeenAt: null,
+          lastEvaluatedAt: null,
+          nextCheckAt: null,
+          retryCount: 0,
+          status: 'monitoring',
+          confidenceLabel: 'preliminary',
+          evidence: { highTrustCount: 0, mediumTrustCount: 0, lowTrustCount: 0, officialCount: 0, corroboratedHits: 0, suspectHits: 0, sources: [], reasons: [] },
+        };
+    const sources = new Set(Array.isArray(existing.evidence?.sources) ? existing.evidence.sources : []);
+    const reasons = new Set(Array.isArray(existing.evidence?.reasons) ? existing.evidence.reasons : []);
+    if (signal.evidenceSource) sources.add(String(signal.evidenceSource));
+    if (signal.reason) {
+      const summarizedReason = typeof clampText === 'function'
+        ? clampText(signal.reason, 220)
+        : String(signal.reason).slice(0, 220);
+      reasons.add(summarizedReason);
+    }
+    const evidence = {
+      highTrustCount: Number(existing.evidence?.highTrustCount || 0) + (trustTier === 'high' ? 1 : 0),
+      mediumTrustCount: Number(existing.evidence?.mediumTrustCount || 0) + (trustTier === 'medium' ? 1 : 0),
+      lowTrustCount: Number(existing.evidence?.lowTrustCount || 0) + (trustTier === 'low' ? 1 : 0),
+      officialCount: Number(existing.evidence?.officialCount || 0) + (official ? 1 : 0),
+      corroboratedHits: Number(existing.evidence?.corroboratedHits || 0) + (signal.queueKind === 'corroborated' ? 1 : 0),
+      suspectHits: Number(existing.evidence?.suspectHits || 0) + (signal.queueKind === 'suspect' ? 1 : 0),
+      sources: Array.from(sources).slice(0, 8),
+      reasons: Array.from(reasons).slice(0, 6),
+    };
+    const meetsHighTrust = evidence.highTrustCount >= Number(classPolicy.minHighTrustCorroboration || 1);
+    const meetsMediumTrust = evidence.mediumTrustCount >= Number(classPolicy.minMediumTrustCorroboration || 1);
+    const meetsOfficial = !classPolicy.officialConfirmationRequired || evidence.officialCount >= 1;
+    const promoted = meetsOfficial && (meetsHighTrust || meetsMediumTrust);
+    const nextEntry = {
+      ...existing,
+      classId,
+      label: signal.signal || existing.label,
+      signalId: signal.id || existing.signalId || null,
+      region: signal.region || existing.region || null,
+      lastSeenAt: nowIso,
+      freshestAt: freshestMs ? new Date(freshestMs).toISOString() : (existing.freshestAt || null),
+      lastEvaluatedAt: nowIso,
+      nextCheckAt: promoted ? null : new Date(nowMs + retryIntervalMs).toISOString(),
+      retryCount: promoted ? Number(existing.retryCount || 0) : Number(existing.retryCount || 0) + 1,
+      status: promoted ? 'promoted' : 'monitoring',
+      confidenceLabel: promoted ? (classPolicy.officialConfirmationRequired ? 'official-confirmation' : 'corroborated') : 'preliminary',
+      severity: classPolicy.severity || 'high',
+      promotedAt: promoted ? (existing.promotedAt || nowIso) : null,
+      evidence,
+      thresholds: {
+        minHighTrustCorroboration: Number(classPolicy.minHighTrustCorroboration || 1),
+        minMediumTrustCorroboration: Number(classPolicy.minMediumTrustCorroboration || 1),
+        officialConfirmationRequired: Boolean(classPolicy.officialConfirmationRequired),
+        freshnessMinutes,
+      },
+      classification: {
+        accepted: Boolean(classification.accepted),
+        classId,
+        winnerScore: Number(classification.winnerScore || 0),
+        secondScore: Number(classification.secondScore || 0),
+        ambiguous: Boolean(classification.ambiguous),
+        weakMatch: Boolean(classification.weakMatch),
+        topBasis: Array.isArray(classification.basis?.[classId]) ? classification.basis[classId].slice(0, 4) : [],
+        ranked: Array.isArray(classification.ranked) ? classification.ranked.slice(0, 4) : [],
+      },
+    };
+    const promotion = buildCriticalEventPromotion(nextEntry);
+    nextCandidates[candidateId] = {
+      ...nextEntry,
+      promotion,
+      evidenceSummary: buildCriticalEventEvidenceSummary({ ...nextEntry, promotion }),
+    };
+  }
+
+  for (const [candidateId, entry] of Object.entries(nextCandidates)) {
+    if (entry.status !== 'monitoring') continue;
+    const lastSeenMs = new Date(entry.lastSeenAt || entry.firstSeenAt || 0).getTime();
+    const freshnessMs = Number(entry.thresholds?.freshnessMinutes || 30) * 60 * 1000;
+    if ((nowMs - lastSeenMs) > freshnessMs || Number(entry.retryCount || 0) >= maxRetries) {
+      const discardedEntry = {
+        ...entry,
+        status: 'discarded',
+        confidenceLabel: 'discarded',
+        discardedAt: nowIso,
+        lastEvaluatedAt: nowIso,
+        nextCheckAt: null,
+      };
+      const promotion = buildCriticalEventPromotion(discardedEntry);
+      nextCandidates[candidateId] = {
+        ...discardedEntry,
+        promotion,
+        evidenceSummary: buildCriticalEventEvidenceSummary({ ...discardedEntry, promotion }),
+      };
+    }
+  }
+
+  for (const [candidateId, candidate] of Object.entries(nextCandidates)) {
+    const previous = previousCandidates[candidateId] || null;
+    const changed = !previous
+      || previous.status !== candidate.status
+      || previous.confidenceLabel !== candidate.confidenceLabel
+      || (previous.promotion?.state || null) !== (candidate.promotion?.state || null)
+      || (previous.promotion?.crossedThreshold || false) !== (candidate.promotion?.crossedThreshold || false);
+    if (changed) auditEntries.push(buildCriticalEventQueueAuditEntry(candidate, previous, nowIso));
+  }
+
+  const bounded = Object.values(nextCandidates)
+    .sort((a, b) => new Date(b.lastSeenAt || 0).getTime() - new Date(a.lastSeenAt || 0).getTime())
+    .slice(0, maxItems);
+  const finalState = {
+    version: 'critical-event-queue-state-v1',
+    updatedAt: nowIso,
+    candidates: Object.fromEntries(bounded.map(entry => [entry.candidateId, entry])),
+  };
+  if (typeof memory?.setSignalState === 'function') {
+    memory.setSignalState(typeof CRITICAL_EVENT_QUEUE_STATE_KEY === 'string' ? CRITICAL_EVENT_QUEUE_STATE_KEY : 'critical-events:queue', finalState);
+  }
+  if (auditEntries.length) appendCriticalEventQueueAuditEntries(auditEntries, nowIso);
+  return finalState;
+}
+
+function buildCriticalEventQueueContract(snapshot = null) {
+  if (snapshot) processCriticalEventQueue(snapshot);
+  const state = pruneCriticalEventQueueState(getCriticalEventQueueState(), Date.now());
+  const auditState = getCriticalEventQueueAuditState();
+  const candidates = Object.values(state.candidates || {})
+    .sort((a, b) => {
+      const statusRank = { promoted: 0, monitoring: 1, discarded: 2 };
+      return (statusRank[a.status] || 9) - (statusRank[b.status] || 9)
+        || new Date(b.lastSeenAt || 0).getTime() - new Date(a.lastSeenAt || 0).getTime();
+    })
+    .map(entry => ({
+      candidateId: entry.candidateId,
+      classId: entry.classId,
+      label: entry.label,
+      region: entry.region || null,
+      status: entry.status,
+      confidenceLabel: entry.confidenceLabel,
+      severity: entry.severity || null,
+      firstSeenAt: entry.firstSeenAt || null,
+      lastSeenAt: entry.lastSeenAt || null,
+      promotedAt: entry.promotedAt || null,
+      nextCheckAt: entry.nextCheckAt || null,
+      retryCount: Number(entry.retryCount || 0),
+      signalId: entry.signalId || null,
+      evidence: entry.evidence || {},
+      thresholds: entry.thresholds || {},
+      classification: entry.classification || null,
+      promotion: entry.promotion || buildCriticalEventPromotion(entry),
+      evidenceSummary: entry.evidenceSummary || buildCriticalEventEvidenceSummary(entry),
+    }));
+  const stateKey = typeof CRITICAL_EVENT_QUEUE_STATE_KEY === 'string' ? CRITICAL_EVENT_QUEUE_STATE_KEY : 'critical-events:queue';
+  const retryIntervalMs = typeof CRITICAL_EVENT_QUEUE_RETRY_INTERVAL_MS === 'number' ? CRITICAL_EVENT_QUEUE_RETRY_INTERVAL_MS : 5 * 60 * 1000;
+  const maxRetries = typeof CRITICAL_EVENT_QUEUE_MAX_RETRIES === 'number' ? CRITICAL_EVENT_QUEUE_MAX_RETRIES : 6;
+  const retentionMs = typeof CRITICAL_EVENT_QUEUE_RETENTION_MS === 'number' ? CRITICAL_EVENT_QUEUE_RETENTION_MS : 24 * 60 * 60 * 1000;
+  return {
+    version: 'critical-event-queue-v1',
+    stateKey,
+    audit: {
+      version: 'critical-event-queue-audit-v1',
+      stateKey: typeof CRITICAL_EVENT_QUEUE_AUDIT_STATE_KEY === 'string' ? CRITICAL_EVENT_QUEUE_AUDIT_STATE_KEY : 'critical-events:queue-audit',
+      updatedAt: auditState.updatedAt || null,
+      totalEntries: Array.isArray(auditState.entries) ? auditState.entries.length : 0,
+      recentTransitions: (Array.isArray(auditState.entries) ? auditState.entries : []).slice(-8).reverse(),
+    },
+    updatedAt: state.updatedAt || null,
+    retryIntervalMinutes: Math.round(retryIntervalMs / 60000),
+    maxRetries,
+    retentionHours: Math.round(retentionMs / (60 * 60 * 1000)),
+    activeCount: candidates.filter(item => item.status !== 'discarded').length,
+    monitoringCount: candidates.filter(item => item.status === 'monitoring').length,
+    promotedCount: candidates.filter(item => item.status === 'promoted').length,
+    discardedCount: candidates.filter(item => item.status === 'discarded').length,
+    candidates: candidates.slice(0, 12),
+    confidenceStates: ['preliminary', 'corroborated', 'official-confirmation', 'discarded'],
+    notes: [
+      'Monitoring candidates are retained across sweeps so low-trust and medium-trust signals can wait for corroboration instead of paging immediately.',
+      'Promotion requires the configured high-trust or medium-trust corroboration threshold, plus official confirmation when the class policy demands it.',
+      'Each candidate now exposes promotion state and an explicit evidence summary explaining why it crossed, missed, or aged out before the paging threshold.',
+      'Classification metadata now exposes match basis, winning score, runner-up score, and ambiguity flags so operators can review why a signal was routed into a critical-event class.',
+    ],
+  };
+}
+
+function buildCriticalEventRoutingContract(snapshot = null) {
+  const operatorSettings = loadOperatorSettings();
+  const prefs = operatorSettings.preferences.alerts?.criticalEvents || operatorSettingsDefaults().preferences.alerts.criticalEvents;
+  const queue = buildCriticalEventQueueContract(snapshot);
+  const activeRoutes = [
+    config.telegram?.botToken && config.telegram?.chatId ? 'telegram' : null,
+    config.discord?.botToken || config.discord?.webhookUrl ? 'discord' : null,
+  ].filter(Boolean);
+  const eligibleCandidates = (queue.candidates || [])
+    .filter(candidate => candidate?.promotion?.crossedThreshold && candidate?.status === 'promoted')
+    .map(candidate => {
+      const preview = [
+        `CRUCIX CRITICAL EVENT: ${candidate.label}`,
+        `Class: ${candidate.classId}`,
+        `Confidence: ${candidate.confidenceLabel}`,
+        candidate.region ? `Region: ${candidate.region}` : null,
+        `Severity: ${candidate.severity || 'high'}`,
+        candidate.evidenceSummary?.summary ? `Why now: ${candidate.evidenceSummary.summary}` : null,
+        candidate.evidenceSummary?.basis?.length ? `Basis: ${candidate.evidenceSummary.basis.join('; ')}` : null,
+        candidate.evidenceSummary?.unresolved?.length ? `Caveats: ${candidate.evidenceSummary.unresolved.join('; ')}` : null,
+      ].filter(Boolean).join('\n');
+      return {
+        candidateId: candidate.candidateId,
+        classId: candidate.classId,
+        label: candidate.label,
+        confidenceLabel: candidate.confidenceLabel,
+        severity: candidate.severity || 'high',
+        promotedAt: candidate.promotedAt || candidate.promotion?.crossedAt || null,
+        region: candidate.region || null,
+        freshnessMinutes: candidate.thresholds?.freshnessMinutes || null,
+        routePlan: {
+          defaultRoute: Array.isArray(prefs.defaultRoute) ? prefs.defaultRoute : [],
+          escalationRoute: Array.isArray(prefs.escalationRoute) ? prefs.escalationRoute : [],
+          activeRoutes,
+        },
+        corroborationBasis: candidate.promotion?.basis || [],
+        unresolvedCaveats: candidate.evidenceSummary?.unresolved || [],
+        shouldNotify: activeRoutes.length > 0,
+        messagePreview: preview,
+      };
+    });
+  const deliveryAudit = reconcileCriticalEventDeliveryAudit(queue, {
+    dispatchMode: 'contract-only',
+    eligibleCandidates,
+  });
+  return {
+    version: 'critical-event-routing-v1',
+    enabled: Boolean(config.alerting?.enabled) && Boolean(prefs.enabled),
+    dispatchMode: 'contract-only',
+    activeRoutes,
+    defaultRoute: Array.isArray(prefs.defaultRoute) ? prefs.defaultRoute : [],
+    escalationRoute: Array.isArray(prefs.escalationRoute) ? prefs.escalationRoute : [],
+    eligibleCount: eligibleCandidates.length,
+    eligibleCandidates: eligibleCandidates.slice(0, 8),
+    delivery: {
+      version: 'critical-event-delivery-audit-v1',
+      stateKey: typeof CRITICAL_EVENT_DELIVERY_STATE_KEY === 'string' ? CRITICAL_EVENT_DELIVERY_STATE_KEY : 'critical-events:delivery',
+      updatedAt: deliveryAudit.updatedAt || null,
+      totalRecords: Object.keys(deliveryAudit.records || {}).length,
+      recentRecords: Object.values(deliveryAudit.records || {}).slice(0, 8),
+      resendStates: ['preview-only', 'not-eligible', 'ready', 'blocked-no-route', 'sent', 'failed'],
+    },
+    notes: [
+      'Critical-event routing exposes who would be notified, with what confidence, corroboration basis, and unresolved caveats.',
+      'This contract is route-ready and previewable without silently emitting outbound operator notifications during validation.',
+    ],
+  };
+}
+
+function buildCriticalEventPolicyContract(snapshot = null) {
+  const operatorSettings = loadOperatorSettings();
+  const prefs = operatorSettings.preferences.alerts?.criticalEvents || operatorSettingsDefaults().preferences.alerts.criticalEvents;
+  const classes = Object.entries(prefs.classes || {}).map(([id, policy]) => ({
+    id,
+    enabled: Boolean(policy?.enabled),
+    severity: policy?.severity || 'high',
+    minHighTrustCorroboration: policy?.minHighTrustCorroboration || 1,
+    minMediumTrustCorroboration: policy?.minMediumTrustCorroboration || 1,
+    officialConfirmationRequired: Boolean(policy?.officialConfirmationRequired),
+    freshnessMinutes: policy?.freshnessMinutes || 30,
+  }));
+  return {
+    version: 'critical-event-policy-v1',
+    enabled: Boolean(prefs.enabled),
+    defaultRoute: Array.isArray(prefs.defaultRoute) ? prefs.defaultRoute : [],
+    escalationRoute: Array.isArray(prefs.escalationRoute) ? prefs.escalationRoute : [],
+    taxonomy: classes,
+    classMap: Object.fromEntries(classes.map(item => [item.id, item])),
+    queue: buildCriticalEventQueueContract(snapshot),
+    routing: buildCriticalEventRoutingContract(snapshot),
+    notes: [
+      'Critical-event policy defines fast-alert classes and the corroboration threshold required before an operator notification is eligible.',
+      'The critical-event routing contract now exposes vetted candidate previews, routes, corroboration basis, and unresolved caveats before any future automatic send loop is enabled.',
+    ],
+  };
+}
+
+function getSdrSessionState() {
+  const stateKey = typeof SDR_SESSION_STATE_KEY === 'string' ? SDR_SESSION_STATE_KEY : 'sdr:session-audit';
+  const state = typeof memory?.getSignalState === 'function' ? memory.getSignalState(stateKey) : null;
+  return state && typeof state === 'object'
+    ? state
+    : { version: 'sdr-session-audit-v1', updatedAt: null, sessions: {} };
+}
+
+function saveSdrSessionState(state = null) {
+  if (!state || typeof memory?.setSignalState !== 'function') return state;
+  memory.setSignalState(typeof SDR_SESSION_STATE_KEY === 'string' ? SDR_SESSION_STATE_KEY : 'sdr:session-audit', state);
+  return state;
+}
+
+function buildSdrObservationChecklist(profile = null) {
+  if (!profile) return [];
+  return (profile.lookFor || []).map((item, index) => ({
+    id: `${profile.id || 'watch'}-check-${index + 1}`,
+    prompt: item,
+    evidenceTypes: ['audio-observation-note', 'spectrum-observation-note', 'receiver-health-check'],
+  }));
+}
+
+function buildSdrSessionArtifacts(sessionId) {
+  return {
+    sessionId,
+    expectedArtifacts: [
+      { type: 'session-note', required: true, description: 'Operator or agent note describing what was monitored and why.' },
+      { type: 'receiver-snapshot', required: false, description: 'Optional screenshot or waterfall snapshot from the selected public receiver.' },
+      { type: 'observation-summary', required: true, description: 'Bounded summary of whether RF-side observations strengthened, weakened, or did not affect the originating claim.' },
+    ],
+  };
+}
+
+function reconcileSdrSessionAudit(priorityChecks = [], nowIso = new Date().toISOString()) {
+  const current = getSdrSessionState();
+  const nextSessions = { ...(current.sessions || {}) };
+  for (const check of priorityChecks) {
+    const sessionSlug = `${check.source || 'source'}-${check.region || 'region'}-${check.watchProfile?.id || 'watch'}-${check.label || 'signal'}`
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || 'session';
+    const sessionId = `sdr-${sessionSlug}`;
+    const existing = nextSessions[sessionId] && typeof nextSessions[sessionId] === 'object' ? nextSessions[sessionId] : null;
+    nextSessions[sessionId] = {
+      sessionId,
+      source: check.source,
+      label: check.label,
+      region: check.region,
+      trigger: check.trigger,
+      priority: check.priority,
+      confidenceLabel: check.confidenceLabel,
+      status: existing?.status || 'planned',
+      automationMode: 'bounded-session-plan',
+      watchProfile: check.watchProfile,
+      suggestedReceivers: Array.isArray(check.suggestedReceivers) ? check.suggestedReceivers.slice(0, 3) : [],
+      receiverCount: Number(check.receiverCount || 0),
+      rationale: check.rationale || null,
+      observationChecklist: buildSdrObservationChecklist(check.watchProfile),
+      evidenceSummary: existing?.evidenceSummary || {
+        summary: 'No RF-side observation captured yet. Session remains a bounded monitoring plan only.',
+        effectOnClaim: 'not-yet-observed',
+        confidenceImpact: 'none',
+      },
+      artifacts: buildSdrSessionArtifacts(sessionId),
+      openedAt: existing?.openedAt || nowIso,
+      lastReviewedAt: existing?.lastReviewedAt || null,
+      updatedAt: nowIso,
+    };
+  }
+  const bounded = Object.fromEntries(Object.values(nextSessions)
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+    .slice(0, 50)
+    .map(item => [item.sessionId, item]));
+  return saveSdrSessionState({ version: 'sdr-session-audit-v1', updatedAt: nowIso, sessions: bounded });
+}
+
+function buildSdrCorroborationContract(snapshot = null) {
+  const sdr = snapshot?.sdr || {};
+  const zones = Array.isArray(sdr.zones) ? sdr.zones : [];
+  const allReceivers = zones.flatMap(zone => (zone.receivers || []).map(receiver => ({
+    region: zone.region || 'Unknown',
+    zoneCount: Number(zone.count || 0),
+    name: receiver.name || 'Unnamed SDR receiver',
+    lat: Number(receiver.lat || 0),
+    lon: Number(receiver.lon || 0),
+  })));
+  const watchProfiles = [
+    {
+      id: 'maritime-chokepoint',
+      label: 'Maritime chokepoint disruption',
+      description: 'Use nearby HF receivers when blockade, mining, tanker harassment, or coastal disruption claims need RF-side context.',
+      recommendedBands: ['2-4 MHz maritime/utility', '4-9 MHz marine HF', '8-18 MHz long-haul maritime'],
+      lookFor: ['distress or coordination traffic increase', 'sudden silence where traffic is normally present', 'interference or jamming reports', 'persistent utility traffic tied to the affected waterway'],
+      mapsToClasses: ['chokepointDisruption'],
+    },
+    {
+      id: 'aviation-incident',
+      label: 'Aviation incident or airspace disruption',
+      description: 'Use nearby SDR coverage to check for unusual HF aviation support traffic when ADS-B, OpenSky, or OSINT claims suggest disruption.',
+      recommendedBands: ['2-23 MHz aeronautical HF', 'regional VOLMET/weather', 'navigation beacon checks'],
+      lookFor: ['HF traffic surge', 'route diversions or handoff irregularities', 'beacon or navigation outages', 'emergency or contingency voice traffic'],
+      mapsToClasses: ['aviationIncident'],
+    },
+    {
+      id: 'conflict-chatter',
+      label: 'Conflict or government-site incident',
+      description: 'Use public SDR receivers as a corroboration prompt when conflict chatter or violence claims emerge in a region with RF visibility.',
+      recommendedBands: ['3-8 MHz regional utility', 'HF military/utility', 'local beacon and interference checks'],
+      lookFor: ['abrupt activity spikes', 'unusual noise floor or jamming', 'sustained utility traffic', 'anomalous silence after reported activity'],
+      mapsToClasses: ['governmentSiteViolence'],
+    },
+  ];
+  const watchProfileByClass = new Map(watchProfiles.flatMap(profile => (profile.mapsToClasses || []).map(classId => [classId, profile])));
+  const zoneIndex = new Map(zones.map(zone => [String(zone.region || '').toLowerCase(), zone]));
+  const matchZone = (value = '') => {
+    const text = String(value || '').toLowerCase();
+    if (!text) return null;
+    for (const zone of zones) {
+      const region = String(zone.region || '').toLowerCase();
+      if (region && (text.includes(region) || region.includes(text))) return zone;
+    }
+    if (/(iran|hormuz|gulf)/.test(text)) return zoneIndex.get('iran') || zoneIndex.get('middle east') || null;
+    if (/(ukraine|donetsk|crimea|odessa|zaporizhzhia)/.test(text)) return zoneIndex.get('ukraine / eastern europe') || null;
+    if (/(taiwan|south china sea|strait)/.test(text)) return zoneIndex.get('taiwan strait') || zoneIndex.get('south china sea') || null;
+    if (/(korea|korean)/.test(text)) return zoneIndex.get('korean peninsula') || null;
+    return null;
+  };
+  const candidateChecks = [];
+  const queueCandidates = buildCriticalEventQueueContract(snapshot).candidates || [];
+  for (const candidate of queueCandidates) {
+    const zone = matchZone(candidate.region || candidate.label || candidate.summary || '');
+    if (!zone || !zone.count) continue;
+    const profile = watchProfileByClass.get(candidate.classId) || watchProfiles[2];
+    candidateChecks.push({
+      source: 'critical-event-queue',
+      label: candidate.label,
+      region: zone.region,
+      trigger: candidate.classId,
+      priority: candidate.promotion?.crossedThreshold ? 'high' : 'medium',
+      confidenceLabel: candidate.confidenceLabel || 'preliminary',
+      receiverCount: Number(zone.count || 0),
+      watchProfile: {
+        id: profile.id,
+        label: profile.label,
+        recommendedBands: profile.recommendedBands,
+        lookFor: profile.lookFor,
+      },
+      suggestedReceivers: (zone.receivers || []).slice(0, 3).map(receiver => ({ name: receiver.name || 'Unnamed SDR receiver', lat: Number(receiver.lat || 0), lon: Number(receiver.lon || 0) })),
+      rationale: candidate.evidenceSummary?.summary || candidate.promotion?.summary || 'Queue candidate has enough salience to justify an SDR-side corroboration check if regional coverage exists.',
+    });
+  }
+  for (const signal of (snapshot?.suspectSignals || []).slice(0, 8)) {
+    const zone = matchZone(signal.region || signal.signal || signal.reason || '');
+    if (!zone || !zone.count) continue;
+    const profile = /aviation|air/.test(`${signal.signal || ''} ${signal.reason || ''}`.toLowerCase())
+      ? watchProfiles[1]
+      : /blockade|chokepoint|maritime|ship|tanker|hormuz/.test(`${signal.signal || ''} ${signal.reason || ''}`.toLowerCase())
+        ? watchProfiles[0]
+        : watchProfiles[2];
+    candidateChecks.push({
+      source: 'suspect-signal',
+      label: signal.signal || 'Suspect regional signal',
+      region: zone.region,
+      trigger: signal.category || 'signal',
+      priority: signal.confidence === 'high' ? 'high' : 'medium',
+      confidenceLabel: signal.confidence || 'medium',
+      receiverCount: Number(zone.count || 0),
+      watchProfile: {
+        id: profile.id,
+        label: profile.label,
+        recommendedBands: profile.recommendedBands,
+        lookFor: profile.lookFor,
+      },
+      suggestedReceivers: (zone.receivers || []).slice(0, 3).map(receiver => ({ name: receiver.name || 'Unnamed SDR receiver', lat: Number(receiver.lat || 0), lon: Number(receiver.lon || 0) })),
+      rationale: signal.reason || 'Suspect signal overlaps a region with public SDR visibility.',
+    });
+  }
+  const dedupedChecks = [];
+  const seen = new Set();
+  for (const item of candidateChecks) {
+    const key = `${item.source}:${item.label}:${item.region}:${item.watchProfile.id}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    dedupedChecks.push(item);
+  }
+  const blindZones = zones.filter(zone => Number(zone.count || 0) === 0).map(zone => zone.region || 'Unknown');
+  const sessionAudit = reconcileSdrSessionAudit(dedupedChecks);
+  const coveredZones = zones.filter(zone => Number(zone.count || 0) > 0).map(zone => ({
+    region: zone.region || 'Unknown',
+    receiverCount: Number(zone.count || 0),
+    sampleReceivers: (zone.receivers || []).slice(0, 3).map(receiver => ({ name: receiver.name || 'Unnamed SDR receiver', lat: Number(receiver.lat || 0), lon: Number(receiver.lon || 0) })),
+  }));
+  return {
+    version: 'sdr-corroboration-v1',
+    enabled: Number(sdr.online || sdr.total || 0) > 0,
+    purpose: 'Expose where public SDR coverage exists and turn active signals into concrete RF-side corroboration prompts.',
+    capability: {
+      remoteCheckReady: coveredZones.length > 0,
+      requiresHumanTuning: true,
+      automationMode: 'bounded-session-plan-and-evidence-retention',
+      artifactsRetained: true,
+      supportsObservationSummaries: true,
+    },
+    network: {
+      totalReceivers: Number(sdr.total || allReceivers.length || 0),
+      onlineReceivers: Number(sdr.online || allReceivers.length || 0),
+      coveredZoneCount: coveredZones.length,
+      blindZoneCount: blindZones.length,
+    },
+    watchProfiles,
+    coveredZones,
+    blindZones,
+    priorityChecks: dedupedChecks.slice(0, 8),
+    sessionAutomation: {
+      version: 'sdr-session-audit-v1',
+      stateKey: typeof SDR_SESSION_STATE_KEY === 'string' ? SDR_SESSION_STATE_KEY : 'sdr:session-audit',
+      updatedAt: sessionAudit.updatedAt || null,
+      sessionCount: Object.keys(sessionAudit.sessions || {}).length,
+      recentSessions: Object.values(sessionAudit.sessions || {}).slice(0, 8),
+      statuses: ['planned', 'observing', 'captured', 'closed'],
+      artifactTypes: ['session-note', 'receiver-snapshot', 'observation-summary'],
+    },
+    notes: [
+      'This surface does not claim that Crucix is decoding or attributing radio traffic automatically. It identifies where public SDR coverage exists and what an analyst should check next.',
+      'Bounded SDR session automation here means session planning, receiver selection, observation checklisting, and retained evidence summaries, not unattended RF attribution or fake capture claims.',
+      'Confidence should only improve when RF-side observations materially support or weaken a claim alongside other evidence, not from receiver presence alone.',
+    ],
+  };
+}
+
+function summarizeOperationalAlertState(snapshot = null) {
+  const operatorSettings = loadOperatorSettings();
+  const prefs = operatorSettings.preferences.alerts?.operational || operatorSettingsDefaults().preferences.alerts.operational;
+  const reviewStats = summarizeClusterReviewStats();
+  const pressureStats = summarizeClusterPressureStats();
+  const watchdog = getSweepWatchdogSnapshot();
+  const llmReadiness = getLlmProviderReadinessSnapshot();
+  const activeSnapshot = snapshot || currentData || {};
+  const lowConfidenceCount = activeSnapshot?.sourceOps?.performance?.workflow?.validationViews?.reviewPressure?.find(item => item.label === 'Low confidence')?.value || 0;
+  const llmFailureHistory = memory.getLlmFailureHistory(1);
+  const currentLlmFailure = llmFailureHistory.snapshots?.[0]?.summary || {};
+  const healthSummary = activeSnapshot?.healthSummary || {};
+  const noiseSuppressionPressure = summarizeNoiseSuppressionPressure(activeSnapshot, prefs.noiseSuppressionPressure || {});
+  const activeRoutes = [
+    config.telegram?.botToken && config.telegram?.chatId ? 'telegram' : null,
+    config.discord?.botToken || config.discord?.webhookUrl ? 'discord' : null,
+  ].filter(Boolean);
+  const policies = {
+    staleSweep: {
+      active: Boolean(prefs.staleSweep?.enabled) && watchdog.overdue,
+      summary: watchdog.overdue ? `Sweep watchdog is overdue in phase ${watchdog.phase || 'unknown'} by ${Math.ceil((watchdog.overdueMs || 0) / 60000)} minute(s).` : 'Sweep cadence is currently within watchdog bounds.',
+      severity: watchdog.overdue ? 'critical' : 'ok',
+      metrics: { overdue: Boolean(watchdog.overdue), overdueMs: watchdog.overdueMs || 0, phase: watchdog.phase || null, recoveryClassification: watchdog.recoveryClassification || null },
+      config: prefs.staleSweep,
+    },
+    sourceFailures: {
+      active: Boolean(prefs.sourceFailures?.enabled) && ((healthSummary.failed || 0) >= (prefs.sourceFailures?.minFailedSources || 1) || (healthSummary.degraded || 0) >= (prefs.sourceFailures?.minDegradedSources || 1)),
+      summary: `Failed ${healthSummary.failed || 0}, degraded ${healthSummary.degraded || 0}, stale ${healthSummary.stale || 0} sources.`,
+      severity: (healthSummary.failed || 0) >= ((prefs.sourceFailures?.minFailedSources || 1) * 2) ? 'critical' : ((healthSummary.failed || 0) || (healthSummary.degraded || 0)) ? 'warning' : 'ok',
+      metrics: { failed: healthSummary.failed || 0, degraded: healthSummary.degraded || 0, stale: healthSummary.stale || 0, thresholds: { minFailedSources: prefs.sourceFailures?.minFailedSources || 1, minDegradedSources: prefs.sourceFailures?.minDegradedSources || 1 } },
+      config: prefs.sourceFailures,
+    },
+    reviewPressure: {
+      active: Boolean(prefs.reviewPressure?.enabled) && ((reviewStats.chronicFailureCount || 0) >= (prefs.reviewPressure?.minChronicRegions || 1) || (pressureStats.pressuredRegionCount || 0) >= (prefs.reviewPressure?.minPressuredRegions || 1) || lowConfidenceCount >= (prefs.reviewPressure?.minLowConfidenceCount || 1)),
+      summary: `Chronic regions ${reviewStats.chronicFailureCount || 0}, pressured regions ${pressureStats.pressuredRegionCount || 0}, low-confidence clusters ${lowConfidenceCount || 0}.`,
+      severity: (reviewStats.chronicFailureCount || 0) >= ((prefs.reviewPressure?.minChronicRegions || 1) * 2) ? 'critical' : ((reviewStats.chronicFailureCount || 0) || (pressureStats.pressuredRegionCount || 0) || lowConfidenceCount) ? 'warning' : 'ok',
+      metrics: { chronicFailureCount: reviewStats.chronicFailureCount || 0, pressuredRegionCount: pressureStats.pressuredRegionCount || 0, lowConfidenceCount, recentFailureCount: reviewStats.recentFailureCount || 0 },
+      config: prefs.reviewPressure,
+    },
+    inferenceDegraded: {
+      active: Boolean(prefs.inferenceDegraded?.enabled) && (llmReadiness.status === 'failed' || Boolean(activeSnapshot?.agentAnalysisMeta?.refinementTimedOut) || ['failed', 'timed-out'].includes(activeSnapshot?.agentAnalysisMeta?.refinementState) || (currentLlmFailure.heuristicFallbackCount || 0) >= (prefs.inferenceDegraded?.heuristicFallbackCount || 1) || activeSnapshot?.ideasSource === 'llm-failed'),
+      summary: `LLM readiness is ${llmReadiness.status || 'unknown'}, heuristic-only clusters ${currentLlmFailure.heuristicFallbackCount || 0}, ideas source ${activeSnapshot?.ideasSource || 'unknown'}.`,
+      severity: llmReadiness.status === 'failed' ? 'critical' : (currentLlmFailure.heuristicFallbackCount || 0) > 0 || activeSnapshot?.ideasSource === 'llm-failed' ? 'warning' : 'ok',
+      metrics: { llmReadinessStatus: llmReadiness.status || 'unknown', heuristicFallbackCount: currentLlmFailure.heuristicFallbackCount || 0, weakClusterCount: currentLlmFailure.weakClusterCount || 0, ideasSource: activeSnapshot?.ideasSource || null, analysisRefinementState: activeSnapshot?.agentAnalysisMeta?.refinementState || null },
+      config: prefs.inferenceDegraded,
+    },
+    noiseSuppressionPressure: {
+      active: Boolean(prefs.noiseSuppressionPressure?.enabled) && noiseSuppressionPressure.active,
+      summary: noiseSuppressionPressure.summary,
+      severity: noiseSuppressionPressure.severity,
+      metrics: noiseSuppressionPressure.metrics,
+      config: prefs.noiseSuppressionPressure,
+    },
+  };
+  const state = getOperationalAlertsState();
+  return {
+    version: 'operational-alert-routing-v1',
+    enabled: Boolean(config.alerting?.enabled) && Boolean(prefs.enabled),
+    activeRoutes,
+    defaultRoute: Array.isArray(prefs.defaultRoute) ? prefs.defaultRoute : [],
+    escalationRoute: Array.isArray(prefs.escalationRoute) ? prefs.escalationRoute : [],
+    cooldownMinutesDefault: config.alerting?.cooldownMinutes || 30,
+    policies,
+    state,
+  };
+}
+
+async function dispatchOperationalAlert(policyKey, policy, route, occurrence, escalated) {
+  const title = escalated ? 'ESCALATED' : 'ALERT';
+  const metricsText = Object.entries(policy.metrics || {}).map(([key, value]) => `${key}=${typeof value === 'object' ? JSON.stringify(value) : value}`).join(', ');
+  const message = `⚠️ CRUCIX ${title}: ${policyKey}
+${policy.summary}
+Severity: ${policy.severity}
+Occurrence: ${occurrence}${escalated ? ' (escalated)' : ''}${metricsText ? `
+Metrics: ${metricsText}` : ''}`;
+  if (route === 'telegram' && telegramAlerter.isConfigured) return telegramAlerter.sendMessage(message);
+  if (route === 'discord' && discordAlerter.isConfigured) return discordAlerter.sendMessage(message);
+  return false;
+}
+
+async function processOperationalAlerts(snapshot = null) {
+  const contract = summarizeOperationalAlertState(snapshot);
+  const nextState = contract.state && typeof contract.state === 'object' ? JSON.parse(JSON.stringify(contract.state)) : { policies: {} };
+  nextState.policies = nextState.policies || {};
+  nextState.updatedAt = new Date().toISOString();
+  if (!contract.enabled) {
+    saveOperationalAlertsState(nextState);
+    return contract;
+  }
+  for (const [policyKey, policy] of Object.entries(contract.policies || {})) {
+    const state = normalizeOperationalPolicyState(nextState.policies[policyKey] || {});
+    state.lastSeverity = policy.severity || 'ok';
+    if (!policy.active) {
+      if (state.active) state.lastResolvedAt = new Date().toISOString();
+      state.active = false;
+      state.occurrenceCount = 0;
+      state.acknowledgedAt = null;
+      state.acknowledgedNote = null;
+      state.snoozedUntil = null;
+      state.snoozeNote = null;
+      state.lastOperatorActionAt = null;
+      nextState.policies[policyKey] = state;
+      continue;
+    }
+    state.active = true;
+    state.occurrenceCount = Number(state.occurrenceCount || 0) + 1;
+    const cooldownMinutes = policy.config?.cooldownMinutes || contract.cooldownMinutesDefault || 30;
+    const sentMs = state.lastSentAt ? new Date(state.lastSentAt).getTime() : 0;
+    const escalated = state.occurrenceCount >= (policy.config?.escalationAfter || 2);
+    const escalationSentMs = state.lastEscalatedAt ? new Date(state.lastEscalatedAt).getTime() : 0;
+    const snoozedUntilMs = state.snoozedUntil ? Date.parse(state.snoozedUntil) || 0 : 0;
+    const operatorSuppressed = Boolean(state.acknowledgedAt) || snoozedUntilMs > Date.now();
+    const shouldSendBase = !operatorSuppressed && (!sentMs || (Date.now() - sentMs) >= (cooldownMinutes * 60 * 1000));
+    const shouldSendEscalation = !operatorSuppressed && escalated && (!escalationSentMs || (Date.now() - escalationSentMs) >= ((config.alerting?.escalationCooldownMinutes || 120) * 60 * 1000));
+    if (shouldSendBase || shouldSendEscalation) {
+      const routes = shouldSendEscalation ? contract.escalationRoute : contract.defaultRoute;
+      for (const route of routes) await dispatchOperationalAlert(policyKey, policy, route, state.occurrenceCount, shouldSendEscalation);
+      state.lastSentAt = new Date().toISOString();
+      if (shouldSendEscalation) state.lastEscalatedAt = state.lastSentAt;
+    }
+    nextState.policies[policyKey] = state;
+  }
+  saveOperationalAlertsState(nextState);
+  return summarizeOperationalAlertState(snapshot);
+}
+
+function buildOperatorSettingsContract(snapshot = null) {
+  const activeSnapshot = snapshot || currentData || {};
+  const sourceOps = buildOperatorSourceOps(activeSnapshot);
+  const llmState = buildOperatorLlmStateContract(activeSnapshot || {}, { provider: config.llm.provider, model: llmProvider?.model || null });
+  const runtimeConfig = buildRuntimeConfigContract();
+  const operatorSettings = loadOperatorSettings();
+  const categories = Object.entries(sourceOps?.inventory?.byCategory || {})
+    .map(([category, count]) => ({ category, count }))
+    .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
+  const lifecycleStates = Object.entries(sourceOps?.inventory?.byLifecycle || {})
+    .map(([lifecycle, count]) => ({ lifecycle, count }))
+    .sort((a, b) => b.count - a.count || a.lifecycle.localeCompare(b.lifecycle));
+  const driftBySource = new Map(
+    Array.isArray(sourceOps?.performance?.workflow?.attributionDiagnostics?.runtimeBucketDrift?.items)
+      ? sourceOps.performance.workflow.attributionDiagnostics.runtimeBucketDrift.items.map(item => [item.runtimeSource, item])
+      : []
+  );
+  const sourceItems = Array.isArray(sourceOps?.inventory?.items) ? sourceOps.inventory.items.map(item => ({
+    id: item.id,
+    name: item.name,
+    category: item.category,
+    lifecycle: item.lifecycle,
+    liveState: item.liveState || null,
+    liveAgeMinutes: item.liveAgeMinutes ?? null,
+    liveFailureClass: item.liveFailureClass || null,
+    freshnessTargetMinutes: item.freshnessTargetMinutes ?? null,
+    fusionRole: item.operatorRole || null,
+    trustProfile: item.trustClass || null,
+    runtimeBucket: item.runtimeBucket || null,
+    runtimeBucketDrift: driftBySource.get(item.name) || null,
+  })) : [];
+  const roleGroups = Array.isArray(sourceOps?.fusionRoles?.roles)
+    ? sourceOps.fusionRoles.roles.map(item => ({
+        role: item.role,
+        count: item.count,
+        trustMix: item.trustMix || {},
+        sourceIds: Array.isArray(item.sourceIds) ? item.sourceIds : [],
+      }))
+    : [];
+  const lifecycleBatch = sourceOps?.lifecycleBatchEvaluation;
+  const lifecycleEvaluation = sourceOps?.lifecycleEvaluation;
+  const pruningExample = sourceOps?.examplePruning;
+  const enabledAlerts = [
+    config.telegram?.botToken && config.telegram?.chatId ? 'telegram' : null,
+    config.discord?.botToken || config.discord?.webhookUrl ? 'discord' : null,
+  ].filter(Boolean);
+  const operationalAlerts = summarizeOperationalAlertState(activeSnapshot);
+  const workspacePresetCatalogBuilder = typeof buildWorkspacePresetLibrary === 'function'
+    ? buildWorkspacePresetLibrary
+    : ((settings = null) => {
+        const activeSettings = settings || loadOperatorSettings();
+        const builtIns = [
+          { id: 'operator', label: 'Analyst', profile: 'analyst', description: 'Balanced operator workspace for normal desktop analysis.', displayMode: 'desktop', mapMode: 'auto', visualsMode: 'full', densityMode: 'balanced', topbarMode: 'standard', defaultRegion: 'world', activeLayer: null, panels: { reviewQueue: { pinned: true, priority: 10, size: 'wide', collapsed: false }, analysisReview: { pinned: true, priority: 20, size: 'normal', collapsed: false }, layoutBudget: { pinned: false, priority: 30, size: 'normal', collapsed: false }, tradeIdeas: { pinned: false, priority: 60, size: 'compact', collapsed: false }, evidenceAudit: { pinned: false, priority: 40, size: 'normal', collapsed: false } } },
+          { id: 'diagnostics', label: 'Narrow Screen', profile: 'narrow-screen', description: 'Dense but bounded layout for constrained displays and troubleshooting.', displayMode: 'desktop', mapMode: 'flat', visualsMode: 'lite', densityMode: 'dense', topbarMode: 'compact', defaultRegion: 'world', activeLayer: 'news', panels: { reviewQueue: { pinned: true, priority: 5, size: 'wide', collapsed: false }, analysisReview: { pinned: true, priority: 10, size: 'wide', collapsed: false }, layoutBudget: { pinned: true, priority: 12, size: 'wide', collapsed: false }, evidenceAudit: { pinned: true, priority: 15, size: 'wide', collapsed: false }, tradeIdeas: { pinned: false, priority: 90, size: 'compact', collapsed: true }, newsTicker: { pinned: false, priority: 50, size: 'compact', collapsed: false } } },
+          { id: 'source-ops', label: 'Source Ops', profile: 'source-ops', description: 'Source-health triage layout that keeps evidence and review controls close.', displayMode: 'desktop', mapMode: 'flat', visualsMode: 'lite', densityMode: 'dense', topbarMode: 'compact', defaultRegion: 'world', activeLayer: 'news', panels: { reviewQueue: { pinned: true, priority: 5, size: 'wide', collapsed: false }, evidenceAudit: { pinned: true, priority: 10, size: 'wide', collapsed: false }, crossSignals: { pinned: true, priority: 20, size: 'normal', collapsed: false }, layoutBudget: { pinned: false, priority: 30, size: 'compact', collapsed: true }, tradeIdeas: { pinned: false, priority: 95, size: 'compact', collapsed: true } } },
+          { id: 'executive-briefing', label: 'Wallboard', profile: 'wallboard', description: 'Wallboard-first briefing layout for glanceable shared monitoring.', displayMode: 'wallboard', mapMode: 'globe', visualsMode: 'full', densityMode: 'briefing', topbarMode: 'briefing', defaultRegion: 'world', activeLayer: null, panels: { agentAnalysis: { pinned: true, priority: 5, size: 'wide', collapsed: false }, macroMarkets: { pinned: true, priority: 10, size: 'wide', collapsed: false }, newsTicker: { pinned: true, priority: 15, size: 'wide', collapsed: false }, reviewQueue: { pinned: false, priority: 80, size: 'compact', collapsed: true }, evidenceAudit: { pinned: false, priority: 70, size: 'compact', collapsed: true }, tradeIdeas: { pinned: false, priority: 60, size: 'compact', collapsed: false } } },
+        ];
+        const customPresets = activeSettings?.preferences?.layout?.customPresets && typeof activeSettings.preferences.layout.customPresets === 'object' ? activeSettings.preferences.layout.customPresets : {};
+        return [...builtIns.map(item => ({ ...item, builtIn: true })), ...Object.entries(customPresets).map(([id, value]) => ({ id, label: value?.label || id, profile: value?.profile || 'custom', description: value?.description || 'Custom operator-authored preset.', displayMode: value?.displayMode || 'desktop', mapMode: value?.mapMode || 'auto', visualsMode: value?.visualsMode || 'full', densityMode: value?.densityMode || 'balanced', topbarMode: value?.topbarMode || 'standard', defaultRegion: value?.defaultRegion || 'world', activeLayer: value?.activeLayer || null, panels: value?.panels && typeof value.panels === 'object' ? value.panels : {}, builtIn: false }))];
+      });
+  const workspacePresetCatalog = workspacePresetCatalogBuilder(operatorSettings).map(item => ({ ...item, status: 'active', panelDefaults: item.panels || {} }));
+  const currentWorkspacePreset = operatorSettings.preferences.layout.workspacePreset || 'operator';
+  const currentWorkspacePresetMeta = workspacePresetCatalog.find(item => item.id === currentWorkspacePreset) || workspacePresetCatalog[0];
+
+  return {
+    version: 'operator-settings-v1',
+    generatedAt: new Date().toISOString(),
+    sections: ['layout', 'sources', 'sourceConsole', 'sdrCorroboration', 'llm', 'agentAnalysis', 'runtime', 'debug', 'alerts', 'config', 'persistence'],
+    layout: {
+      current: currentWorkspacePreset,
+      available: workspacePresetCatalog.map(item => ({ id: item.id, label: item.label, status: item.status, profile: item.profile, description: item.description })),
+      controls: {
+        visualsMode: operatorSettings.preferences.layout.visualsMode,
+        mobileFlatMapDefault: operatorSettings.preferences.layout.mapMode !== 'globe',
+        mapMode: operatorSettings.preferences.layout.mapMode,
+        displayMode: operatorSettings.preferences.layout.displayMode,
+        densityMode: operatorSettings.preferences.layout.densityMode,
+        topbarMode: operatorSettings.preferences.layout.topbarMode,
+        availableDisplayModes: ['auto', 'narrow', 'desktop', 'wallboard'],
+        defaultRegion: operatorSettings.preferences.layout.defaultRegion,
+        activeLayer: operatorSettings.preferences.layout.activeLayer,
+        workspacePreset: currentWorkspacePreset,
+        currentWorkspacePresetLabel: currentWorkspacePresetMeta.label,
+        availableWorkspacePresets: workspacePresetCatalog.map(item => item.id),
+        namedPresets: workspacePresetCatalog.map(item => ({ id: item.id, label: item.label, status: item.status, builtIn: item.builtIn !== false, profile: item.profile, description: item.description, displayMode: item.displayMode, mapMode: item.mapMode, visualsMode: item.visualsMode, densityMode: item.densityMode || 'balanced', topbarMode: item.topbarMode || 'standard', defaultRegion: item.defaultRegion, activeLayer: item.activeLayer, panelDefaults: item.panelDefaults })),
+        customPresets: operatorSettings.preferences.layout.customPresets || {},
+        resetSupported: true,
+        resetActions: ['restore-preset-panels', 'clear-panel-overrides'],
+        importExportSupported: true,
+        performance: operatorSettings.preferences.layout.performance || operatorSettingsDefaults().preferences.layout.performance,
+        availableWallboardVirtualizationModes: ['auto', 'off', 'on'],
+        panelPreferences: operatorSettings.preferences.layout.panels || {},
+        persistence: 'server-file',
+      },
+      mutability: {
+        current: 'server-file',
+        presets: 'server-file',
+        namedPresets: 'built-in-plus-custom',
+      },
+    },
+    sources: {
+      total: sourceOps?.inventory?.total || 0,
+      active: sourceOps?.inventory?.active || 0,
+      categories,
+      lifecycleStates,
+      selection: {
+        mode: 'all-enabled-by-config',
+        supportsPerSourceControl: true,
+        supportsCategoryFiltering: true,
+        nextSurface: 'settings-persistence-v1',
+        persistence: 'server-file',
+        enabledCategories: operatorSettings.preferences.sources.enabledCategories,
+        enabledSourceIds: operatorSettings.preferences.sources.enabledSourceIds,
+        suppressedSourceIds: operatorSettings.preferences.sources.suppressedSourceIds,
+        quarantinedSourceIds: operatorSettings.preferences.sources.quarantinedSourceIds,
+        noiseSuppression: operatorSettings.preferences.sources.noiseSuppression,
+      },
+      availableSources: sourceItems,
+      health: {
+        liveStateSummary: sourceOps?.inventory?.liveStateSummary || null,
+      },
+    },
+    sourceConsole: {
+      version: 'source-console-v1',
+      surface: '/source-ops',
+      roleGrouping: {
+        enabled: true,
+        groups: roleGroups,
+      },
+      filtering: {
+        categoryOptions: categories,
+        lifecycleOptions: lifecycleStates,
+        supportsCategoryFiltering: true,
+        supportsRoleFiltering: true,
+        supportsLifecycleFiltering: true,
+      },
+      selection: {
+        persistence: 'server-file',
+        supportsPerSourceControl: true,
+        enabledCategories: operatorSettings.preferences.sources.enabledCategories,
+        enabledSourceIds: operatorSettings.preferences.sources.enabledSourceIds,
+        suppressedSourceIds: operatorSettings.preferences.sources.suppressedSourceIds,
+        quarantinedSourceIds: operatorSettings.preferences.sources.quarantinedSourceIds,
+        noiseSuppression: operatorSettings.preferences.sources.noiseSuppression,
+      },
+      contract: sourceOps?.contract || null,
+      lifecycleActions: {
+        version: 'source-lifecycle-actions-v1',
+        humanApprovalBoundary: {
+          activePromotionRequiresHumanApproval: Boolean(sourceOps?.lifecycleTransitions?.activePromotionRequiresHumanApproval),
+          preProductionAutoAdvanceMax: sourceOps?.lifecycleTransitions?.preProductionAutoAdvanceMax || null,
+          humanApprovalBoundaryStates: Array.isArray(sourceOps?.lifecycleTransitions?.humanApprovalBoundaryStates) ? sourceOps.lifecycleTransitions.humanApprovalBoundaryStates : [],
+          autoAdvanceStates: Array.isArray(sourceOps?.lifecycleTransitions?.autoAdvanceStates) ? sourceOps.lifecycleTransitions.autoAdvanceStates : [],
+        },
+        policyBlockers: {
+          batchBlockedCount: lifecycleBatch?.blockedCount || 0,
+          advanceableCount: lifecycleBatch?.advanceableCount || 0,
+          queueTaskCount: lifecycleBatch?.queueTaskCount || 0,
+        },
+        queue: {
+          candidateCount: lifecycleBatch?.candidateCount || 0,
+          blockedCount: lifecycleBatch?.blockedCount || 0,
+          advanceableCount: lifecycleBatch?.advanceableCount || 0,
+          evaluations: Array.isArray(lifecycleBatch?.evaluations) ? lifecycleBatch.evaluations.map(item => ({
+            candidateId: item.candidateId || null,
+            name: item.name || null,
+            lifecycle: item.lifecycle || null,
+            recommendedAction: item.evaluation?.recommendedAction || null,
+            nextAllowedState: item.evaluation?.nextAllowedState || null,
+            blocked: Boolean(item.evaluation?.blocked),
+            blockedReasons: Array.isArray(item.evaluation?.blockedReasons) ? item.evaluation.blockedReasons : [],
+            allowedNextStates: Array.isArray(item.evaluation?.allowedNextStates) ? item.evaluation.allowedNextStates : [],
+            agentMayAdvanceCurrentState: Boolean(item.evaluation?.agentMayAdvanceCurrentState),
+          })) : [],
+        },
+        exampleEvaluation: {
+          candidateId: lifecycleEvaluation?.candidateId || null,
+          currentState: lifecycleEvaluation?.currentState || null,
+          promotionReadiness: lifecycleEvaluation?.promotionReadiness || null,
+          nextAllowedState: lifecycleEvaluation?.nextAllowedState || null,
+          recommendedAction: lifecycleEvaluation?.recommendedAction || null,
+          blocked: Boolean(lifecycleEvaluation?.blocked),
+          blockedReasons: Array.isArray(lifecycleEvaluation?.blockedReasons) ? lifecycleEvaluation.blockedReasons : [],
+          allowedNextStates: Array.isArray(lifecycleEvaluation?.allowedNextStates) ? lifecycleEvaluation.allowedNextStates : [],
+        },
+        pruneRecommendation: {
+          targetId: pruningExample?.targetId || null,
+          recommendation: pruningExample?.recommendation || null,
+          recommendedAction: pruningExample?.recommendedAction || null,
+          confidence: pruningExample?.confidence || null,
+          humanReviewRequired: Boolean(pruningExample?.productionGuardrails?.humanReviewRequired),
+          autoRemovalAllowed: Boolean(pruningExample?.productionGuardrails?.autoRemovalAllowed),
+          blockingIssues: Array.isArray(pruningExample?.blockingIssues) ? pruningExample.blockingIssues : [],
+        },
+      },
+      inventory: sourceItems,
+      performanceWorkflow: {
+        version: sourceOps?.performance?.version || 'source-performance-workflow-v1',
+        summary: {
+          totalMeasuredSources: sourceOps?.performance?.totalMeasuredSources || 0,
+          withClusterAttribution: sourceOps?.performance?.withClusterAttribution || 0,
+          withSignalContribution: sourceOps?.performance?.withSignalContribution || 0,
+          degradedOrFailing: sourceOps?.performance?.degradedOrFailing || 0,
+          byTrustOutcome: sourceOps?.performance?.byTrustOutcome || null,
+          attributionCoverage: sourceOps?.performance?.attributionCoverage || null,
+        },
+        attributionDiagnostics: sourceOps?.performance?.workflow?.attributionDiagnostics || null,
+        runtimeBucketDrift: sourceOps?.performance?.workflow?.attributionDiagnostics?.runtimeBucketDrift || null,
+        attributionHeadlines: Array.isArray(sourceOps?.performance?.workflow?.attributionHeadlines) ? sourceOps.performance.workflow.attributionHeadlines : [],
+        confidenceCaveats: Array.isArray(sourceOps?.performance?.workflow?.confidenceCaveats) ? sourceOps.performance.workflow.confidenceCaveats : [],
+        validationViews: sourceOps?.performance?.workflow?.validationViews || null,
+        topImpactSources: Array.isArray(sourceOps?.performance?.topImpactSources) ? sourceOps.performance.topImpactSources : [],
+        measurementNotes: sourceOps?.performance?.measurementNotes || null,
+      },
+      performanceHistory: sourceOps?.performanceHistory || null,
+      healthHistory: sourceOps?.history || null,
+      sourceControls: {
+        version: 'source-ops-control-v2',
+        endpoint: '/api/source-ops/control',
+        auditEndpoint: '/api/source-ops/audit',
+        requiresLocalAdmin: true,
+        supportedActions: ['suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine'],
+        recentAudit: sourceControlAuditSnapshot(12),
+      },
+      noiseSuppression: {
+        ...buildNoiseSuppressionContract(activeSnapshot),
+        trend: memory.getNoiseSuppressionTelemetryHistory(),
+      },
+    },
+    sdrCorroboration: buildSdrCorroborationContract(activeSnapshot),
+    llm: {
+      provider: config.llm.provider || null,
+      model: llmProvider?.model || config.llm.model || null,
+      baseUrl: config.llm.baseUrl || null,
+      configured: Boolean(config.llm.provider),
+      state: llmState,
+      requestedModeOptions: ['auto', 'off', 'force'],
+      defaultMode: operatorSettings.preferences.llm.newsModeDefault,
+      supportsProviderSwitchingFromUi: false,
+      supportsModelEditingFromUi: false,
+    },
+    agentAnalysis: {
+      current: activeSnapshot?.agentAnalysis ? {
+        status: activeSnapshot.agentAnalysis.status,
+        confidenceLabel: activeSnapshot.agentAnalysis.confidenceLabel,
+        source: activeSnapshot.agentAnalysisMeta?.source || 'deterministic',
+        refinementState: activeSnapshot.agentAnalysisMeta?.refinementState || 'not-requested',
+        refinementCompletion: activeSnapshot.agentAnalysisMeta?.refinementCompletion || null,
+        tippingPointCount: Array.isArray(activeSnapshot.agentAnalysis.tippingPoints) ? activeSnapshot.agentAnalysis.tippingPoints.length : 0,
+      } : null,
+      controls: {
+        publishMode: operatorSettings.preferences.agentAnalysis.publishPolicy,
+        deterministicFallbackMode: operatorSettings.preferences.agentAnalysis.deterministicFallbackMode,
+        deterministicFallbackAlwaysAvailable: operatorSettings.preferences.agentAnalysis.deterministicFallbackMode === 'always',
+        detailLevel: operatorSettings.preferences.agentAnalysis.detailLevel,
+        horizonBehavior: operatorSettings.preferences.agentAnalysis.horizonBehavior,
+        tippingPointMinProbability: operatorSettings.preferences.agentAnalysis.tippingPointMinProbability,
+        maxPublishedTippingPoints: operatorSettings.preferences.agentAnalysis.maxPublishedTippingPoints,
+        availablePublishPolicies: ['strict', 'balanced', 'exploratory'],
+        availableDeterministicFallbackModes: ['always', 'llm-unavailable-only', 'disabled'],
+        availableHorizonBehaviors: ['short-only', 'balanced', 'extended'],
+        availableTippingPointProbabilities: ['HIGH', 'MEDIUM', 'LOW'],
+      },
+    },
+    runtime: {
+      refreshIntervalMinutes: config.refreshIntervalMinutes,
+      nextSweep: lastSweepTime
+        ? new Date(new Date(lastSweepTime).getTime() + config.refreshIntervalMinutes * 60000).toISOString()
+        : null,
+      sweepInProgress,
+      sweepStartedAt,
+      watchdog: getSweepWatchdogSnapshot(),
+      locale: currentLanguage,
+    },
+    debug: {
+      endpointExposure: config.debugEndpoints?.exposure || 'local-only',
+      endpointExposureOptions: ['local-only', 'open'],
+      localRequestRequiredByDefault: (config.debugEndpoints?.exposure || 'local-only') !== 'open',
+    },
+    alerts: {
+      enabled: enabledAlerts,
+      telegramEnabled: Boolean(config.telegram?.botToken && config.telegram?.chatId),
+      discordEnabled: Boolean(config.discord?.botToken || config.discord?.webhookUrl),
+      operational: operationalAlerts,
+      criticalEvents: buildCriticalEventPolicyContract(activeSnapshot),
+      persistedPreferences: operatorSettings.preferences.alerts,
+    },
+    config: {
+      contract: runtimeConfig,
+      validation: runtimeConfig.validation,
+      driftSummary: runtimeConfig.driftSummary,
+    },
+    persistence: {
+      version: operatorSettings.version,
+      revision: operatorSettings.revision,
+      etag: buildSettingsRevisionEtag(operatorSettings),
+      updatedAt: operatorSettings.updatedAt,
+      path: null,
+      capabilities: {
+        serverFile: true,
+        export: false,
+        import: false,
+        writeApi: false,
+        writeConcurrencyToken: true,
+      },
+      concurrency: buildSettingsConcurrencyState(operatorSettings),
+      persistedPreferences: operatorSettings.preferences,
+      alertStateKey: OPERATIONAL_ALERTS_STATE_KEY,
+    },
+    access: {
+      role: 'operator',
+      mode: 'read-only',
+      diagnosticsSurface: '/diagnostics',
+      adminSurface: '/admin/settings',
+      adminApi: '/api/settings/admin',
+      sourceConsoleSurface: '/source-ops',
+      llmOperationsSurface: '/llm-ops',
+      localAdminRequired: true,
+    },
+    notes: [
+      'This surface centralizes current operator-visible settings and runtime posture.',
+      'Operator settings is intentionally a read-only operator surface; diagnostics live under /diagnostics and local-only admin controls live under /admin/settings so runtime review and sensitive writes are separated from normal viewing.',
+      'Runtime configuration is exposed as a versioned contract with defaults, effective values, validation, and drift summary.',
+      'Operator preference persistence applies layout posture, source selection, default LLM mode, agent-analysis tuning controls, and critical-event alert policy defaults directly through the runtime contract.',
+      'Source lifecycle actions expose policy blockers, recommended next states, and human-approval boundaries before any production-affecting mutation is allowed.',
+    ],
+  };
+}
+
+function buildRuntimeControlContract(snapshot = null) {
+  const watchdog = getSweepWatchdogSnapshot();
+  const nowMs = Date.now();
+  const cwd = typeof ROOT === 'string' ? ROOT : (typeof process?.cwd === 'function' ? process.cwd() : null);
+  const port = config?.port ?? null;
+  const startedAt = typeof startTime === 'number' ? new Date(startTime).toISOString() : null;
+  const uptimeSeconds = typeof startTime === 'number' ? Math.floor((Date.now() - startTime) / 1000) : null;
+  const jobs = typeof getRuntimeJobsSnapshot === 'function'
+    ? getRuntimeJobsSnapshot()
+    : (typeof runtimeJobTelemetry !== 'undefined'
+      ? {
+          synthesis: { ...(runtimeJobTelemetry.synthesis || {}) },
+          ideas: { ...(runtimeJobTelemetry.ideas || {}) },
+          analysis: { ...(runtimeJobTelemetry.analysis || {}) },
+        }
+      : {
+          synthesis: {},
+          ideas: {},
+          analysis: {},
+        });
+  const restartAudit = typeof getRuntimeRestartAuditState === 'function'
+    ? getRuntimeRestartAuditState()
+    : { version: 'runtime-restart-audit-v1', updatedAt: null, history: [] };
+  const currentPhaseElapsedMs = watchdog.phaseStartedAt ? Math.max(0, nowMs - new Date(watchdog.phaseStartedAt).getTime()) : null;
+  const rawSweepCompletedAtMs = lastBriefingCompletedAt ? new Date(lastBriefingCompletedAt).getTime() : null;
+  const rawSnapshotPersistedAtMs = lastRawSnapshotPersistedAt ? new Date(lastRawSnapshotPersistedAt).getTime() : null;
+  const publishedAtMs = lastSweepTime ? new Date(lastSweepTime).getTime() : null;
+  const rawToPersistLatencyMs = Number.isFinite(rawSweepCompletedAtMs) && Number.isFinite(rawSnapshotPersistedAtMs)
+    ? Math.max(0, rawSnapshotPersistedAtMs - rawSweepCompletedAtMs)
+    : null;
+  const rawToPublishLatencyMs = Number.isFinite(rawSweepCompletedAtMs) && Number.isFinite(publishedAtMs)
+    ? Math.max(0, publishedAtMs - rawSweepCompletedAtMs)
+    : null;
+  return {
+    version: 'runtime-control-v1',
+    process: {
+      pid: process.pid,
+      port,
+      cwd,
+      startedAt,
+      uptimeSeconds,
+    },
+    sweep: {
+      inProgress: sweepInProgress,
+      startedAt: sweepStartedAt,
+      currentPhase: watchdog.phase,
+      currentPhaseStartedAt: watchdog.phaseStartedAt,
+      currentPhaseElapsedMs,
+      lastCompletedPhase: watchdog.lastCompletedPhase,
+      lastCompletedAt: watchdog.lastCompletedAt,
+      lastFailurePhase: watchdog.lastFailurePhase,
+      lastFailureAt: watchdog.lastFailureAt,
+      lastFailureReason: watchdog.lastFailureReason,
+      lastRecoveryPhase: watchdog.lastRecoveryPhase,
+      lastRecoveryAt: watchdog.lastRecoveryAt,
+      lastRecoveryReason: watchdog.lastRecoveryReason,
+      watchdog,
+    },
+    lastSuccess: {
+      publishedAt: lastSweepTime,
+      publishedSnapshotTimestamp: lastPublishedSnapshotTimestamp,
+      candidateSnapshotTimestamp,
+      candidateTimestampSource: candidateSnapshotTimestamp ? (candidateSnapshotTimestamp === lastBriefingCompletedAt ? 'briefing-completed-at' : 'raw-meta-timestamp') : null,
+      rawSweepCompletedAt: lastBriefingCompletedAt,
+      rawSnapshotPersistedAt: lastRawSnapshotPersistedAt,
+      rawToPersistLatencyMs,
+      rawToPublishLatencyMs,
+      snapshotTimestamp: lastPublishedSnapshotTimestamp,
+      sourcesOk: snapshot?.meta?.sourcesOk ?? null,
+      sourcesFailed: snapshot?.meta?.sourcesFailed ?? null,
+      ideasSource: snapshot?.ideasSource || null,
+      agentAnalysisStatus: snapshot?.agentAnalysis?.status || null,
+      agentAnalysisRefinementState: snapshot?.agentAnalysisMeta?.refinementState || null,
+    },
+    jobs,
+    restartAudit: {
+      version: restartAudit.version || 'runtime-restart-audit-v1',
+      endpoint: '/api/runtime/control',
+      updatedAt: restartAudit.updatedAt || null,
+      totalEntries: Array.isArray(restartAudit.history) ? restartAudit.history.length : 0,
+      recentEntries: Array.isArray(restartAudit.history) ? restartAudit.history.slice(0, 8) : [],
+      notes: [
+        'Retained runtime action audit shows queued and completed bounded actions, including restart-safe and stop.',
+        'Restart-safe entries include listener-rotation proof when available; stop entries record the queued and final termination handoff.',
+        'Entries are sourced from local runtime control flow and helper outcomes, not inferred from chat responses.',
+      ],
+    },
+    controls: {
+      endpoint: '/api/runtime/control',
+      allowedActions: ['restart-safe', 'stop'],
+      requiresLocalRequest: true,
+      bounded: true,
+      notes: [
+        'restart-safe spawns the local restart helper and lets it prove listener ownership before replacing the active process.',
+        'stop terminates the current local Crucix server process after acknowledging the request.',
+      ],
+    },
+  };
+}
+
+function getLlmProviderReadinessSnapshot() {
+  const base = typeof llmProviderProbeState !== 'undefined' && llmProviderProbeState
+    ? llmProviderProbeState
+    : {
+        version: 'llm-provider-readiness-v1',
+        configured: Boolean(config.llm?.provider),
+        available: Boolean(llmProvider?.isConfigured),
+        status: !config.llm?.provider ? 'disabled' : (llmProvider?.isConfigured ? 'unknown' : 'misconfigured'),
+        checkedAt: null,
+        inFlight: false,
+        stale: false,
+        summary: !config.llm?.provider ? 'No LLM provider configured.' : (llmProvider?.isConfigured ? 'No active readiness probe has completed yet.' : 'Provider configuration is incomplete.'),
+        probeTtlMs: 5 * 60 * 1000,
+        timeoutMs: 4000,
+        consecutiveFailures: 0,
+        lastLatencyMs: null,
+        lastModel: llmProvider?.model || config.llm?.model || null,
+        lastCheckedReason: null,
+        lastSuccess: { at: null, latencyMs: null, model: null, detail: null },
+        lastFailure: { at: null, latencyMs: null, reason: null, detail: null, classification: null, status: null, retryable: null },
+        lastProbeType: null,
+      };
+  const checkedAtMs = base?.checkedAt ? new Date(base.checkedAt).getTime() : 0;
+  const stale = Boolean(base?.configured && checkedAtMs && ((Date.now() - checkedAtMs) > Number(base?.probeTtlMs || 0)));
+  return {
+    ...base,
+    configured: Boolean(base?.configured ?? config.llm?.provider),
+    available: Boolean(base?.available ?? llmProvider?.isConfigured),
+    stale,
+    lastModel: base?.lastModel || llmProvider?.model || config.llm?.model || null,
+    lastSuccess: {
+      at: base?.lastSuccess?.at || null,
+      latencyMs: base?.lastSuccess?.latencyMs ?? null,
+      model: base?.lastSuccess?.model || null,
+      detail: base?.lastSuccess?.detail || null,
+    },
+    lastFailure: {
+      at: base?.lastFailure?.at || null,
+      latencyMs: base?.lastFailure?.latencyMs ?? null,
+      reason: base?.lastFailure?.reason || null,
+      detail: base?.lastFailure?.detail || null,
+      classification: base?.lastFailure?.classification || null,
+      status: base?.lastFailure?.status ?? null,
+      retryable: base?.lastFailure?.retryable ?? null,
+    },
+    lastProbeType: base?.lastProbeType || null,
+  };
+}
+
+async function refreshLlmProviderReadiness({ force = false, reason = 'unspecified' } = {}) {
+  const configured = Boolean(config.llm?.provider);
+  const available = Boolean(llmProvider?.isConfigured);
+  if (!configured) {
+    llmProviderProbeState = {
+      ...getLlmProviderReadinessSnapshot(),
+      configured,
+      available,
+      status: 'disabled',
+      checkedAt: new Date().toISOString(),
+      inFlight: false,
+      stale: false,
+      summary: 'No LLM provider configured.',
+      lastCheckedReason: reason,
+    };
+    return getLlmProviderReadinessSnapshot();
+  }
+  if (!available || typeof llmProvider?.probe !== 'function') {
+    llmProviderProbeState = {
+      ...getLlmProviderReadinessSnapshot(),
+      configured,
+      available,
+      status: 'misconfigured',
+      checkedAt: new Date().toISOString(),
+      inFlight: false,
+      stale: false,
+      summary: 'Provider is configured in settings but is not probe-ready at runtime.',
+      lastCheckedReason: reason,
+    };
+    return getLlmProviderReadinessSnapshot();
+  }
+
+  const snapshot = getLlmProviderReadinessSnapshot();
+  if (!force && !snapshot.stale && snapshot.checkedAt) return snapshot;
+  if (llmProviderProbePromise) return llmProviderProbePromise;
+
+  llmProviderProbeState = {
+    ...snapshot,
+    configured,
+    available,
+    inFlight: true,
+    status: snapshot.lastSuccess.at ? 'probing' : 'unknown',
+    summary: snapshot.lastSuccess.at ? 'Refreshing active provider readiness probe.' : 'Running first active provider readiness probe.',
+    lastCheckedReason: reason,
+  };
+
+  llmProviderProbePromise = (async () => {
+    const startedAt = Date.now();
+    const startedIso = new Date().toISOString();
+    try {
+      const result = await llmProvider.probe({ timeout: LLM_PROVIDER_PROBE_TIMEOUT_MS, maxTokens: 8 });
+      llmProviderProbeState = {
+        ...llmProviderProbeState,
+        configured,
+        available,
+        status: 'ready',
+        checkedAt: startedIso,
+        inFlight: false,
+        stale: false,
+        summary: result?.probeType === 'synthetic-completion'
+          ? 'Active readiness probe succeeded via bounded synthetic completion.'
+          : `Active readiness probe succeeded via ${String(result?.probeType || 'provider-specific check')}.`,
+        consecutiveFailures: 0,
+        lastLatencyMs: Number(result?.latencyMs) || (Date.now() - startedAt),
+        lastModel: result?.model || llmProvider?.model || config.llm?.model || null,
+        lastCheckedReason: reason,
+        lastProbeType: result?.probeType || 'synthetic-completion',
+        lastSuccess: {
+          at: startedIso,
+          latencyMs: Number(result?.latencyMs) || (Date.now() - startedAt),
+          model: result?.model || llmProvider?.model || config.llm?.model || null,
+          detail: String(result?.text || '').trim().slice(0, 120) || null,
+        },
+      };
+      return getLlmProviderReadinessSnapshot();
+    } catch (error) {
+      const message = String(error?.message || error || 'probe-failed').trim();
+      const probeMeta = error?.probe || {};
+      const classification = probeMeta?.classification || 'unknown';
+      const summaryByClassification = {
+        network: 'Active readiness probe failed because the provider endpoint was unreachable.',
+        timeout: 'Active readiness probe timed out before the provider proved readiness.',
+        auth: 'Active readiness probe failed because provider authentication was rejected.',
+        'rate-limited': 'Active readiness probe was rate-limited by the provider.',
+        'missing-model': 'Active readiness probe failed because the configured model was not available.',
+        provider: 'Active readiness probe failed because the provider returned a server-side error.',
+        request: 'Active readiness probe failed because the provider rejected the probe request.',
+        unknown: 'Active readiness probe failed. Provider reachability or model readiness is currently degraded.',
+      };
+      llmProviderProbeState = {
+        ...llmProviderProbeState,
+        configured,
+        available,
+        status: 'failed',
+        checkedAt: startedIso,
+        inFlight: false,
+        stale: false,
+        summary: summaryByClassification[classification] || summaryByClassification.unknown,
+        consecutiveFailures: Number(llmProviderProbeState?.consecutiveFailures || 0) + 1,
+        lastLatencyMs: Date.now() - startedAt,
+        lastModel: llmProvider?.model || config.llm?.model || null,
+        lastCheckedReason: reason,
+        lastProbeType: probeMeta?.probeType || llmProviderProbeState?.lastProbeType || 'synthetic-completion',
+        lastFailure: {
+          at: startedIso,
+          latencyMs: Date.now() - startedAt,
+          reason: message,
+          detail: message.slice(0, 240),
+          classification,
+          status: probeMeta?.status ?? null,
+          retryable: probeMeta?.retryable ?? null,
+        },
+      };
+      return getLlmProviderReadinessSnapshot();
+    } finally {
+      llmProviderProbePromise = null;
+    }
+  })();
+
+  return llmProviderProbePromise;
+}
+
+function scheduleLlmProviderReadinessRefresh(reason = 'background-refresh') {
+  const snapshot = getLlmProviderReadinessSnapshot();
+  if (!snapshot.configured || llmProviderProbePromise || (!snapshot.stale && snapshot.checkedAt)) return;
+  refreshLlmProviderReadiness({ reason }).catch(error => {
+    console.warn('[Crucix] LLM readiness probe refresh failed:', error?.message || error);
+  });
+}
+
+function buildLlmOperationsContract(snapshot = null) {
+  const activeSnapshot = snapshot || currentData || {};
+  const operatorSettings = loadOperatorSettings();
+  const runtimeConfig = buildRuntimeConfigContract();
+  const llmState = buildOperatorLlmStateContract(activeSnapshot || {}, { provider: config.llm.provider, model: llmProvider?.model || null });
+  const runtimeControl = buildRuntimeControlContract(activeSnapshot || {});
+  const defaultMode = operatorSettings.preferences.llm.newsModeDefault || 'auto';
+  const providerWarnings = (runtimeConfig.validation?.warnings || []).filter(item => String(item?.key || '').startsWith('llm.'));
+  const providerIssues = (runtimeConfig.validation?.issues || []).filter(item => String(item?.key || '').startsWith('llm.'));
+  const newsDebug = activeSnapshot.newsLlmDebug || null;
+  const newsSummary = buildNewsClusterSummary(activeSnapshot) || {};
+  const analysis = activeSnapshot.agentAnalysis || buildAgentAnalysis(activeSnapshot);
+  const analysisMeta = activeSnapshot.agentAnalysisMeta || buildAgentAnalysisMeta({ error: llmProvider?.isConfigured ? null : 'llm-unavailable' });
+  const clusterArtifacts = summarizeClusterRepairArtifacts(Array.isArray(newsDebug?.repairArtifacts) && newsDebug.repairArtifacts.length ? newsDebug.repairArtifacts : undefined);
+  const latestArtifact = clusterArtifacts.items?.[0] || null;
+  const emptyTelemetrySummary = { callCount: 0, measuredLatencyCount: 0, totalLatencyMs: 0, avgLatencyMs: null, maxLatencyMs: null, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 }, cost: { available: false, estimatedUsd: null, measuredCallCount: 0 }, completions: {} };
+  const clusteringTelemetry = newsDebug?.telemetry || {};
+  const analysisTelemetry = analysisMeta?.llmTelemetry || null;
+  const providerReadiness = getLlmProviderReadinessSnapshot();
+  const recentFailures = [];
+  const pushFailure = (surface, reason, detail = null, severity = 'warn') => {
+    if (!reason) return;
+    recentFailures.push({ surface, reason, detail: detail || null, severity });
+  };
+
+  pushFailure('news-clustering', newsDebug?.fallbackReason || null, newsDebug?.review?.topReasons?.[0]?.reason || null, newsDebug?.fallbackReason ? 'warn' : 'info');
+  pushFailure('analysis', analysisMeta?.error || null, analysisMeta?.refinementCompletion || null, analysisMeta?.error ? 'warn' : 'info');
+  if ((activeSnapshot.ideasSource || null) === 'llm-failed') {
+    pushFailure('ideas', runtimeControl.jobs?.ideas?.error || runtimeControl.jobs?.ideas?.lastOutcome || 'llm-failed', runtimeControl.jobs?.ideas?.lastOutcome || null, 'warn');
+  }
+  if (runtimeControl.jobs?.analysis?.error) {
+    pushFailure('analysis-job', runtimeControl.jobs.analysis.error, runtimeControl.jobs.analysis.lastOutcome || null, 'warn');
+  }
+  if (runtimeControl.sweep?.lastFailureReason) {
+    pushFailure('runtime-phase', runtimeControl.sweep.lastFailureReason, runtimeControl.sweep.lastFailurePhase || null, 'warn');
+  }
+
+  return {
+    version: 'llm-operations-v1',
+    generatedAt: new Date().toISOString(),
+    surface: '/llm-ops',
+    provider: {
+      configured: Boolean(config.llm.provider),
+      available: Boolean(llmProvider?.isConfigured),
+      name: config.llm.provider || null,
+      activeModel: llmProvider?.model || config.llm.model || null,
+      baseUrl: config.llm.baseUrl || null,
+      apiKeyConfigured: Boolean(config.llm.apiKey),
+      health: providerIssues.length
+        ? 'misconfigured'
+        : !config.llm.provider
+          ? 'disabled'
+          : !llmProvider?.isConfigured
+            ? 'degraded'
+            : providerReadiness.status === 'ready'
+              ? 'ready'
+              : providerReadiness.status === 'failed'
+                ? 'degraded'
+                : providerReadiness.status === 'probing'
+                  ? 'probing'
+                  : providerReadiness.status || 'unknown',
+      warnings: providerWarnings,
+      issues: providerIssues,
+      readiness: providerReadiness,
+    },
+    runtime: llmState,
+    modes: {
+      available: ['auto', 'off', 'force'],
+      defaultNewsMode: defaultMode,
+      forcedHeuristic: defaultMode === 'off',
+      forcedLlm: defaultMode === 'force',
+      explanation: defaultMode === 'off'
+        ? 'Operator default currently forces heuristic clustering.'
+        : defaultMode === 'force'
+          ? 'Operator default currently forces the LLM clustering path before fallback.'
+          : 'Operator default uses automatic clustering mode.',
+    },
+    fallbackChains: [
+      {
+        surface: 'news-clustering',
+        entryMode: newsDebug?.requestedMode || defaultMode,
+        providerConfigured: Boolean(newsDebug?.providerConfigured ?? config.llm.provider),
+        activeModel: llmProvider?.model || config.llm.model || null,
+        fallbackTarget: 'heuristic clustering',
+        fallbackReason: newsDebug?.fallbackReason || null,
+        heuristicFallbackCount: newsDebug?.heuristicFallbackCount || 0,
+        repairAttempts: newsDebug?.retryCount || 0,
+        llmSuccessCount: newsDebug?.llmSuccessCount || 0,
+        llmErrorCount: newsDebug?.llmErrorCount || 0,
+      },
+      {
+        surface: 'agent-analysis',
+        entryMode: 'deterministic-publish-then-refine',
+        providerConfigured: Boolean(config.llm.provider),
+        activeModel: llmProvider?.model || config.llm.model || null,
+        fallbackTarget: 'published deterministic analysis',
+        fallbackReason: analysisMeta?.error || null,
+        refinementState: analysisMeta?.refinementState || null,
+        refinementCompletion: analysisMeta?.refinementCompletion || null,
+      },
+      {
+        surface: 'ideas',
+        entryMode: 'static-until-llm-runs',
+        providerConfigured: Boolean(config.llm.provider),
+        activeModel: llmProvider?.model || config.llm.model || null,
+        fallbackTarget: 'static ideas',
+        fallbackReason: (activeSnapshot.ideasSource || null) === 'llm-failed' ? (runtimeControl.jobs?.ideas?.error || runtimeControl.jobs?.ideas?.lastOutcome || 'llm-failed') : null,
+        ideasSource: activeSnapshot.ideasSource || null,
+        lastOutcome: runtimeControl.jobs?.ideas?.lastOutcome || null,
+      },
+    ],
+    llmTelemetry: {
+      clustering: {
+        aggregate: clusteringTelemetry.aggregate || emptyTelemetrySummary,
+        generation: clusteringTelemetry.clusteringSummary || emptyTelemetrySummary,
+        repair: clusteringTelemetry.repairSummary || emptyTelemetrySummary,
+      },
+      analysis: analysisTelemetry,
+    },
+    clusteringDebug: {
+      surface: 'news-clustering',
+      reviewEndpoint: '/api/brief/news/review',
+      artifactEndpoint: '/api/brief/news/review/artifacts',
+      requestedMode: newsDebug?.requestedMode || defaultMode,
+      attempted: Boolean(newsDebug?.attempted),
+      used: Boolean(newsDebug?.used),
+      fallbackReason: newsDebug?.fallbackReason || null,
+      retryCount: newsDebug?.retryCount || 0,
+      repairAttemptCount: newsDebug?.repairAttemptCount || 0,
+      repairSuccessCount: newsDebug?.repairSuccessCount || 0,
+      review: newsDebug?.review ? {
+        failedRegionCount: newsDebug.review.failedRegionCount || 0,
+        topReasons: Array.isArray(newsDebug.review.topReasons) ? newsDebug.review.topReasons.slice(0, 4) : [],
+        reviewItems: Array.isArray(newsDebug.review.reviewItems) ? newsDebug.review.reviewItems.slice(0, 4).map(item => ({
+          region: item.region || null,
+          reason: item.reason || null,
+          itemCount: item.itemCount || 0,
+        })) : [],
+      } : null,
+      promptDebug: latestArtifact ? {
+        latestRegion: latestArtifact.region || null,
+        latestReason: latestArtifact.reason || null,
+        latestStage: latestArtifact.stage || null,
+        promptFingerprint: latestArtifact.promptFingerprint || null,
+        repairPromptFingerprint: latestArtifact.repairPromptFingerprint || null,
+        tuningFingerprint: latestArtifact.tuningFingerprint || null,
+        promptPreview: latestArtifact.promptPreview || null,
+        repairPromptPreview: latestArtifact.repairPromptPreview || null,
+      } : null,
+      parseFailureArtifacts: {
+        totalArtifacts: clusterArtifacts.totalArtifacts || 0,
+        topReasons: Array.isArray(clusterArtifacts.topReasons) ? clusterArtifacts.topReasons.slice(0, 4) : [],
+        topRegions: Array.isArray(clusterArtifacts.topRegions) ? clusterArtifacts.topRegions.slice(0, 4) : [],
+      },
+      telemetry: {
+        aggregate: clusteringTelemetry.aggregate || emptyTelemetrySummary,
+        generation: clusteringTelemetry.clusteringSummary || emptyTelemetrySummary,
+        repair: clusteringTelemetry.repairSummary || emptyTelemetrySummary,
+      },
+    },
+    reasoningValidation: {
+      analysis: {
+        endpoint: '/api/analysis/validation-summary',
+        reviewEndpoint: '/api/analysis/review',
+        available: true,
+        reasoningSurfacePresent: Boolean(analysis?.sourceReasoning),
+        sourceReasoning: analysis?.sourceReasoning ? {
+          totalSources: Number(analysis.sourceReasoning.totalSources) || 0,
+          anchorCount: Number(analysis.sourceReasoning.anchorCount) || 0,
+          corroboratorCount: Number(analysis.sourceReasoning.corroboratorCount) || 0,
+          anomalyDetectorCount: Number(analysis.sourceReasoning.anomalyDetectorCount) || 0,
+          contextCount: Number(analysis.sourceReasoning.contextCount) || 0,
+          exploratoryCount: Number(analysis.sourceReasoning.exploratoryCount) || 0,
+          cautionRoles: Array.isArray(analysis.sourceReasoning.guidance?.cautionRoles) ? analysis.sourceReasoning.guidance.cautionRoles.slice(0, 3) : [],
+          groundingPriority: Array.isArray(analysis.sourceReasoning.guidance?.groundingPriority) ? analysis.sourceReasoning.guidance.groundingPriority.slice(0, 5) : [],
+        } : null,
+        refinement: {
+          source: analysisMeta.source || 'deterministic',
+          state: analysisMeta.refinementState || 'not-requested',
+          completion: analysisMeta.refinementCompletion || null,
+          error: analysisMeta.error || null,
+          model: analysisMeta.model || llmProvider?.model || null,
+        },
+      },
+      news: {
+        endpoint: '/api/brief/news',
+        reasoningSurfacePresent: Boolean(newsSummary?.sourceReasoning),
+        sourceReasoning: newsSummary?.sourceReasoning ? {
+          totalSources: Number(newsSummary.sourceReasoning.totalSources) || 0,
+          anchorCount: Number(newsSummary.sourceReasoning.anchorCount) || 0,
+          corroboratorCount: Number(newsSummary.sourceReasoning.corroboratorCount) || 0,
+          anomalyDetectorCount: Number(newsSummary.sourceReasoning.anomalyDetectorCount) || 0,
+          exploratoryCount: Number(newsSummary.sourceReasoning.exploratoryCount) || 0,
+          cautionRoles: Array.isArray(newsSummary.sourceReasoning.guidance?.cautionRoles) ? newsSummary.sourceReasoning.guidance.cautionRoles.slice(0, 3) : [],
+        } : null,
+      },
+    },
+    recentFailures,
+    navigation: {
+      operatorSurface: '/settings',
+      diagnosticsSurface: '/diagnostics',
+      adminSurface: '/admin/settings',
+      sourceConsoleSurface: '/source-ops',
+      api: '/api/llm/operations',
+    },
+    notes: [
+      'This surface centralizes provider posture, active model, mode forcing, fallback chains, and recent LLM-related failure reasons.',
+      'Prompt-debug previews, parse-failure artifact summaries, and reasoning-surface validation indicators are exposed here so operators do not need direct file inspection.',
+      'Provider health now includes an active readiness probe heartbeat with last-success and last-failure details rather than relying only on configuration posture.',
+    ],
+  };
+}
+
+function buildAdminSettingsContract(snapshot = null) {
+  const operator = buildOperatorSettingsContract(snapshot);
+  const operatorSettings = loadOperatorSettings();
+  return {
+    ...operator,
+    version: 'admin-settings-v1',
+    sections: [...operator.sections, 'admin', 'runtimeControl'],
+    persistence: {
+      ...operator.persistence,
+      path: OPERATOR_SETTINGS_PATH,
+      capabilities: {
+        serverFile: true,
+        export: true,
+        import: true,
+        writeApi: true,
+        stateBundle: true,
+        auditHistory: true,
+        writeConcurrencyToken: true,
+      },
+      persistedPreferences: operatorSettings.preferences,
+      latestAudit: settingsAdminAuditSnapshot(1)[0] || null,
+    },
+    access: {
+      role: 'admin',
+      mode: 'local-write',
+      operatorSurface: '/settings',
+      diagnosticsSurface: '/diagnostics',
+      localAdminRequired: true,
+    },
+    runtimeControl: buildRuntimeControlContract(snapshot),
+    admin: {
+      controls: {
+        exportEndpoint: '/api/settings/export',
+        importEndpoint: '/api/settings/import',
+        writeEndpoint: '/api/settings/operator',
+        auditEndpoint: '/api/settings/audit',
+        concurrencyHeader: 'If-Match',
+        writeAuthHeader: LOCAL_ADMIN_WRITE_HEADER,
+        writeAuthBodyField: LOCAL_ADMIN_WRITE_BODY_FIELD,
+        runtimeControlEndpoint: '/api/runtime/control',
+        runtimeHistoryDiagnosticsEndpoint: '/api/runtime-history/diagnostics',
+      },
+      boundaries: {
+        requiresLocalRequest: true,
+        debugExposure: config.debugEndpoints?.exposure || 'local-only',
+      },
+      backup: {
+        exportModes: ['settings', 'bundle'],
+        importModes: ['settings', 'bundle'],
+        bundleVersion: 'settings-state-bundle-v1',
+      },
+      auditTrail: settingsAdminAuditSnapshot(12),
+      writeAuth: buildLocalAdminWriteAuthState(),
+    },
+    notes: [
+      ...operator.notes,
+      'Admin settings is a local-only surface intended for persisted writes, export, import, and other debug-adjacent control-plane actions.',
+    ],
+  };
+}
+
 // API: current data
-app.get('/api/data', (req, res) => {
-  if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
-  res.json(currentData);
+app.get('/api/data', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  const review = snapshot?.newsLlmDebug?.review
+    ? attachClusterReviewStats(annotateReview(snapshot.newsLlmDebug.review))
+    : { reviewItems: [], dismissedItems: [], activeCount: 0, dismissedCount: 0, ackSummary: reviewAckStats(), stats: summarizeClusterReviewStats() };
+  const llmState = buildOperatorLlmStateContract(snapshot);
+  const sourceOps = buildOperatorSourceOps(snapshot);
+  const reviewQueue = buildOperatorReviewQueue(review, { quality: snapshot.newsClusterQuality || null });
+  const criticalEventQueue = buildCriticalEventQueueContract(snapshot);
+  const criticalEventRouting = buildCriticalEventRoutingContract(snapshot);
+  const sdrCorroboration = buildSdrCorroborationContract(snapshot);
+  const socialLeads = socialLeadStore.buildContract();
+  res.json({
+    ...snapshot,
+    llmState,
+    runtimeLlm: llmState.runtimeLlm,
+    reviewQueue,
+    criticalEventQueue,
+    criticalEventRouting,
+    sdrCorroboration,
+    socialLeads,
+    reviewWorkflow: buildReviewWorkflowContract(snapshot, { queue: reviewQueue, review }),
+    sourceInventory: sourceOps.inventory,
+    sourceOps,
+  });
+});
+
+app.get('/api/settings', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  res.json(buildOperatorSettingsContract(snapshot));
+});
+
+app.get('/api/settings/admin', requireDebugAccess, async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  res.json(buildAdminSettingsContract(snapshot));
+});
+
+app.get('/api/llm/operations', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  await refreshLlmProviderReadiness({ reason: 'llm-operations-endpoint' });
+  res.json(buildLlmOperationsContract(snapshot));
+});
+
+app.get('/api/settings/export', requireDebugAccess, (req, res) => {
+  const mode = String(req.query?.mode || 'settings').trim().toLowerCase();
+  const payload = mode === 'bundle' ? buildSettingsStateBundle() : loadOperatorSettings();
+  const audit = recordSettingsAdminAudit({
+    action: 'export',
+    mode,
+    status: 'success',
+    summary: mode === 'bundle'
+      ? {
+          bundleVersion: payload.version,
+          settings: buildSettingsPayloadSummary(payload.config?.operatorSettings || {}),
+          state: {
+            reviewAcks: Array.isArray(payload.state?.reviewAcks) ? payload.state.reviewAcks.length : 0,
+            reviewWorkflowAudit: Array.isArray(payload.state?.reviewWorkflowAudit) ? payload.state.reviewWorkflowAudit.length : 0,
+            clusterRepairActions: Array.isArray(payload.state?.clusterRepairActions?.decisions) ? payload.state.clusterRepairActions.decisions.length : 0,
+            noiseSuppressionHistoryPresent: payload.state?.noiseSuppressionHistory != null,
+            operationalAlertPolicies: Object.keys(payload.state?.operationalAlertsState?.policies || {}).length,
+          },
+        }
+      : { settings: buildSettingsPayloadSummary(payload) },
+  });
+  res.json(mode === 'bundle' ? { ...payload, audit } : payload);
+});
+
+app.get('/api/settings/audit', requireDebugAccess, (req, res) => {
+  const requestedLimit = Number.parseInt(String(req.query?.limit || '25'), 10);
+  const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(requestedLimit, 100)) : 25;
+  res.json({
+    version: 'settings-admin-audit-v1',
+    endpoint: '/api/settings/audit',
+    totalEntries: settingsAdminAudit.length,
+    entries: settingsAdminAuditSnapshot(limit),
+  });
+});
+
+app.get('/api/runtime-history/diagnostics', requireDebugAccess, (req, res) => {
+  const requestedSampleLimit = Number.parseInt(String(req.query?.sampleLimit || '3'), 10);
+  const sampleLimit = Number.isFinite(requestedSampleLimit) ? Math.max(0, Math.min(requestedSampleLimit, 10)) : 3;
+  const diagnostics = memory.runtimeHistoryStore.getDiagnostics({ sampleLimit });
+  res.json({
+    ...diagnostics,
+    endpoint: '/api/runtime-history/diagnostics',
+    notes: [
+      'This admin-only surface is bounded on purpose: quick_check(1) avoids a full blocking integrity sweep, and samples are capped to a small recent window.',
+      'Use this surface to confirm row growth, last-write freshness, and basic SQLite health without shell access.',
+    ],
+  });
+});
+
+app.put('/api/settings/operator', requireDebugAccess, (req, res) => {
+  try {
+    assertLocalAdminWriteToken(req);
+    const expected = resolveExpectedSettingsRevision(req);
+    const saved = mergeOperatorSettingsPatch(req.body || {}, { expected });
+    const audit = recordSettingsAdminAudit({
+      action: 'write',
+      mode: 'settings',
+      status: 'success',
+      summary: { settings: buildSettingsPayloadSummary(saved) },
+    });
+    res.setHeader('ETag', buildSettingsRevisionEtag(saved));
+    res.json({ ok: true, settings: saved, concurrency: buildSettingsConcurrencyState(saved), audit });
+  } catch (error) {
+    const statusCode = Number(error?.statusCode) || 400;
+    const audit = recordSettingsAdminAudit({
+      action: 'write',
+      mode: 'settings',
+      status: statusCode === 409 ? 'conflict' : 'failed',
+      error: error?.payload?.error || error.message || 'settings-write-failed',
+    });
+    res.status(statusCode).json({ ...(error?.payload || { ok: false, error: error.message || 'settings-write-failed' }), audit });
+  }
+});
+
+app.post('/api/source-ops/control', requireDebugAccess, (req, res) => {
+  const action = String(req.body?.action || '').trim();
+  const sourceId = String(req.body?.sourceId || '').trim();
+  try {
+    assertLocalAdminWriteToken(req);
+  } catch (error) {
+    return res.status(Number(error?.statusCode) || 428).json(error?.payload || { ok: false, error: error.message || 'local-admin-write-token-required' });
+  }
+  const expected = resolveExpectedSettingsRevision(req);
+  const allowedActions = ['suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine'];
+  if (!allowedActions.includes(action)) {
+    return res.status(400).json({ ok: false, error: 'unsupported-source-op-action', allowedActions });
+  }
+  if (!sourceId) {
+    return res.status(400).json({ ok: false, error: 'sourceId is required' });
+  }
+  try {
+    const result = applySourceControlAction(action, sourceId, {
+      note: String(req.body?.note || '').trim() || null,
+      actorSurface: 'source-ops',
+      actorEndpoint: '/api/source-ops/control',
+      workflowAction: false,
+      expected,
+    });
+    res.json({ ok: true, ...result, concurrency: buildSettingsConcurrencyState(loadOperatorSettings()) });
+  } catch (error) {
+    const statusCode = error?.payload?.statusCode || (error.message === 'settings revision conflict' ? 409 : error.message === 'settings revision token required' ? 428 : 400);
+    res.status(statusCode).json({ ...(error?.payload || { ok: false, error: error.message || 'source-control-action-failed', allowedActions }) });
+  }
+});
+
+app.get('/api/source-ops/audit', requireDebugAccess, (req, res) => {
+  const limit = Math.max(1, Math.min(Number.parseInt(req.query.limit, 10) || 25, 100));
+  res.json({
+    version: 'source-control-audit-v1',
+    total: sourceControlAudit.length,
+    entries: sourceControlAuditSnapshot(limit),
+  });
+});
+
+app.get('/api/review-workflow/audit', requireDebugAccess, (req, res) => {
+  const limit = Math.max(1, Math.min(Number.parseInt(req.query.limit, 10) || 25, 100));
+  res.json({
+    version: 'review-workflow-audit-v1',
+    total: reviewWorkflowAudit.length,
+    entries: reviewWorkflowAuditSnapshot(limit),
+  });
+});
+
+app.post('/api/review-workflow/action', requireDebugAccess, (req, res) => {
+  const action = String(req.body?.action || '').trim();
+  const note = String(req.body?.note || '').trim();
+  try {
+    assertLocalAdminWriteToken(req);
+  } catch (error) {
+    const audit = recordReviewWorkflowAudit({ action, note: note || null, status: 'failed', error: error?.payload?.error || error.message || 'local-admin-write-token-required' });
+    return res.status(Number(error?.statusCode) || 428).json({ ...(error?.payload || { ok: false, error: error.message || 'local-admin-write-token-required' }), audit });
+  }
+  const allowedActions = ['ack', 'snooze', 'ack-noise-suppression-pressure', 'snooze-noise-suppression-pressure', 'suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine', 'promote-shadow', 'merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'];
+  if (!allowedActions.includes(action)) {
+    return res.status(400).json({ ok: false, error: 'unsupported-review-workflow-action', allowedActions });
+  }
+  try {
+    if (action === 'ack' || action === 'snooze') {
+      const region = String(req.body?.region || '').trim();
+      const reason = String(req.body?.reason || '').trim();
+      if (!region || !reason) return res.status(400).json({ ok: false, error: 'region and reason are required' });
+      const hours = Math.max(1, Math.min(Number.parseInt(req.body?.hours, 10) || 24, 24 * 14));
+      const entry = action === 'ack'
+        ? ackReviewItem(region, reason, note, { action: 'ack' })
+        : ackReviewItem(region, reason, note || `Snoozed for ${hours}h`, { action: 'snooze', durationMs: hours * 60 * 60 * 1000 });
+      const audit = recordReviewWorkflowAudit({ action, region, reason, note: note || null, status: 'applied' });
+      return res.json({ ok: true, action, entry: formatReviewAckEntry(entry), summary: reviewAckStats(), audit });
+    }
+
+    if (action === 'ack-noise-suppression-pressure' || action === 'snooze-noise-suppression-pressure') {
+      const policyKey = 'noiseSuppressionPressure';
+      const hours = Math.max(1, Math.min(Number.parseInt(req.body?.hours, 10) || 24, 24 * 14));
+      const disposition = applyOperationalAlertDisposition(policyKey, action === 'ack-noise-suppression-pressure' ? 'ack' : 'snooze', {
+        note,
+        hours,
+      });
+      if (!disposition) return res.status(400).json({ ok: false, error: 'unable to apply operational-alert disposition' });
+      const audit = recordReviewWorkflowAudit({
+        action,
+        targetType: 'operational-alert',
+        policyKey,
+        note: note || null,
+        status: 'applied',
+        snoozeHours: action === 'snooze-noise-suppression-pressure' ? hours : null,
+      });
+      return res.json({ ok: true, action, policyKey, disposition, audit });
+    }
+
+    if (['suppress-source', 'unsuppress-source', 'quarantine-source', 'clear-quarantine'].includes(action)) {
+      const sourceId = String(req.body?.sourceId || '').trim();
+      const expected = resolveExpectedSettingsRevision(req);
+      if (!sourceId) return res.status(400).json({ ok: false, error: 'sourceId is required' });
+      const result = applySourceControlAction(action, sourceId, {
+        note: note || null,
+        actorSurface: 'review-workflow',
+        actorEndpoint: '/api/review-workflow/action',
+        workflowAction: true,
+        expected,
+      });
+      const audit = recordReviewWorkflowAudit({
+        action,
+        sourceId,
+        note: note || null,
+        status: result.changed ? 'applied' : 'noop',
+        undo: result.undo,
+      });
+      return res.json({ ok: true, ...result, reviewWorkflowAudit: audit });
+    }
+
+    if (action === 'promote-shadow') {
+      const candidateId = String(req.body?.candidateId || '').trim();
+      if (!candidateId) return res.status(400).json({ ok: false, error: 'candidateId is required' });
+      const audit = recordReviewWorkflowAudit({ action, candidateId, note: note || null, status: 'recorded-human-review' });
+      return res.json({
+        ok: true,
+        action,
+        candidateId,
+        status: 'recorded-human-review',
+        detail: 'Promotion intent recorded in the audit trail. Direct registry mutation remains a separate lifecycle workflow.',
+        audit,
+      });
+    }
+
+    if (['merge-clusters', 'split-cluster', 'correct-placement', 'suppress-cluster'].includes(action)) {
+      const clusterId = String(req.body?.clusterId || '').trim();
+      const targetClusterId = String(req.body?.targetClusterId || '').trim();
+      if (!clusterId) return res.status(400).json({ ok: false, error: 'clusterId is required' });
+      const repairWorkflow = buildClusterRepairWorkflow(currentData || null);
+      const cluster = (repairWorkflow.weakClusters || []).find(item => item.clusterId === clusterId);
+      if (!cluster) return res.status(400).json({ ok: false, error: 'clusterId is not currently available for bounded repair actions' });
+      const matchedAction = (cluster.actions || []).find(item => item.id === action && (!targetClusterId || item.targetClusterId === targetClusterId));
+      if (!matchedAction) return res.status(400).json({ ok: false, error: 'requested bounded repair action is not currently available for this cluster' });
+      const decision = recordClusterRepairDecision({
+        action,
+        clusterId,
+        targetClusterId: matchedAction.targetClusterId || targetClusterId || null,
+        region: cluster.region || null,
+        headline: cluster.headline || null,
+        note: note || null,
+        status: action === 'suppress-cluster' ? 'applied' : 'recorded-human-review',
+      });
+      const audit = recordReviewWorkflowAudit({
+        action,
+        clusterId,
+        targetClusterId: matchedAction.targetClusterId || targetClusterId || null,
+        note: note || null,
+        status: action === 'suppress-cluster' ? 'applied' : 'recorded-human-review',
+      });
+      return res.json({
+        ok: true,
+        action,
+        clusterId,
+        targetClusterId: matchedAction.targetClusterId || targetClusterId || null,
+        status: action === 'suppress-cluster' ? 'applied' : 'recorded-human-review',
+        detail: matchedAction.detail || 'Bounded cluster repair action recorded.',
+        decision,
+        audit,
+      });
+    }
+  } catch (error) {
+    const audit = recordReviewWorkflowAudit({ action, note: note || null, status: 'failed', error: error.message || 'workflow-action-failed' });
+    return res.status(500).json({ ok: false, error: error.message || 'workflow-action-failed', audit });
+  }
+  return res.status(400).json({ ok: false, error: 'unsupported-review-workflow-action' });
+});
+
+app.post('/api/settings/import', requireDebugAccess, (req, res) => {
+  try {
+    assertLocalAdminWriteToken(req);
+    const expected = resolveExpectedSettingsRevision(req);
+    const imported = importSettingsStateBundle(req.body || {}, { expected });
+    const audit = recordSettingsAdminAudit({
+      action: 'import',
+      mode: imported.mode,
+      status: 'success',
+      summary: {
+        settings: buildSettingsPayloadSummary(imported.settings),
+        restored: imported.restored,
+      },
+    });
+    res.setHeader('ETag', buildSettingsRevisionEtag(imported.settings));
+    res.json({ ok: true, ...imported, concurrency: buildSettingsConcurrencyState(imported.settings), audit });
+  } catch (error) {
+    const audit = recordSettingsAdminAudit({
+      action: 'import',
+      mode: req.body?.version === 'settings-state-bundle-v1' ? 'bundle' : 'settings',
+      status: Number(error?.statusCode) === 409 ? 'conflict' : 'failed',
+      error: error?.payload?.error || error.message || 'settings-import-failed',
+    });
+    res.status(Number(error?.statusCode) || 400).json({ ...(error?.payload || { ok: false, error: error.message || 'settings-import-failed' }), audit });
+  }
+});
+
+app.post('/api/runtime/control', requireDebugAccess, (req, res) => {
+  try {
+    assertLocalAdminWriteToken(req);
+  } catch (error) {
+    return res.status(Number(error?.statusCode) || 428).json(error?.payload || { ok: false, error: error.message || 'local-admin-write-token-required' });
+  }
+  const action = String(req.body?.action || '').trim();
+  const runtimeControl = buildRuntimeControlContract(currentData || null);
+  if (!runtimeControl.controls.allowedActions.includes(action)) {
+    return res.status(400).json({ ok: false, error: 'Unsupported runtime control action', allowedActions: runtimeControl.controls.allowedActions });
+  }
+  const queuedAt = new Date().toISOString();
+  appendRuntimeRestartAudit(RUNTIME_RESTART_AUDIT_PATH, {
+    action,
+    phase: 'queued',
+    requestedByPid: process.pid,
+    queuedAt,
+    status: 'accepted',
+    port: runtimeControl.process.port,
+  });
+  if (action === 'restart-safe') {
+    res.json({ ok: true, accepted: true, action, queuedAt, process: runtimeControl.process });
+    setTimeout(() => {
+      try {
+        const out = spawn(process.execPath, [join(ROOT, 'scripts', 'restart-helper.mjs')], {
+          cwd: ROOT,
+          env: { ...process.env, PORT: String(config.port) },
+          detached: true,
+          stdio: ['ignore', 'ignore', 'ignore'],
+        });
+        out.unref();
+        writeFileSync(RUNTIME_CONTROL_LOG_PATH, `${new Date().toISOString()} queued restart-safe from pid=${process.pid}\n`, { flag: 'a' });
+      } catch (error) {
+        appendRuntimeRestartAudit(RUNTIME_RESTART_AUDIT_PATH, {
+          action,
+          phase: 'queue-failed',
+          requestedByPid: process.pid,
+          queuedAt,
+          status: 'failed',
+          port: runtimeControl.process.port,
+          error: error.message || 'failed-to-queue-restart-helper',
+        });
+        writeFileSync(RUNTIME_CONTROL_LOG_PATH, `${new Date().toISOString()} failed to queue restart-safe from pid=${process.pid}: ${error.message}\n`, { flag: 'a' });
+      }
+    }, 100);
+    return;
+  }
+  res.json({ ok: true, accepted: true, action, queuedAt, process: runtimeControl.process });
+  setTimeout(() => {
+    appendRuntimeRestartAudit(RUNTIME_RESTART_AUDIT_PATH, {
+      action,
+      phase: 'completed',
+      requestedByPid: process.pid,
+      queuedAt,
+      completedAt: new Date().toISOString(),
+      status: 'ok',
+      port: runtimeControl.process.port,
+      livePid: process.pid,
+      handoff: 'sigterm-requested',
+    });
+    process.kill(process.pid, 'SIGTERM');
+  }, 100);
+});
+
+app.get('/api/social-leads', requireDebugAccess, (req, res) => {
+  const requestedLimit = Number.parseInt(String(req.query?.limit || '25'), 10);
+  const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(requestedLimit, 100)) : 25;
+  const leads = socialLeadStore.list({ limit });
+  res.json({
+    ...socialLeadStore.buildContract(undefined, { limit: Math.min(limit, 10) }),
+    leads,
+  });
+});
+
+app.get('/api/social-leads/:leadId', requireDebugAccess, (req, res) => {
+  const leadId = String(req.params?.leadId || '').trim();
+  const lead = socialLeadStore.get(leadId);
+  if (!lead) return res.status(404).json({ ok: false, error: 'social-lead-not-found', leadId });
+  res.json({ ok: true, lead });
+});
+
+app.post('/api/social-leads/intake', requireDebugAccess, (req, res) => {
+  try {
+    assertLocalAdminWriteToken(req);
+  } catch (error) {
+    return res.status(Number(error?.statusCode) || 428).json(error?.payload || { ok: false, error: error.message || 'local-admin-write-token-required' });
+  }
+  try {
+    const result = socialLeadStore.intake(req.body || {});
+    res.status(201).json({ ok: true, lead: result.lead, socialLeads: result.summary });
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message || 'social-lead-intake-failed' });
+  }
+});
+
+app.get('/api/brief/compact', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  const corroborated = attachSignalIds('corroborated', snapshot.corroboratedSignals || []);
+  const suspects = attachSignalIds('suspect', snapshot.suspectSignals || []);
+  const llmState = buildOperatorLlmStateContract(snapshot);
+  const sourceOps = buildOperatorSourceOps(snapshot);
+  res.json({
+    text: buildIMessengerBrief(snapshot),
+    evidenceSummary: snapshot.evidenceSummary || null,
+    newsSummary: buildNewsClusterSummary(snapshot),
+    agentAnalysis: buildAgentAnalysisSummary(snapshot),
+    llmState,
+    runtimeLlm: llmState.runtimeLlm,
+    reviewWorkflow: buildReviewWorkflowContract(snapshot),
+    sourceInventory: {
+      total: sourceOps.inventory.total,
+      byLifecycle: sourceOps.inventory.byLifecycle,
+      byCategory: sourceOps.inventory.byCategory,
+      liveStateSummary: sourceOps.inventory.liveStateSummary,
+    },
+    sourceOpsNeeds: sourceOps.needs,
+    topCorroborated: corroborated[0] || null,
+    topSuspect: suspects[0] || null,
+    corroboratedSignals: corroborated.slice(0, 5),
+    suspectSignals: suspects.slice(0, 5),
+  });
+});
+
+app.get('/api/brief/news/review', requireDebugAccess, async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  const requestedMode = typeof req.query.llm === 'string' ? req.query.llm.trim().toLowerCase() : 'auto';
+  const llmMode = ['auto', 'off', 'force'].includes(requestedMode) ? requestedMode : 'auto';
+  const baseSummary = llmMode === 'auto'
+    ? buildNewsClusterSummary(snapshot)
+    : buildNewsClusterSummary({
+        ...(await (async () => {
+          const { clusters, llmDebug, qualitySummary } = await buildNewsClusters(snapshot.news || [], llmProvider, { mode: llmMode });
+          return { newsClusters: clusters, newsLlmDebug: llmDebug, newsClusterQuality: qualitySummary };
+        })()),
+      });
+  if (!baseSummary?.llm) return res.json({ review: null, queue: buildOperatorReviewQueue({ reviewItems: [], dismissedItems: [], activeCount: 0, dismissedCount: 0, ackSummary: reviewAckStats(), stats: summarizeClusterReviewStats() }), llm: null, quality: baseSummary?.quality || null, totalClusters: baseSummary?.totalClusters || 0, ackSummary: reviewAckStats() });
+  const review = attachClusterReviewStats(annotateReview(baseSummary.llm.review || { failedRegionCount: 0, topReasons: [], reviewItems: [] }));
+  const queue = buildOperatorReviewQueue(review, { quality: baseSummary.quality || null });
+  res.json({
+    totalClusters: baseSummary.totalClusters,
+    quality: baseSummary.quality || null,
+    llm: baseSummary.llm,
+    review,
+    queue,
+    workflow: buildReviewWorkflowContract(snapshot, { queue, review }),
+  });
+});
+
+app.get('/api/brief/news/review/stats', requireDebugAccess, (req, res) => {
+  res.json({
+    stats: summarizeClusterReviewStats(),
+    pressure: summarizeClusterPressureStats(),
+  });
+});
+
+app.get('/api/brief/news/review/artifacts', requireDebugAccess, (req, res) => {
+  const region = typeof req.query.region === 'string' ? req.query.region.trim() : '';
+  const reason = typeof req.query.reason === 'string' ? req.query.reason.trim() : '';
+  const artifacts = summarizeClusterRepairArtifacts();
+  const filteredItems = (artifacts.items || []).filter(item => {
+    if (region && String(item?.region || '').trim() !== region) return false;
+    if (reason && String(item?.reason || '').trim() !== reason) return false;
+    return true;
+  });
+  res.json({
+    filter: {
+      region: region || null,
+      reason: reason || null,
+      applied: Boolean(region || reason),
+    },
+    artifacts: {
+      ...artifacts,
+      filteredCount: filteredItems.length,
+      items: filteredItems,
+    },
+  });
+});
+
+app.get('/api/trends', requireDebugAccess, (req, res) => {
+  res.json({
+    trendSummary: memory.getTrendSummary(),
+  });
+});
+
+app.get('/api/analysis', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  res.json({
+    agentAnalysis: snapshot.agentAnalysis || buildAgentAnalysis(snapshot),
+    meta: snapshot.agentAnalysisMeta || buildAgentAnalysisMeta({ error: llmProvider?.isConfigured ? null : 'llm-unavailable' }),
+  });
+});
+
+app.get('/api/analysis/review', requireDebugAccess, async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  const analysis = snapshot.agentAnalysis || buildAgentAnalysis(snapshot);
+  res.json({
+    agentAnalysis: analysis,
+    published: buildAgentAnalysisSummary(snapshot),
+    meta: snapshot.agentAnalysisMeta || buildAgentAnalysisMeta({ error: llmProvider?.isConfigured ? null : 'llm-unavailable' }),
+    trendSummary: snapshot.trendSummary || memory.getTrendSummary(),
+    baseline6h: snapshot.baseline6h || null,
+    deltaSummary: snapshot.delta?.summary || null,
+  });
+});
+
+app.get('/api/analysis/validation-summary', async (req, res) => {
+  try {
+    const summary = await runAgentAnalysisValidationSummary();
+    res.json(summary);
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      error: err.message || 'validation-summary-failed',
+    });
+  }
+});
+
+app.get('/api/brief/news/review/acks', requireDebugAccess, (req, res) => {
+  const limit = Math.max(1, Math.min(Number.parseInt(req.query.limit, 10) || 20, 100));
+  res.json({
+    summary: reviewAckStats(),
+    entries: reviewAckSnapshot(limit),
+  });
+});
+
+app.post('/api/brief/news/review/ack', requireDebugAccess, (req, res) => {
+  const region = typeof req.query.region === 'string' ? req.query.region.trim() : '';
+  const reason = typeof req.query.reason === 'string' ? req.query.reason.trim() : '';
+  const note = typeof req.query.note === 'string' ? req.query.note.trim() : '';
+  if (!region || !reason) return res.status(400).json({ error: 'region and reason query parameters are required' });
+  const entry = ackReviewItem(region, reason, note, { action: 'ack' });
+  if (!entry) return res.status(400).json({ error: 'unable to acknowledge review item' });
+  res.json({
+    ok: true,
+    entry: formatReviewAckEntry(entry),
+    summary: reviewAckStats(),
+  });
+});
+
+app.post('/api/brief/news/review/snooze', requireDebugAccess, (req, res) => {
+  const region = typeof req.query.region === 'string' ? req.query.region.trim() : '';
+  const reason = typeof req.query.reason === 'string' ? req.query.reason.trim() : '';
+  const note = typeof req.query.note === 'string' ? req.query.note.trim() : '';
+  const hours = Math.max(1, Math.min(Number.parseInt(req.query.hours, 10) || 24, 24 * 14));
+  if (!region || !reason) return res.status(400).json({ error: 'region and reason query parameters are required' });
+  const entry = ackReviewItem(region, reason, note || `Snoozed for ${hours}h`, { action: 'snooze', durationMs: hours * 60 * 60 * 1000 });
+  if (!entry) return res.status(400).json({ error: 'unable to snooze review item' });
+  res.json({
+    ok: true,
+    entry: formatReviewAckEntry(entry),
+    summary: reviewAckStats(),
+    snoozeHours: hours,
+  });
+});
+
+app.delete('/api/brief/news/review/ack', requireDebugAccess, (req, res) => {
+  const region = typeof req.query.region === 'string' ? req.query.region.trim() : '';
+  const reason = typeof req.query.reason === 'string' ? req.query.reason.trim() : '';
+  if (!region || !reason) return res.status(400).json({ error: 'region and reason query parameters are required' });
+  res.json({
+    ok: true,
+    cleared: clearReviewAck(region, reason),
+    summary: reviewAckStats(),
+  });
+});
+
+app.get('/api/brief/news', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  const requestedMode = typeof req.query.llm === 'string' ? req.query.llm.trim().toLowerCase() : 'auto';
+  const llmMode = ['auto', 'off', 'force'].includes(requestedMode) ? requestedMode : 'auto';
+  if (llmMode === 'auto') {
+    return res.json(buildNewsClusterSummary(snapshot) || {
+      totalClusters: 0,
+      topCluster: null,
+      clusters: [],
+      llm: null,
+    });
+  }
+  try {
+    const { clusters, llmDebug, qualitySummary } = await buildNewsClusters(snapshot.news || [], llmProvider, { mode: llmMode });
+    return res.json(buildNewsClusterSummary({
+      newsClusters: clusters,
+      newsLlmDebug: llmDebug,
+      newsClusterQuality: qualitySummary,
+    }) || {
+      totalClusters: 0,
+      topCluster: null,
+      clusters: [],
+      llm: null,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message, llmMode });
+  }
+});
+
+app.get('/api/brief/drilldown', async (req, res) => {
+  const snapshot = await ensureCurrentData();
+  if (!snapshot) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  const requestedKind = req.query.kind === 'suspect' ? 'suspect' : 'corroborated';
+  const action = ['why', 'sources', 'expand'].includes(req.query.action) ? req.query.action : 'why';
+  const index = Math.max(0, Number.parseInt(req.query.index, 10) || 0);
+  const id = typeof req.query.id === 'string' && req.query.id.trim() ? req.query.id.trim() : null;
+  const ref = typeof req.query.ref === 'string' && req.query.ref.trim() ? req.query.ref.trim() : null;
+  const contextKey = typeof req.query.context === 'string' && req.query.context.trim() ? req.query.context.trim() : '';
+  const memoryBefore = contextKey ? selectionMeta(contextKey) : null;
+  const resolved = ref ? resolveSignalRef(snapshot, ref, requestedKind, contextKey) : { kind: requestedKind, index, id };
+  const finalKind = resolved.kind || requestedKind;
+  const finalIndex = resolved.index ?? index;
+  const finalId = resolved.id ?? id;
+  const item = getSignalSelection(snapshot, finalKind, finalIndex, finalId);
+  const usedRememberedSelection = Boolean(ref && contextKey && memoryBefore?.id && item?.id === memoryBefore.id && ['that-one', 'top-one'].includes(String(ref).trim().toLowerCase()));
+  if (item && contextKey) rememberSelection(contextKey, { kind: finalKind, index: finalIndex, id: item.id });
+  res.json({
+    kind: finalKind,
+    action,
+    index: finalIndex,
+    id: item?.id || finalId,
+    ref,
+    context: contextKey || null,
+    contextMemory: contextKey ? {
+      usedRememberedSelection,
+      before: memoryBefore,
+      after: selectionMeta(contextKey),
+    } : null,
+    text: buildIMessengerDrilldown(currentData, { kind: finalKind, action, index: finalIndex, id: item?.id || finalId }),
+    item,
+  });
+});
+
+app.get('/api/brief/context', (req, res) => {
+  const contextKey = typeof req.query.context === 'string' && req.query.context.trim() ? req.query.context.trim() : '';
+  if (!contextKey) return res.status(400).json({ error: 'context query parameter is required' });
+  res.json({
+    context: contextKey,
+    selection: selectionMeta(contextKey),
+    memory: selectionMemoryStats(),
+  });
+});
+
+app.get('/api/brief/context/health', (req, res) => {
+  res.json({
+    memory: selectionMemoryStats(),
+  });
+});
+
+app.get('/api/brief/context/debug', (req, res) => {
+  const limit = Math.max(1, Math.min(Number.parseInt(req.query.limit, 10) || 5, 20));
+  res.json({
+    memory: selectionMemoryStats(),
+    contexts: selectionMemorySnapshot(limit),
+  });
+});
+
+app.post('/api/brief/context/telemetry/reset', (req, res) => {
+  const before = selectionMemoryStats();
+  resetSelectionMemoryTelemetry();
+  res.json({
+    ok: true,
+    before,
+    after: selectionMemoryStats(),
+  });
+});
+
+app.delete('/api/brief/context', (req, res) => {
+  const contextKey = typeof req.query.context === 'string' && req.query.context.trim() ? req.query.context.trim() : '';
+  if (!contextKey) return res.status(400).json({ error: 'context query parameter is required' });
+  const existed = clearSelection(contextKey);
+  res.json({
+    context: contextKey,
+    cleared: existed,
+    selection: selectionMeta(contextKey),
+  });
 });
 
 // API: health check
 app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
+  scheduleLlmProviderReadinessRefresh('health-endpoint');
+  const openSkyRuntime = currentData?.airMeta?.runtimeState
+    ? {
+        ...currentData.airMeta.runtimeState,
+        queryMode: currentData.airMeta.queryMode || null,
+        cooldownUntil: currentData.airMeta.cooldownUntil || null,
+        cacheAgeMinutes: currentData.airMeta.cacheAgeMinutes ?? null,
+        fallback: Boolean(currentData.airMeta.fallback),
+      }
+    : readOpenSkyRuntimeState();
+  const sourceOps = buildOperatorSourceOps(currentData || null);
+  const operationalAlerts = summarizeOperationalAlertState(currentData || null);
+  const criticalEventQueue = buildCriticalEventQueueContract(currentData || null);
+  const criticalEventRouting = buildCriticalEventRoutingContract(currentData || null);
+  const sdrCorroboration = buildSdrCorroborationContract(currentData || null);
+  const runtimeControl = buildRuntimeControlContract(currentData || null);
+  const responseStatus = shuttingDown ? 503 : 200;
+  res.status(responseStatus).json({
+    status: shuttingDown ? 'shutting-down' : 'ok',
+    lifecycle: {
+      phase: runtimeLifecycle.phase,
+      ready: runtimeLifecycle.ready,
+      shuttingDown: runtimeLifecycle.shuttingDown,
+      shutdownReason: runtimeLifecycle.shutdownReason,
+      dataReady: Boolean(currentData),
+    },
+    startupValidation,
+    runtimeIdentity: {
+      pid: process.pid,
+      port: config.port,
+      cwd: ROOT,
+      startedAt: new Date(startTime).toISOString(),
+    },
+    runtimeControl,
     uptime: Math.floor((Date.now() - startTime) / 1000),
+    runtimePhase: runtimeControl.sweep.currentPhase,
+    runtimePhaseStartedAt: runtimeControl.sweep.currentPhaseStartedAt,
+    runtimePhaseElapsedMs: runtimeControl.sweep.currentPhaseElapsedMs,
     lastSweep: lastSweepTime,
     nextSweep: lastSweepTime
       ? new Date(new Date(lastSweepTime).getTime() + config.refreshIntervalMinutes * 60000).toISOString()
       : null,
     sweepInProgress,
     sweepStartedAt,
+    rawSweepCompletedAt: runtimeControl.lastSuccess.rawSweepCompletedAt,
+    rawSnapshotPersistedAt: runtimeControl.lastSuccess.rawSnapshotPersistedAt,
+    rawToPersistLatencyMs: runtimeControl.lastSuccess.rawToPersistLatencyMs,
+    rawToPublishLatencyMs: runtimeControl.lastSuccess.rawToPublishLatencyMs,
+    sweepWatchdog: runtimeControl.sweep.watchdog,
+    lastSuccess: runtimeControl.lastSuccess,
     sourcesOk: currentData?.meta?.sourcesOk || 0,
     sourcesFailed: currentData?.meta?.sourcesFailed || 0,
+    sourceHealthSummary: currentData?.healthSummary || null,
+    sourceCounters: currentData?.healthSummary?.counters || null,
+    sourceFailureClassification: currentData?.healthSummary?.failureClassification || null,
+    openSkyRuntime,
+    freshnessPolicy: {
+      configured: getFreshnessPolicy(),
+      activeSourceHealthPolicy: currentData?.healthSummary?.policy || null,
+      activeEvidencePolicy: currentData?.evidenceSummary?.policy || null,
+    },
+    sourceInventory: sourceOps.inventory,
+    sourceOps,
     llmEnabled: !!config.llm.provider,
     llmProvider: config.llm.provider,
+    llmProviderReadiness: getLlmProviderReadinessSnapshot(),
+    llmState: buildOperatorLlmStateContract(currentData || {}, { provider: config.llm.provider, model: llmProvider?.model || null }),
+    runtimeLlm: buildOperatorLlmStateContract(currentData || {}, { provider: config.llm.provider, model: llmProvider?.model || null }).runtimeLlm,
     telegramEnabled: !!(config.telegram.botToken && config.telegram.chatId),
     refreshIntervalMinutes: config.refreshIntervalMinutes,
     language: currentLanguage,
+    selectionMemory: selectionMemoryStats(),
+    reviewAcks: reviewAckStats(),
+    clusterReviewStats: summarizeClusterReviewStats(),
+    clusterPressureStats: summarizeClusterPressureStats(),
+    clusterRepairArtifacts: summarizeClusterRepairArtifacts(),
+    noiseSuppressionTelemetry: buildNoiseSuppressionContract(currentData || null).history,
+    noiseSuppressionTrend: memory.getNoiseSuppressionTelemetryHistory(),
+    trendSummary: memory.getTrendSummary(),
+    agentAnalysis: currentData?.agentAnalysis ? {
+      status: currentData.agentAnalysis.status,
+      confidenceLabel: currentData.agentAnalysis.confidenceLabel,
+      tippingPointCount: Array.isArray(currentData.agentAnalysis.tippingPoints) ? currentData.agentAnalysis.tippingPoints.length : 0,
+      source: currentData.agentAnalysisMeta?.source || 'deterministic',
+      refinementState: currentData.agentAnalysisMeta?.refinementState || 'not-requested',
+      refinementCompletion: currentData.agentAnalysisMeta?.refinementCompletion || null,
+      refinementTimedOut: Boolean(currentData.agentAnalysisMeta?.refinementTimedOut),
+      llmTelemetry: currentData.agentAnalysisMeta?.llmTelemetry || null,
+    } : null,
+    operationalAlerts,
+    criticalEventQueue,
+    criticalEventRouting,
+    sdrCorroboration,
   });
 });
 
@@ -308,15 +7299,156 @@ function broadcast(data) {
   }
 }
 
+async function enrichIdeasAndPublish(synthesized, delta) {
+  if (!llmProvider?.isConfigured) {
+    synthesized.ideas = [];
+    synthesized.ideasSource = 'disabled';
+    completeRuntimeJob('ideas', { outcome: 'disabled', completedAt: new Date().toISOString(), durationMs: 0 });
+    return synthesized;
+  }
+
+  const attemptId = `ideas-refine-${String((runtimeJobTelemetry.ideas?.attemptCount || 0) + 1).padStart(4, '0')}`;
+  const startedAt = new Date().toISOString();
+  const startMs = Date.now();
+  markRuntimePhase('llm-ideas-refinement', startedAt);
+  beginRuntimeJob('ideas', { attemptId, startedAt, isRetry: (runtimeJobTelemetry.ideas?.attemptCount || 0) > 0 });
+
+  try {
+    console.log(`[Crucix] Generating LLM trade ideas (${attemptId})...`);
+    const previousIdeas = memory.getLastRun()?.ideas || [];
+    const llmIdeas = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas);
+    synthesized.ideas = llmIdeas || [];
+    synthesized.ideasSource = llmIdeas ? 'llm' : 'llm-failed';
+    const durationMs = Date.now() - startMs;
+    completeRuntimeJob('ideas', { completedAt: new Date().toISOString(), durationMs, outcome: llmIdeas ? 'completed' : 'fallback-empty' });
+    console.log(`[Crucix] LLM ideas ready: ${synthesized.ideas.length} (${synthesized.ideasSource})`);
+  } catch (llmErr) {
+    const durationMs = Date.now() - startMs;
+    const timedOut = /timeout|timed out|abort/i.test(llmErr.message || '');
+    console.error('[Crucix] LLM ideas failed (non-fatal):', llmErr.message);
+    synthesized.ideas = [];
+    synthesized.ideasSource = 'llm-failed';
+    completeRuntimeJob('ideas', { completedAt: new Date().toISOString(), durationMs, outcome: timedOut ? 'timed-out' : 'failed', error: llmErr.message || null, timedOut });
+    failRuntimePhase(timedOut ? 'llm-ideas-timeout' : (llmErr.message || 'llm-ideas-error'), 'llm-ideas-refinement');
+  }
+
+  if (runtimeJobState.phase === 'llm-ideas-refinement') completeRuntimePhase('llm-ideas-refinement');
+  processCriticalEventQueue(synthesized);
+  currentData = synthesized;
+  broadcast({ type: 'ideas_update', data: currentData });
+  await processOperationalAlerts(currentData);
+  return synthesized;
+}
+
+async function enrichAgentAnalysisAndPublish(synthesized, options = {}) {
+  const mode = options.mode || 'sweep';
+  if (!llmProvider?.isConfigured) {
+    synthesized.agentAnalysis = buildAgentAnalysis(synthesized, synthesized.agentAnalysis);
+    synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({
+      error: 'llm-unavailable',
+      model: null,
+      refinementState: 'unavailable',
+      refinementCompletion: 'unavailable',
+    });
+    return synthesized;
+  }
+
+  const attemptId = `analysis-refine-${String(++agentAnalysisRefinementSeq).padStart(4, '0')}`;
+  const startedAt = new Date().toISOString();
+  const startMs = Date.now();
+  markRuntimePhase('llm-analysis-refinement', startedAt);
+  beginRuntimeJob('analysis', { attemptId, startedAt, isRetry: (runtimeJobTelemetry.analysis?.attemptCount || 0) > 0 });
+  synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({
+    refinementState: 'pending',
+    refinementAttemptId: attemptId,
+    refinementStartedAt: startedAt,
+  });
+  processCriticalEventQueue(synthesized);
+  if (shouldPublishSnapshotUpdate(synthesized)) {
+    currentData = synthesized;
+    broadcast({ type: 'analysis_update', data: currentData });
+  }
+
+  try {
+    console.log(`[Crucix] Generating LLM agent analysis (${attemptId})...`);
+    const { analysis, meta } = await generateLLMAgentAnalysis(llmProvider, synthesized);
+    const durationMs = Date.now() - startMs;
+    if (analysis) {
+      synthesized.agentAnalysis = buildAgentAnalysis(synthesized, analysis);
+      synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({
+        ...meta,
+        refinementState: 'completed',
+        refinementAttemptId: attemptId,
+        refinementStartedAt: startedAt,
+        refinementCompletedAt: new Date().toISOString(),
+        refinementDurationMs: durationMs,
+        refinementCompletion: 'llm-applied',
+      });
+    } else {
+      synthesized.agentAnalysis = buildAgentAnalysis(synthesized);
+      synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({
+        ...meta,
+        source: 'deterministic',
+        refinementState: meta?.error === 'parse-failed' ? 'failed' : 'completed',
+        refinementAttemptId: attemptId,
+        refinementStartedAt: startedAt,
+        refinementCompletedAt: new Date().toISOString(),
+        refinementDurationMs: durationMs,
+        refinementCompletion: meta?.error === 'parse-failed' ? 'fallback-parse-failed' : 'fallback-no-analysis',
+      });
+    }
+    console.log(`[Crucix] Agent analysis ready: ${synthesized.agentAnalysis.status} (${synthesized.agentAnalysisMeta?.source || 'deterministic'}) [${synthesized.agentAnalysisMeta?.refinementCompletion || 'unknown'}]`);
+    completeRuntimeJob('analysis', { completedAt: new Date().toISOString(), durationMs, outcome: analysis ? 'completed' : 'fallback-empty' });
+    completeRuntimePhase('llm-analysis-refinement');
+  } catch (err) {
+    const durationMs = Date.now() - startMs;
+    const timedOut = /timeout|timed out|abort/i.test(err.message || '');
+    console.error('[Crucix] LLM agent analysis failed (non-fatal):', err.message);
+    synthesized.agentAnalysis = buildAgentAnalysis(synthesized);
+    synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({
+      source: 'deterministic',
+      used: false,
+      error: err.message,
+      model: llmProvider.model || null,
+      refinementState: timedOut ? 'timed-out' : 'failed',
+      refinementAttemptId: attemptId,
+      refinementStartedAt: startedAt,
+      refinementCompletedAt: new Date().toISOString(),
+      refinementDurationMs: durationMs,
+      refinementTimedOut: timedOut,
+      refinementCompletion: timedOut ? 'fallback-timeout' : 'fallback-error',
+    });
+    completeRuntimeJob('analysis', { completedAt: new Date().toISOString(), durationMs, outcome: timedOut ? 'timed-out' : 'failed', error: err.message || null, timedOut });
+    failRuntimePhase(timedOut ? 'llm-analysis-timeout' : (err.message || 'llm-analysis-error'), 'llm-analysis-refinement');
+  }
+
+  processCriticalEventQueue(synthesized);
+  if (shouldPublishSnapshotUpdate(synthesized)) {
+    currentData = synthesized;
+    broadcast({ type: 'analysis_update', data: currentData });
+    await processOperationalAlerts(currentData);
+  } else if (mode === 'startup-preview') {
+    console.log('[Crucix] Startup preview analysis finished after fresher sweep data published, skipping stale publish');
+  }
+  return synthesized;
+}
+
 // === Sweep Cycle ===
 async function runSweepCycle() {
   if (sweepInProgress) {
-    console.log('[Crucix] Sweep already in progress, skipping');
-    return;
+    const watchdog = runSweepWatchdog();
+    if (!watchdog.recovered) {
+      console.log('[Crucix] Sweep already in progress, skipping');
+      return;
+    }
+    console.log('[Crucix] Sweep watchdog cleared stale in-progress gate, continuing with new sweep');
   }
 
   sweepInProgress = true;
   sweepStartedAt = new Date().toISOString();
+  const synthesisAttemptId = `sweep-${String((runtimeJobTelemetry.synthesis?.attemptCount || 0) + 1).padStart(4, '0')}`;
+  beginRuntimeJob('synthesis', { attemptId: synthesisAttemptId, startedAt: sweepStartedAt, isRetry: (runtimeJobTelemetry.synthesis?.attemptCount || 0) > 0 });
+  markRuntimePhase('briefing', sweepStartedAt);
   broadcast({ type: 'sweep_start', timestamp: sweepStartedAt });
   console.log(`\n${'='.repeat(60)}`);
   console.log(`[Crucix] Starting sweep at ${new Date().toLocaleTimeString()}`);
@@ -325,52 +7457,79 @@ async function runSweepCycle() {
   try {
     // 1. Run the full briefing sweep
     const rawData = await fullBriefing();
+    lastBriefingCompletedAt = new Date().toISOString();
+    candidateSnapshotTimestamp = rawData?.meta?.timestamp || lastBriefingCompletedAt;
+    markRuntimePhase('synthesis');
 
     // 2. Save to runs/latest.json
     writeFileSync(join(RUNS_DIR, 'latest.json'), JSON.stringify(rawData, null, 2));
-    lastSweepTime = new Date().toISOString();
+    lastRawSnapshotPersistedAt = new Date().toISOString();
 
     // 3. Synthesize into dashboard format
-    console.log('[Crucix] Synthesizing dashboard data...');
+    console.log(`[Crucix] Synthesizing dashboard data... raw completed at ${lastBriefingCompletedAt}`);
     const synthesized = await synthesize(rawData);
+    const clusterReviewStats = recordClusterReviewStats(synthesized);
+    const clusterPressureStats = recordClusterPressureStats(synthesized);
+    const clusterRepairArtifacts = recordClusterRepairArtifacts(synthesized);
+    if (synthesized.newsLlmDebug?.review) {
+      synthesized.newsLlmDebug.review = attachClusterReviewStats(annotateReview(synthesized.newsLlmDebug.review));
+    }
+    if (synthesized.newsLlmDebug) synthesized.newsLlmDebug = attachClusterPressureStats(synthesized.newsLlmDebug);
+    synthesized.clusterReviewStats = clusterReviewStats;
+    synthesized.clusterPressureStats = clusterPressureStats;
+    synthesized.clusterRepairArtifacts = clusterRepairArtifacts;
+    synthesized.sourceOps = buildOperatorSourceOps(synthesized);
+    recordNoiseSuppressionHistory(synthesized);
+    synthesized.noiseSuppressionTelemetrySnapshot = buildNoiseSuppressionTelemetrySnapshot(synthesized);
 
     // 4. Delta computation + memory
     const delta = memory.addRun(synthesized);
     synthesized.delta = delta;
 
-    // 5. LLM-powered trade ideas (LLM-only feature) — isolated so failures don't kill sweep
-    if (llmProvider?.isConfigured) {
-      try {
-        console.log('[Crucix] Generating LLM trade ideas...');
-        const previousIdeas = memory.getLastRun()?.ideas || [];
-        const llmIdeas = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas);
-        if (llmIdeas) {
-          synthesized.ideas = llmIdeas;
-          synthesized.ideasSource = 'llm';
-          console.log(`[Crucix] LLM generated ${llmIdeas.length} ideas`);
-        } else {
-          synthesized.ideas = [];
-          synthesized.ideasSource = 'llm-failed';
-        }
-      } catch (llmErr) {
-        console.error('[Crucix] LLM ideas failed (non-fatal):', llmErr.message);
-        synthesized.ideas = [];
-        synthesized.ideasSource = 'llm-failed';
-      }
-    } else {
+    const sixHourBaselineRun = memory.getBaselineRun(6);
+    synthesized.baseline6h = buildSixHourBaseline(synthesized, sixHourBaselineRun);
+    synthesized.trendSummary = memory.getTrendSummary();
+    synthesized.sourceHealthHistory = memory.getSourceHealthHistory();
+    synthesized.reviewPressureHistory = memory.getReviewPressureHistory();
+    synthesized.llmFailureHistory = memory.getLlmFailureHistory();
+    synthesized.sourcePerformanceHistory = memory.getSourcePerformanceHistory();
+    synthesized.noiseSuppressionTrend = memory.getNoiseSuppressionTelemetryHistory();
+    synthesized.sourceOps = buildOperatorSourceOps(synthesized);
+    synthesized.agentAnalysis = buildAgentAnalysis(synthesized);
+    synthesized.agentAnalysisMeta = buildAgentAnalysisMeta({
+      error: llmProvider?.isConfigured ? null : 'llm-unavailable',
+      refinementState: llmProvider?.isConfigured ? 'queued' : 'unavailable',
+      refinementCompletion: llmProvider?.isConfigured ? 'deterministic-published-awaiting-refinement' : 'unavailable',
+    });
+
+    // 5. Publish core data immediately so LLM idea generation never blocks /api/data
+    if (!llmProvider?.isConfigured) {
       synthesized.ideas = [];
       synthesized.ideasSource = 'disabled';
+    } else {
+      synthesized.ideas = [];
+      synthesized.ideasSource = 'pending';
     }
+
+    processCriticalEventQueue(synthesized);
+    currentData = synthesized;
+    lastPublishedSnapshotTimestamp = synthesized?.meta?.timestamp || candidateSnapshotTimestamp || null;
+    candidateSnapshotTimestamp = null;
+    lastSweepTime = new Date().toISOString();
+    broadcast({ type: 'update', data: currentData });
+    const operationalAlertsPromise = processOperationalAlerts(currentData).catch(err => {
+      console.error('[Crucix] Operational alert processing failed (non-fatal):', err?.message || err);
+    });
 
     // 6. Alert evaluation — Telegram + Discord (LLM with rule-based fallback, multi-tier, semantic dedup)
     if (delta?.summary?.totalChanges > 0) {
       if (telegramAlerter.isConfigured) {
-        telegramAlerter.evaluateAndAlert(llmProvider, delta, memory).catch(err => {
+        telegramAlerter.evaluateAndAlert(llmProvider, delta, memory, synthesized).catch(err => {
           console.error('[Crucix] Telegram alert error:', err.message);
         });
       }
       if (discordAlerter.isConfigured) {
-        discordAlerter.evaluateAndAlert(llmProvider, delta, memory).catch(err => {
+        discordAlerter.evaluateAndAlert(llmProvider, delta, memory, synthesized).catch(err => {
           console.error('[Crucix] Discord alert error:', err.message);
         });
       }
@@ -379,26 +7538,41 @@ async function runSweepCycle() {
     // Prune old alerted signals
     memory.pruneAlertedSignals();
 
-    currentData = synthesized;
-
-    // 6. Push to all connected browsers
-    broadcast({ type: 'update', data: currentData });
-
     console.log(`[Crucix] Sweep complete — ${currentData.meta.sourcesOk}/${currentData.meta.sourcesQueried} sources OK`);
     console.log(`[Crucix] ${currentData.ideas.length} ideas (${synthesized.ideasSource}) | ${currentData.news.length} news | ${currentData.newsFeed.length} feed items`);
     if (delta?.summary) console.log(`[Crucix] Delta: ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical, direction: ${delta.summary.direction}`);
     console.log(`[Crucix] Next sweep at ${new Date(Date.now() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()}`);
 
+    completeRuntimeJob('synthesis', { completedAt: new Date().toISOString(), durationMs: Date.now() - new Date(sweepStartedAt).getTime(), outcome: 'completed' });
+    finalizeSweepCycle(true);
+
+    await operationalAlertsPromise;
+
+    if (llmProvider?.isConfigured) {
+      enrichIdeasAndPublish(synthesized, delta).catch(err => {
+        console.error('[Crucix] Deferred ideas enrichment failed:', err.message);
+      });
+      enrichAgentAnalysisAndPublish(synthesized).catch(err => {
+        console.error('[Crucix] Deferred agent analysis enrichment failed:', err.message);
+      });
+    }
   } catch (err) {
+    candidateSnapshotTimestamp = null;
     console.error('[Crucix] Sweep failed:', err.message);
+    completeRuntimeJob('synthesis', { completedAt: new Date().toISOString(), durationMs: sweepStartedAt ? (Date.now() - new Date(sweepStartedAt).getTime()) : null, outcome: /timeout|timed out|abort/i.test(err.message || '') ? 'timed-out' : 'failed', error: err.message || null, timedOut: /timeout|timed out|abort/i.test(err.message || '') });
+    failRuntimePhase(err.message || 'sweep-failed');
     broadcast({ type: 'sweep_error', error: err.message });
   } finally {
-    sweepInProgress = false;
+    if (sweepInProgress || sweepStartedAt) finalizeSweepCycle(false);
   }
 }
 
 // === Startup ===
 async function start() {
+  if (!startupValidation.valid) {
+    throw new Error(`Startup validation failed with ${startupValidation.issues.length} issue(s).`);
+  }
+
   const port = config.port;
 
   console.log(`
@@ -415,9 +7589,9 @@ async function start() {
   ╚══════════════════════════════════════════════╝
   `);
 
-  const server = app.listen(port);
+  serverInstance = app.listen(port);
 
-  server.on('error', (err) => {
+  serverInstance.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.error(`\n[Crucix] FATAL: Port ${port} is already in use!`);
       console.error(`[Crucix] A previous Crucix instance may still be running.`);
@@ -430,25 +7604,56 @@ async function start() {
     process.exit(1);
   });
 
-  server.on('listening', async () => {
+  serverInstance.on('listening', async () => {
     console.log(`[Crucix] Server running on http://localhost:${port}`);
+    console.log(`[Crucix] Runtime identity: pid=${process.pid} cwd=${ROOT}`);
+    runtimeLifecycle.phase = 'serving';
+    runtimeLifecycle.ready = true;
 
     // Auto-open browser
     // NOTE: On Windows, `start` in PowerShell is an alias for Start-Service, not cmd's start.
     // We must use `cmd /c start ""` to ensure it works in both cmd.exe and PowerShell.
     const openCmd = process.platform === 'win32' ? 'cmd /c start ""' :
                     process.platform === 'darwin' ? 'open' : 'xdg-open';
-    exec(`${openCmd} "http://localhost:${port}"`, (err) => {
-      if (err) console.log('[Crucix] Could not auto-open browser:', err.message);
-    });
+    if (shouldAutoOpenBrowser()) {
+      exec(`${openCmd} "http://localhost:${port}"`, (err) => {
+        if (err) console.log('[Crucix] Could not auto-open browser:', err.message);
+      });
+    } else {
+      console.log('[Crucix] Browser auto-open disabled for this runtime');
+    }
 
-    // Try to load existing data first for instant display (await so dashboard shows immediately)
+    // Try to load existing data first for instant display, but do not block initial sweep startup on it.
     try {
       const existing = JSON.parse(readFileSync(join(RUNS_DIR, 'latest.json'), 'utf8'));
-      const data = await synthesize(existing);
-      currentData = data;
-      console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');
-      broadcast({ type: 'update', data: currentData });
+      synthesize(existing, llmProvider, { newsLlmMode: 'off' }).then(data => {
+        data.trendSummary = memory.getTrendSummary();
+        data.sourceHealthHistory = memory.getSourceHealthHistory();
+        data.reviewPressureHistory = memory.getReviewPressureHistory();
+        data.llmFailureHistory = memory.getLlmFailureHistory();
+        data.agentAnalysis = buildAgentAnalysis(data);
+        data.agentAnalysisMeta = buildAgentAnalysisMeta({
+          error: llmProvider?.isConfigured ? null : 'llm-unavailable',
+          refinementState: llmProvider?.isConfigured ? 'queued' : 'unavailable',
+          refinementCompletion: llmProvider?.isConfigured ? 'deterministic-published-awaiting-refinement' : 'unavailable',
+        });
+        processCriticalEventQueue(data);
+        currentData = data;
+        lastPublishedSnapshotTimestamp = data?.meta?.timestamp || existing?.meta?.timestamp || null;
+        console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');
+        broadcast({ type: 'update', data: currentData });
+        if (llmProvider?.isConfigured) {
+          if (shouldDeferStartupPreviewAnalysis()) {
+            console.log('[Crucix] Startup preview analysis skipped because active sweep or refinement is already in flight');
+          } else {
+            enrichAgentAnalysisAndPublish(data, { mode: 'startup-preview' }).catch(err => {
+              console.error('[Crucix] Startup agent analysis enrichment failed:', err.message);
+            });
+          }
+        }
+      }).catch(() => {
+        console.log('[Crucix] Existing snapshot synth failed — waiting for fresh sweep');
+      });
     } catch {
       console.log('[Crucix] No existing data found — first sweep required');
     }
@@ -460,8 +7665,53 @@ async function start() {
     });
 
     // Schedule recurring sweeps
-    setInterval(runSweepCycle, config.refreshIntervalMinutes * 60 * 1000);
+    sweepIntervalHandle = setInterval(runSweepCycle, config.refreshIntervalMinutes * 60 * 1000);
+    watchdogIntervalHandle = setInterval(() => {
+      try {
+        runSweepWatchdog();
+      } catch (err) {
+        console.error('[Crucix] Sweep watchdog failed:', err?.message || err);
+      }
+    }, SWEEP_WATCHDOG_POLL_MS);
   });
+}
+
+async function shutdown(reason = 'signal') {
+  if (shutdownPromise) return shutdownPromise;
+  shuttingDown = true;
+  runtimeLifecycle.phase = 'shutting-down';
+  runtimeLifecycle.ready = false;
+  runtimeLifecycle.shuttingDown = true;
+  runtimeLifecycle.shutdownReason = reason;
+  syncSnapshotRuntimeFreshness(currentData);
+  console.log(`[Crucix] Graceful shutdown started (${reason})`);
+
+  shutdownPromise = (async () => {
+    if (sweepIntervalHandle) {
+      clearInterval(sweepIntervalHandle);
+      sweepIntervalHandle = null;
+    }
+    if (watchdogIntervalHandle) {
+      clearInterval(watchdogIntervalHandle);
+      watchdogIntervalHandle = null;
+    }
+    telegramAlerter.stopPolling();
+    await discordAlerter.stop().catch(err => {
+      console.error('[Crucix] Discord shutdown failed (non-fatal):', err?.message || err);
+    });
+    for (const client of sseClients) {
+      try { client.end(); } catch {}
+    }
+    sseClients.clear();
+    if (serverInstance) {
+      await new Promise(resolve => serverInstance.close(() => resolve()));
+      serverInstance = null;
+    }
+    runtimeLifecycle.phase = 'stopped';
+    console.log('[Crucix] Shutdown complete');
+  })();
+
+  return shutdownPromise;
 }
 
 // Graceful error handling — log full stack traces for diagnosis
@@ -470,6 +7720,18 @@ process.on('unhandledRejection', (err) => {
 });
 process.on('uncaughtException', (err) => {
   console.error('[Crucix] Uncaught exception:', err?.stack || err?.message || err);
+});
+process.on('SIGTERM', () => {
+  shutdown('SIGTERM').then(() => process.exit(0)).catch(err => {
+    console.error('[Crucix] Shutdown failed:', err?.stack || err?.message || err);
+    process.exit(1);
+  });
+});
+process.on('SIGINT', () => {
+  shutdown('SIGINT').then(() => process.exit(0)).catch(err => {
+    console.error('[Crucix] Shutdown failed:', err?.stack || err?.message || err);
+    process.exit(1);
+  });
 });
 
 start().catch(err => {

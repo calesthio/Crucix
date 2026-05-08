@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "crucix/source-ops/task-packet.schema.json",
+  "title": "Crucix Source Ops Task Packet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "taskId", "role", "objective", "scope", "io", "policy"],
+  "properties": {
+    "version": { "type": "string", "const": "source-ops-task-v1" },
+    "taskId": { "type": "string", "minLength": 1 },
+    "role": { "type": "string", "enum": ["discovery", "validation", "grading", "overlap", "pruning", "onboarding-prep"] },
+    "objective": { "type": "string", "minLength": 1 },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "targetCategory": { "type": ["string", "null"] },
+        "targetRegions": { "type": "array", "items": { "type": "string" } },
+        "mustCompareAgainst": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "io": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registryPath", "outputPath"],
+      "properties": {
+        "registryPath": { "type": "string", "minLength": 1 },
+        "outputPath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractMode", "productionMutationsAllowed", "activePromotionRequiresHumanApproval", "preProductionAutoAdvanceMax", "lifecycleTransitionPolicyPath"],
+      "properties": {
+        "contractMode": { "type": "string", "const": "file-first" },
+        "productionMutationsAllowed": { "type": "boolean", "const": false },
+        "activePromotionRequiresHumanApproval": { "type": "boolean", "const": true },
+        "preProductionAutoAdvanceMax": { "type": "string", "const": "shadow" },
+        "lifecycleTransitionPolicyPath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "grading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scorecardSchemaPath", "rubricPath"],
+      "properties": {
+        "scorecardSchemaPath": { "type": "string", "minLength": 1 },
+        "rubricPath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "overlap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaPath", "rubricPath"],
+      "properties": {
+        "schemaPath": { "type": "string", "minLength": 1 },
+        "rubricPath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "pruning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaPath", "rubricPath"],
+      "properties": {
+        "schemaPath": { "type": "string", "minLength": 1 },
+        "rubricPath": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

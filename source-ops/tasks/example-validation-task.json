@@ -1,0 +1,22 @@
+{
+  "version": "source-ops-task-v1",
+  "taskId": "example-validation-maritime-001",
+  "role": "validation",
+  "objective": "Validate that a candidate maritime source is real, scoped correctly, and viable for deeper grading.",
+  "scope": {
+    "targetCategory": "maritime",
+    "targetRegions": ["global"],
+    "mustCompareAgainst": ["Maritime", "GDELT"]
+  },
+  "io": {
+    "registryPath": "source-ops/source-registry.seed.json",
+    "outputPath": "source-ops/results/validation/example-validation-maritime-001.json"
+  },
+  "policy": {
+    "contractMode": "file-first",
+    "productionMutationsAllowed": false,
+    "activePromotionRequiresHumanApproval": true,
+    "preProductionAutoAdvanceMax": "shadow",
+    "lifecycleTransitionPolicyPath": "source-ops/lifecycle-transition-policy.json"
+  }
+}

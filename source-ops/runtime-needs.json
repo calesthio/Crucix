@@ -1,0 +1,25 @@
+{
+  "version": "source-ops-needs-v1",
+  "generatedAt": "2026-04-25T04:38:00Z",
+  "gaps": [
+    {
+      "id": "gap-maritime-coverage",
+      "kind": "coverage-gap",
+      "category": "maritime",
+      "priority": "high",
+      "summary": "Maritime coverage remains thin and integration-limited compared with other operational categories."
+    },
+    {
+      "id": "gap-social-noise-control",
+      "kind": "noise-pressure",
+      "category": "social",
+      "priority": "high",
+      "summary": "Low-confidence clustering pressure remains high, so stronger corroborating or structuring sources would improve signal-to-noise and LLM leverage."
+    }
+  ],
+  "runtimeSignals": {
+    "sourceCount": 29,
+    "activePromotionRequiresHumanApproval": true,
+    "preferredContractMode": "file-first"
+  }
+}

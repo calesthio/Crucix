@@ -1,0 +1,22 @@
+{
+  "version": "source-ops-task-v1",
+  "taskId": "example-onboarding-prep-maritime-001",
+  "role": "onboarding-prep",
+  "objective": "Prepare a shadow-ready maritime candidate for safe onboarding review without mutating production.",
+  "scope": {
+    "targetCategory": "maritime",
+    "targetRegions": ["global"],
+    "mustCompareAgainst": ["Maritime", "NOAA", "OpenSky"]
+  },
+  "io": {
+    "registryPath": "source-ops/source-registry.seed.json",
+    "outputPath": "source-ops/results/onboarding-prep/example-onboarding-prep-maritime-001.json"
+  },
+  "policy": {
+    "contractMode": "file-first",
+    "productionMutationsAllowed": false,
+    "activePromotionRequiresHumanApproval": true,
+    "preProductionAutoAdvanceMax": "shadow",
+    "lifecycleTransitionPolicyPath": "source-ops/lifecycle-transition-policy.json"
+  }
+}

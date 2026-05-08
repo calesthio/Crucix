@@ -1,0 +1,83 @@
+{
+  "version": "source-overlap-v1",
+  "candidateId": "candidate-maritime-example-001",
+  "generatedAt": "2026-04-25T16:05:00Z",
+  "summary": "Candidate maritime source appears incrementally useful because it expands vessel context and event detail beyond the current Maritime feed, but it still needs shadow observation before operator trust can rise.",
+  "comparedAgainst": [
+    {
+      "name": "Maritime",
+      "category": "maritime",
+      "operatorRole": "context",
+      "reason": "Primary production maritime source and closest duplication risk."
+    },
+    {
+      "name": "GDELT",
+      "category": "news",
+      "operatorRole": "corroborator",
+      "reason": "Can cover maritime incidents indirectly through event/news clustering."
+    },
+    {
+      "name": "NOAA",
+      "category": "weather",
+      "operatorRole": "anchor",
+      "reason": "Provides adjacent maritime-impact context but not vessel-specific tracking."
+    },
+    {
+      "name": "OpenSky",
+      "category": "air",
+      "operatorRole": "anchor",
+      "reason": "Useful comparator for transport-domain duplication versus independent situational lift."
+    }
+  ],
+  "overlap": {
+    "duplicateSignalRisk": "medium",
+    "incrementalCoverage": "high",
+    "likelyOperatorImpact": "neutral",
+    "likelyLlmUtility": "high",
+    "notes": [
+      "Overlaps with existing maritime incident awareness, but candidate adds structured vessel and route metadata not carried in current runtime surfaces.",
+      "Likely to improve maritime corroboration and prompt grounding if shadow performance stays disciplined."
+    ]
+  },
+  "dimensionScores": [
+    {
+      "dimension": "incremental-corroboration",
+      "score": 4,
+      "weight": 0.35,
+      "weightedScore": 1.4,
+      "reasoning": "Adds an independent maritime evidence path rather than only rewrapping generic event/news coverage.",
+      "evidence": ["independent maritime collection path", "vessel-level metadata"]
+    },
+    {
+      "dimension": "duplication-risk",
+      "score": 3,
+      "weight": 0.25,
+      "weightedScore": 0.75,
+      "reasoning": "Some event overlap with Maritime and GDELT is likely, but the candidate appears richer and more structured than a straight duplicate feed.",
+      "evidence": ["partial incident overlap", "more structured fields than current context source"]
+    },
+    {
+      "dimension": "coverage-expansion",
+      "score": 5,
+      "weight": 0.2,
+      "weightedScore": 1,
+      "reasoning": "Directly addresses the runtime maritime coverage gap called out in source-ops needs.",
+      "evidence": ["runtime-needs gap-maritime-coverage"]
+    },
+    {
+      "dimension": "llm-utility",
+      "score": 4,
+      "weight": 0.2,
+      "weightedScore": 0.8,
+      "reasoning": "Structured entities, routes, and event descriptors should improve prompt grounding and downstream explanation quality.",
+      "evidence": ["structured entities", "route metadata", "event descriptors"]
+    }
+  ],
+  "weightedTotal": 3.95,
+  "recommendation": "shadow",
+  "promotionReadiness": "shadow-ready",
+  "confidence": "medium",
+  "blockingIssues": [
+    "Validate duplicate-cluster pressure during shadow observation before considering broader admission."
+  ]
+}
