@@ -340,15 +340,15 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
       <div class="map-container" id="mapContainer">
         <div id="globeViz"></div>
         <svg id="flatMapSvg" style="display:none;width:100%;height:100%;position:absolute;top:0;left:0;cursor:grab"></svg>
-        <div class="map-loading" id="mapLoading"><div class="map-loading-card"><div class="map-loading-ring"></div><div class="map-loading-text" id="mapLoadingText">Initializing 3D Globe</div></div></div>
+        <div class="map-loading" id="mapLoading"><div class="map-loading-card"><div class="map-loading-ring"></div><div class="map-loading-text" id="mapLoadingText">${t('map.initializing','Initializing 3D Globe')}</div></div></div>
         <div class="map-legend" id="mapLegend"></div>
-        <div class="map-hint" id="mapHint">SCROLL TO ZOOM · DRAG TO PAN</div>
+        <div class="map-hint" id="mapHint">${t('map.scrollToZoom','SCROLL TO ZOOM · DRAG TO PAN')}</div>
         <div class="map-controls">
           <button class="map-ctrl-btn" onclick="mapZoom(1.5)" title="Zoom in">+</button>
           <button class="map-ctrl-btn" onclick="mapZoom(0.67)" title="Zoom out">&minus;</button>
           <button class="map-ctrl-btn map-toggle" id="flightToggle" onclick="toggleFlights()" title="Toggle flight routes">&#9992;</button>
         </div>
-        <button class="proj-toggle" id="projToggle" onclick="toggleMapMode()">GLOBE MODE</button>
+        <button class="proj-toggle" id="projToggle" onclick="toggleMapMode()">${t('map.globeMode','GLOBE MODE')}</button>
         <div class="map-popup" id="mapPopup"><button class="pp-close" onclick="closePopup()">&times;</button><div class="pp-head"></div><div class="pp-text"></div><div class="pp-meta"></div></div>
       </div>
       <div class="lower" id="lowerGrid"></div>
@@ -360,14 +360,14 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
   <div class="glossary-panel">
     <div class="glossary-head">
       <div>
-        <div class="glossary-kicker">Signal Guide</div>
-        <div class="glossary-title">What the signals actually mean</div>
-        <div class="glossary-sub">Plain-English interpretation, why it matters, and what you should not infer from it.</div>
+        <div class="glossary-kicker">${t('glossary.kicker','Signal Guide')}</div>
+        <div class="glossary-title">${t('glossary.title','What the signals actually mean')}</div>
+        <div class="glossary-sub">${t('glossary.subtitle','Plain-English interpretation, why it matters, and what you should not infer from it.')}</div>
       </div>
       <button class="glossary-close" onclick="closeGlossary()" aria-label="Close signal guide">&times;</button>
     </div>
     <div class="glossary-body" id="glossaryBody"></div>
-    <div class="glossary-foot">Treat these as interpretation guides, not conclusions. Stronger judgments should come from corroboration across multiple layers, not from a single signal viewed in isolation.</div>
+    <div class="glossary-foot">${t('glossary.foot','Treat these as interpretation guides, not conclusions. Stronger judgments should come from corroboration across multiple layers, not from a single signal viewed in isolation.')}</div>
   </div>
 </div>
 <script>
@@ -396,120 +396,7 @@ let lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true';
 let isFlat = shouldStartFlat();
 let currentRegion = 'world';
 let flatSvg, flatProjection, flatPath, flatG, flatZoom, flatW, flatH;
-const signalGuideItems = [
-  {
-    term:'No Callsign',
-    category:'Air',
-    meaning:'OpenSky received an aircraft track without a usable callsign or flight ID in that record.',
-    matters:'Useful as an opacity signal. A cluster of missing callsigns can indicate incomplete transponder metadata or less transparent traffic.',
-    notMeaning:'Not proof of military, covert, or hostile activity on its own.',
-    example:'South China Sea: No Callsign 6 of 152 means 6 tracks in that theater had no usable callsign in the feed.'
-  },
-  {
-    term:'High Altitude',
-    category:'Air',
-    meaning:'Aircraft above 12,000 meters, roughly 39,000 feet, in the current OpenSky snapshot.',
-    matters:'Separates cruise-level traffic from lower-altitude local or regional movement.',
-    notMeaning:'Not a danger score and not inherently unusual. Commercial jets commonly operate here.',
-    example:'High Altitude 2 means only 2 tracked aircraft in that hotspot were above the cruise threshold at that snapshot.'
-  },
-  {
-    term:'Top Countries',
-    category:'Air',
-    meaning:'The most common OpenSky origin_country values among aircraft in that hotspot.',
-    matters:'Useful for understanding the rough composition of traffic flowing through a theater.',
-    notMeaning:'Not who is controlling the aircraft right now and not a direct indicator of military ownership.',
-    example:'China (61), Philippines (39), Taiwan (17) means those were the top registered origin countries in the snapshot.'
-  },
-  {
-    term:'FRP',
-    category:'Thermal',
-    meaning:'Fire Radiative Power. This is the intensity of one specific FIRMS hotspot, measured in megawatts.',
-    matters:'Higher FRP usually means a hotter, larger, or more energetic fire event at that exact point.',
-    notMeaning:'Not the intensity of the whole region and not automatic proof of conflict activity.',
-    example:'Sudan / Horn of Africa: FRP 92.3 MW describes that one hotspot, while Total 1,451 describes the entire regional detection count.'
-  },
-  {
-    term:'Total Detections',
-    category:'Thermal',
-    meaning:'The total number of FIRMS thermal detections in the entire region bucket for the current sweep.',
-    matters:'Useful for spotting unusually active fire clusters, especially when compared with historical baselines or night activity.',
-    notMeaning:'Not a count for the single map point you clicked and not necessarily a conflict count.',
-    example:'Total 1,451 means the whole Sudan / Horn of Africa bucket had 1,451 detections in that sweep.'
-  },
-  {
-    term:'Night Detections',
-    category:'Thermal',
-    meaning:'Thermal detections tagged as occurring at night inside the broader FIRMS region bucket.',
-    matters:'Nighttime heat can be more noteworthy because it is less likely to be routine daytime land burning.',
-    notMeaning:'Not a direct combat indicator. It still needs context from location, baseline, and corroborating sources.',
-    example:'Night 140 means 140 of the 1,451 regional detections were nighttime detections in that sweep.'
-  },
-  {
-    term:'Chokepoint',
-    category:'Maritime',
-    meaning:'A strategic maritime corridor or passage where trade and energy flows can be delayed, diverted, or disrupted.',
-    matters:'These nodes matter because a disruption here can affect shipping costs, transit times, and commodity pricing globally.',
-    notMeaning:'Not proof that disruption is happening now. It is a strategic watch location.',
-    example:'Bab el-Mandeb or the Strait of Hormuz matter because shipping and energy flows concentrate there.'
-  },
-  {
-    term:'SDR Receiver',
-    category:'Signals',
-    meaning:'A publicly reachable software-defined radio receiver in or near a region of interest.',
-    matters:'Dense receiver coverage can give you more ability to monitor communications or signal activity in a theater.',
-    notMeaning:'Not evidence of hostile emissions or a threat by itself. It is an observation and monitoring layer.',
-    example:'South China Sea SDR count means publicly accessible KiwiSDR receivers are available in or near that zone.'
-  },
-  {
-    term:'CPM',
-    category:'Radiation',
-    meaning:'Counts per minute from a radiation monitoring source, used here for relative radiation status at a site.',
-    matters:'Useful for spotting anomalies against the site’s normal range or comparing consecutive readings.',
-    notMeaning:'Not a direct safety verdict on its own. Interpretation depends on local baseline and trend, not the raw number alone.',
-    example:'A site reading 33 CPM can be normal if that location’s usual background level is in the same range.'
-  },
-  {
-    term:'HY Spread',
-    category:'Macro',
-    meaning:'High-yield credit spread, shown here as a stress proxy from FRED credit data.',
-    matters:'When spreads widen, markets are usually pricing more credit stress and tighter financial conditions.',
-    notMeaning:'Not a recession call by itself. It is one stress signal among many.',
-    example:'A rising HY Spread alongside higher VIX and weaker equities is a stronger risk-off pattern than HY alone.'
-  },
-  {
-    term:'VIX',
-    category:'Macro',
-    meaning:'The CBOE Volatility Index, commonly used as a market-implied fear or volatility gauge.',
-    matters:'Higher VIX often means more expected equity volatility and more defensive market positioning.',
-    notMeaning:'Not a direct forecast of a crash and not a geopolitical indicator by itself.',
-    example:'VIX above 20 with widening HY spreads is a stronger stress pattern than VIX alone.'
-  },
-  {
-    term:'GSCPI',
-    category:'Macro',
-    meaning:'The Global Supply Chain Pressure Index, a broad indicator of global supply-chain strain.',
-    matters:'It helps translate geopolitical or weather disruptions into likely pressure on shipping, inventory, and pricing.',
-    notMeaning:'Not a live market price and not a company-specific supply-chain score by itself.',
-    example:'A higher GSCPI makes route or energy shocks more likely to spill into broader cost pressure.'
-  },
-  {
-    term:'WHO Alert',
-    category:'Health',
-    meaning:'A WHO Disease Outbreak News item or outbreak-related bulletin surfaced in the health layer.',
-    matters:'Useful for watching outbreaks that could affect travel, supply chains, humanitarian stress, or regional operating conditions.',
-    notMeaning:'Not a pandemic declaration and not automatically high severity.',
-    example:'A WHO alert in a port-heavy region matters more if it overlaps shipping, border controls, or local instability signals.'
-  },
-  {
-    term:'Sweep Delta',
-    category:'Platform',
-    meaning:'The change summary between the current sweep and the previous one, including new, escalated, and de-escalated signals.',
-    matters:'Useful for spotting what changed recently instead of re-reading the full dashboard from scratch.',
-    notMeaning:'Not a full risk model. It is a directional change layer on top of the raw signals.',
-    example:'A delta marked risk-off with several new and escalated items means the latest sweep materially worsened the signal mix.'
-  }
-];
+const signalGuideItems = (L.glossary?.items || []);
 const regionPOV = {
   world: { lat: 20, lng: 20, altitude: 1.8 },
   americas: { lat: 35, lng: -95, altitude: 1.0 },
@@ -533,7 +420,7 @@ function shouldStartFlat(){
   return lowPerfMode || isWeakMobileDevice();
 }
 
-function setMapLoading(show, text='Initializing 3D Globe'){
+function setMapLoading(show, text=t('map.initializing','Initializing 3D Globe')){
   const overlay = document.getElementById('mapLoading');
   const label = document.getElementById('mapLoadingText');
   if(!overlay || !label) return;
@@ -562,7 +449,7 @@ function togglePerfMode(){
 // === TOPBAR ===
 function getRegionControlsMarkup(){
   return ['world','americas','europe','middleEast','asiaPacific','africa'].map(r=>
-    `<button class="region-btn ${r===currentRegion?'active':''}" data-region="${r}" onclick="setRegion('${r}')">${r==='middleEast'?'MIDDLE EAST':r==='asiaPacific'?'ASIA PACIFIC':r.toUpperCase()}</button>`
+    `<button class="region-btn ${r===currentRegion?'active':''}" data-region="${r}" onclick="setRegion('${r}')">${t('regions.'+r,r==='middleEast'?'MIDDLE EAST':r==='asiaPacific'?'ASIA PACIFIC':r.toUpperCase())}</button>`
   ).join('');
 }
 
@@ -581,7 +468,7 @@ function renderRegionControls(){
 function renderTopbar(){
   const mobile = isMobileLayout();
   const ts = new Date(D.meta.timestamp);
-  const d = ts.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}).toUpperCase();
+  const d = ts.toLocaleDateString(L.meta?.code==='zh'?'zh-CN':'en-US',{month:'short',day:'numeric',year:'numeric'}).toUpperCase();
   const timeStr = ts.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true});
   document.getElementById('topbar').innerHTML=`
     <div class="top-left">
@@ -653,14 +540,14 @@ function renderLeftRail(){
     <div class="g-panel">
       <div class="sec-head"><h3>${t('panels.spaceWatch','Space Watch')}</h3><span class="badge">${t('badges.orbital','CELESTRAK')}</span></div>
       ${D.space ? `
-        <div class="econ-row"><span class="elabel">New Objects (30d)</span><span class="eval" style="color:var(--accent2)">${D.space.totalNewObjects||0}</span></div>
-        <div class="econ-row"><span class="elabel">Military Sats</span><span class="eval">${D.space.militarySats||0}</span></div>
+        <div class="econ-row"><span class="elabel">${t('space.newLast30d','New Objects (30d)')}</span><span class="eval" style="color:var(--accent2)">${D.space.totalNewObjects||0}</span></div>
+        <div class="econ-row"><span class="elabel">${t('space.militarySats','Military Sats')}</span><span class="eval">${D.space.militarySats||0}</span></div>
         <div class="econ-row"><span class="elabel">Starlink</span><span class="eval">${D.space.constellations?.starlink||0}</span></div>
         <div class="econ-row"><span class="elabel">OneWeb</span><span class="eval">${D.space.constellations?.oneweb||0}</span></div>
         ${D.space.iss ? `<div class="econ-row"><span class="elabel">ISS</span><span class="eval" style="color:var(--accent)">ALT ${((D.space.iss.apogee+D.space.iss.perigee)/2).toFixed(0)} km</span></div>` : ''}
-        ${Object.entries(D.space.militaryByCountry||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([c,n])=>`<div class="econ-row"><span class="elabel" style="padding-left:8px">${c}</span><span class="eval" style="font-size:10px">${n} mil sats</span></div>`).join('')}
+        ${Object.entries(D.space.militaryByCountry||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([c,n])=>`<div class="econ-row"><span class="elabel" style="padding-left:8px">${c}</span><span class="eval" style="font-size:10px">${n} ${t('space.milSats','mil sats')}</span></div>`).join('')}
         ${(D.space.signals||[]).length ? `<div style="margin-top:6px;padding:6px 8px;border:1px solid rgba(68,204,255,0.2);background:rgba(68,204,255,0.04);font-family:var(--mono);font-size:9px;color:var(--accent2);line-height:1.5">${D.space.signals.slice(0,2).join('<br>')}</div>` : ''}
-      ` : '<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO SPACE DATA</div>'}
+      ` : '<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">'+t('space.noData','NO SPACE DATA')+'</div>'}
     </div>`;
 }
 
@@ -692,14 +579,14 @@ function initMap(){
     if(globe && typeof globe.pauseAnimation === 'function') globe.pauseAnimation();
     document.getElementById('globeViz').style.display = 'none';
     document.getElementById('flatMapSvg').style.display = 'block';
-    document.getElementById('projToggle').textContent = 'GLOBE MODE';
-    document.getElementById('mapHint').textContent = 'SCROLL TO ZOOM · DRAG TO PAN';
+    document.getElementById('projToggle').textContent = t('map.globeMode','GLOBE MODE');
+    document.getElementById('mapHint').textContent = t('map.scrollToZoom','SCROLL TO ZOOM · DRAG TO PAN');
     if(!flatSvg) initFlatMap();
     else { flatG.selectAll('*').remove(); drawFlatMap(); }
     setMapLoading(false);
     return;
   }
-  setMapLoading(true, 'Initializing 3D Globe');
+  setMapLoading(true, t('map.initializing','Initializing 3D Globe'));
   requestAnimationFrame(() => {
     try {
       initGlobe();
@@ -708,8 +595,8 @@ function initMap(){
       isFlat = true;
       document.getElementById('globeViz').style.display = 'none';
       document.getElementById('flatMapSvg').style.display = 'block';
-      document.getElementById('projToggle').textContent = 'GLOBE MODE';
-      document.getElementById('mapHint').textContent = '3D LOAD FAILED · FLAT MODE';
+      document.getElementById('projToggle').textContent = t('map.globeMode','GLOBE MODE');
+      document.getElementById('mapHint').textContent = t('map.loadFailed','3D LOAD FAILED · FLAT MODE');
       if(!flatSvg) initFlatMap();
       else { flatG.selectAll('*').remove(); drawFlatMap(); }
       setMapLoading(false);
@@ -722,8 +609,8 @@ function initGlobe(){
     if(typeof globe.resumeAnimation === 'function') globe.resumeAnimation();
     document.getElementById('globeViz').style.display = 'block';
     document.getElementById('flatMapSvg').style.display = 'none';
-    document.getElementById('projToggle').textContent = 'FLAT MODE';
-    document.getElementById('mapHint').textContent = 'DRAG TO ROTATE · SCROLL TO ZOOM';
+    document.getElementById('projToggle').textContent = t('map.flatMode','FLAT MODE');
+    document.getElementById('mapHint').textContent = t('map.dragToRotate','DRAG TO ROTATE · SCROLL TO ZOOM');
     return;
   }
   const container = document.getElementById('mapContainer');
@@ -827,8 +714,8 @@ function initGlobe(){
   } else {
     document.getElementById('globeViz').style.display = 'block';
     document.getElementById('flatMapSvg').style.display = 'none';
-    document.getElementById('projToggle').textContent = 'FLAT MODE';
-    document.getElementById('mapHint').textContent = 'DRAG TO ROTATE · SCROLL TO ZOOM';
+    document.getElementById('projToggle').textContent = t('map.flatMode','FLAT MODE');
+    document.getElementById('mapHint').textContent = t('map.dragToRotate','DRAG TO ROTATE · SCROLL TO ZOOM');
   }
 
   globeInitialized = true;
@@ -906,7 +793,7 @@ function plotMarkers(){
     points.push({
       lat:o.lat, lng:o.lon, size:0.3, alt:0.018,
       color:'rgba(255,184,76,0.8)', type:'osint', priority:2,
-      popHead:(post.channel||'').toUpperCase(), popMeta:`${post.views?.toLocaleString()||'?'} views`,
+      popHead:(post.channel||'').toUpperCase(), popMeta:`${post.views?.toLocaleString()||'?'} ${t('badges.views','views')}`,
       popText:cleanText(post.text?.substring(0,200)||'')
     });
   });
@@ -1131,8 +1018,8 @@ function toggleMapMode(){
   isFlat = !isFlat;
   const btn = document.getElementById('projToggle');
   const hint = document.getElementById('mapHint');
-  btn.textContent = isFlat ? 'GLOBE MODE' : 'FLAT MODE';
-  hint.textContent = isFlat ? 'SCROLL TO ZOOM · DRAG TO PAN' : 'DRAG TO ROTATE · SCROLL TO ZOOM';
+  btn.textContent = isFlat ? t('map.globeMode','GLOBE MODE') : t('map.flatMode','FLAT MODE');
+  hint.textContent = isFlat ? t('map.scrollToZoom','SCROLL TO ZOOM · DRAG TO PAN') : t('map.dragToRotate','DRAG TO ROTATE · SCROLL TO ZOOM');
   const globeEl = document.getElementById('globeViz');
   const flatEl = document.getElementById('flatMapSvg');
   if(isFlat){
@@ -1144,7 +1031,7 @@ function toggleMapMode(){
     else { flatG.selectAll('*').remove(); drawFlatMap(); }
   } else {
     flatEl.style.display = 'none';
-    setMapLoading(true, 'Initializing 3D Globe');
+    setMapLoading(true, t('map.initializing','Initializing 3D Globe'));
     requestAnimationFrame(() => {
       try {
         initGlobe();
@@ -1155,8 +1042,8 @@ function toggleMapMode(){
         isFlat = true;
         globeEl.style.display = 'none';
         flatEl.style.display = 'block';
-        btn.textContent = 'GLOBE MODE';
-        hint.textContent = '3D LOAD FAILED · FLAT MODE';
+        btn.textContent = t('map.globeMode','GLOBE MODE');
+        hint.textContent = t('map.loadFailed','3D LOAD FAILED · FLAT MODE');
         if(!flatSvg) initFlatMap();
         else { flatG.selectAll('*').remove(); drawFlatMap(); }
         setMapLoading(false);
@@ -1234,7 +1121,7 @@ function plotFlatMarkers(){
   D.sdr.zones.forEach(z=>z.receivers.forEach(r=>{addPt(r.lat,r.lon,2.5,'rgba(68,204,255,0.5)','rgba(68,204,255,0.2)',ev=>showPopup(ev,'SDR',`${r.name}<br>${z.region}`,'KiwiSDR'),3)}));
   // OSINT
   const osintGeo=[{lat:45,lon:41,idx:0},{lat:48,lon:37,idx:1},{lat:48.5,lon:37.5,idx:2},{lat:45,lon:40.2,idx:3},{lat:50.6,lon:36.6,idx:5},{lat:48.5,lon:35,idx:6}];
-  osintGeo.forEach(o=>{const p=D.tg.urgent[o.idx];if(!p)return;addPt(o.lat,o.lon,4,'rgba(255,184,76,0.7)','rgba(255,184,76,0.3)',ev=>showPopup(ev,(p.channel||'').toUpperCase(),cleanText(p.text?.substring(0,200)||''),`${p.views||'?'} views`),2)});
+  osintGeo.forEach(o=>{const p=D.tg.urgent[o.idx];if(!p)return;addPt(o.lat,o.lon,4,'rgba(255,184,76,0.7)','rgba(255,184,76,0.3)',ev=>showPopup(ev,(p.channel||'').toUpperCase(),cleanText(p.text?.substring(0,200)||''),`${p.views||'?'} ${t('badges.views','views')}`),2)});
   // WHO
   const whoGeo=[{lat:0.3,lon:32.6},{lat:-6.2,lon:106.8},{lat:-4.3,lon:15.3},{lat:35,lon:105},{lat:12.5,lon:105},{lat:35,lon:105},{lat:28,lon:84},{lat:24,lon:45},{lat:30,lon:70},{lat:-0.8,lon:11.6}];
   D.who.slice(0,10).forEach((w,i)=>{const c=whoGeo[i];if(!c)return;addPt(c.lat,c.lon,3.5,'rgba(105,240,174,0.6)','rgba(105,240,174,0.2)',ev=>showPopup(ev,w.title,w.summary||'','WHO'),2)});
@@ -1376,16 +1263,16 @@ function renderLower(){
   const dayMove = (pct) => pct != null ? `${pct>=0?'+':''}${pct}% today` : '';
 
   const metrics=[
-    {l:'WTI Crude',v:`$${D.energy.wti}`,s:'$/bbl',p:70},
-    {l:'Brent',v:`$${D.energy.brent}`,s:'$/bbl',p:75},
-    {l:'Nat Gas',v:`$${D.energy.natgas||'--'}`,s:'$/MMBtu',p:30},
+    {l:t('metrics.wtiCrude','WTI Crude'),v:`$${D.energy.wti}`,s:'$/bbl',p:70},
+    {l:t('metrics.brent','Brent'),v:`$${D.energy.brent}`,s:'$/bbl',p:75},
+    {l:t('metrics.natGas','Nat Gas'),v:`$${D.energy.natgas||'--'}`,s:'$/MMBtu',p:30},
     {l:'Gold',v:fmtMarketPrice(metals.gold),s:dayMove(metals.goldChangePct)||'COMEX proxy',p:58},
     {l:'Silver',v:fmtMarketPrice(metals.silver),s:dayMove(metals.silverChangePct)||'COMEX proxy',p:54},
-    {l:'VIX',v:vixVal?vixVal.toFixed(1):'--',s:vixChg||'volatility index',p:vixVal?Math.min(vixVal*2.5,100):30},
-    {l:'Fed Funds',v:ff?`${ff.value}%`:'--',s:ff?.date||'',p:36},
-    {l:'GSCPI',v:gscpi?gscpi.value.toFixed(2):'--',s:gscpi?.interpretation||'',p:49},
-    {l:'CPI MoM',v:cpi?`+${cpi.momChangePct?.toFixed(2)}%`:'--',s:cpi?.date||'',p:37},
-    {l:'Unemployment',v:ue?`${ue.value}%`:'--',s:ue?`${ue.momChange>0?'+':''}${ue.momChange} vs prior`:'',p:44},
+    {l:t('metrics.vix','VIX'),v:vixVal?vixVal.toFixed(1):'--',s:vixChg||'volatility index',p:vixVal?Math.min(vixVal*2.5,100):30},
+    {l:t('metrics.fedFunds','Fed Funds'),v:ff?`${ff.value}%`:'--',s:ff?.date||'',p:36},
+    {l:t('metrics.gscpi','GSCPI'),v:gscpi?gscpi.value.toFixed(2):'--',s:gscpi?.interpretation||'',p:49},
+    {l:t('metrics.cpiMom','CPI MoM'),v:cpi?`+${cpi.momChangePct?.toFixed(2)}%`:'--',s:cpi?.date||'',p:37},
+    {l:t('metrics.unemployment','Unemployment'),v:ue?`${ue.value}%`:'--',s:ue?`${ue.momChange>0?'+':''}${ue.momChange} ${t('metrics.vsPrior','vs prior')}`:'',p:44},
   ];
 
   // Attach sparklines from FRED recent data
@@ -1440,14 +1327,14 @@ function renderLower(){
       <span class="idea-type ${(idea.type||'').toLowerCase()}">${(idea.type||'').toUpperCase()}</span>
       ${idea.ticker ? `<span class="idea-horizon">${idea.ticker}</span>` : ''}
       ${idea.horizon ? `<span class="idea-horizon">${idea.horizon}</span>` : ''}
-      <span class="idea-conf">${idea.confidence} confidence</span>
+      <span class="idea-conf">${idea.confidence} ${t('ideas.confidence','Confidence')}</span>
       <div class="idea-title">${idea.title}</div>
       <div class="idea-text">${idea.text||idea.rationale||''}</div>
       ${idea.risk ? `<div class="idea-text" style="color:var(--warn);margin-top:3px">Risk: ${idea.risk}</div>` : ''}
     </div>`).join('') : `<div style="padding:20px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:11px">
       <div style="font-size:24px;margin-bottom:8px;opacity:0.3">&#9888;</div>
-      <div>LLM NOT CONFIGURED</div>
-      <div style="font-size:9px;margin-top:6px;opacity:0.6">Set LLM_PROVIDER + credentials in .env to enable AI-powered trade ideas</div>
+      <div>${t('ideas.llmNotConfigured','LLM NOT CONFIGURED')}</div>
+      <div style="font-size:9px;margin-top:6px;opacity:0.6">${t('ideas.llmHelp','Set LLM_PROVIDER + credentials in .env to enable AI-powered trade ideas')}</div>
     </div>`;
 
 
@@ -1461,29 +1348,29 @@ function renderLower(){
   const macroPanel = `<div class="g-panel lp-macro">
       <div class="sec-head"><h3>${t('panels.macroMarkets','Macro + Markets')}</h3><span class="badge">${mkt.timestamp?t('badges.live','LIVE'):t('badges.delayed','DELAYED')}</span></div>
       ${hasMarkets?`<div style="margin-bottom:8px">
-        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">INDEXES</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">${t('metrics.indexes','INDEXES')}</div>
         <div class="metrics-row">${indexCards}</div>
       </div>
       <div style="margin-bottom:8px">
-        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">CRYPTO</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">${t('metrics.crypto','CRYPTO')}</div>
         <div class="metrics-row">${cryptoCards}</div>
       </div>`:''}
       <div style="margin-bottom:8px">
-        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">ENERGY + METALS + MACRO</div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">${t('metrics.energyMacro','ENERGY + METALS + MACRO')}</div>
         <div class="metrics-row">${metrics.map(m=>{
           const sparkSvg = m.spark ? mkSparkSvg(m.spark, m.sparkUp) : '';
           return `<div class="mc"><div class="ml">${m.l}</div><span class="mv">${m.v}${sparkSvg}</span><span class="ms">${m.s}</span><div class="mbar"><span style="width:${m.p}%"></span></div></div>`;
         }).join('')}</div>
       </div>
       <div style="margin-top:6px">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:4px">WTI 5-DAY</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:4px">${t('metrics.wti5day','WTI 5-DAY')}</div>
         <div class="spark">${sparkHtml}</div>
       </div>
     </div>`;
   const ideasPanel = `<div class="g-panel lp-ideas">
       <div class="sec-head"><h3>${t('panels.tradeIdeas','Leverageable Ideas')}</h3>${D.ideasSource==='llm'?'<span class="ideas-src llm">'+t('ideas.aiEnhanced','AI ENHANCED')+'</span>':D.ideasSource==='disabled'?'<span class="ideas-src static">'+t('ideas.llmOff','LLM OFF')+'</span>':'<span class="ideas-src static">'+t('ideas.pending','PENDING')+'</span>'}</div>
       ${ideasHtml}
-      <div class="disclosure">FOR INFORMATIONAL PURPOSES ONLY. This is not financial advice, a recommendation to buy or sell any security, or a solicitation of any kind. All signal-based observations are derived from publicly available OSINT data and should not be relied upon for investment decisions. Consult a licensed financial advisor before making any investment. Past performance does not guarantee future results.</div>
+      <div class="disclosure">${t('ideas.disclosure','FOR INFORMATIONAL PURPOSES ONLY. This is not financial advice, a recommendation to buy or sell any security, or a solicitation of any kind. All signal-based observations are derived from publicly available OSINT data and should not be relied upon for investment decisions. Consult a licensed financial advisor before making any investment. Past performance does not guarantee future results.')}</div>
     </div>`;
   document.getElementById('lowerGrid').innerHTML=`${tickerPanel}${osintPanel}${macroPanel}${ideasPanel}`;
 }
@@ -1496,12 +1383,12 @@ function renderRight(){
 
   // OSINT TICKER — Telegram + WHO as flowing cards
   const signalMetrics=[
-    {l:'Incident Tempo',v:D.tg.urgent.length,p:70},
-    {l:'Air Theaters',v:D.air.length,p:60},
-    {l:'Thermal Spikes',v:D.thermal.reduce((s,t)=>s+t.hc,0),p:80},
-    {l:'SDR Nodes',v:D.sdr.total,p:92},
-    {l:'Chokepoints',v:D.chokepoints.length,p:50},
-    {l:'WHO Alerts',v:D.who.length,p:40}
+    {l:t('signalMetrics.incidentTempo','Incident Tempo'),v:D.tg.urgent.length,p:70},
+    {l:t('signalMetrics.airTheaters','Air Theaters'),v:D.air.length,p:60},
+    {l:t('signalMetrics.thermalSpikes','Thermal Spikes'),v:D.thermal.reduce((s,t)=>s+t.hc,0),p:80},
+    {l:t('signalMetrics.sdrNodes','SDR Nodes'),v:D.sdr.total,p:92},
+    {l:t('signalMetrics.chokepoints','Chokepoints'),v:D.chokepoints.length,p:50},
+    {l:t('signalMetrics.whoAlerts','WHO Alerts'),v:D.who.length,p:40}
   ];
 
   // DELTA PANEL — what changed since last sweep
@@ -1550,13 +1437,13 @@ function renderRight(){
 }
 
 // === HELPERS ===
-function getAge(d){const ms=Date.now()-new Date(d).getTime();const h=Math.floor(ms/3600000);if(h<1)return 'just now';if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago'}
+function getAge(d){const ms=Date.now()-new Date(d).getTime();const h=Math.floor(ms/3600000);if(h<1)return t('time.justNow','just now');if(h<24)return t('time.hoursAgo','{hours}h ago').replace('{hours}',h);return t('time.daysAgo','{days}d ago').replace('{days}',Math.floor(h/24))}
 function cleanText(t){return t.replace(/&#39;/g,"'").replace(/&#33;/g,"!").replace(/&amp;/g,"&").replace(/<[^>]+>/g,'')}
 function safeExternalUrl(raw){try{const u=new URL(raw,location.href);return u.protocol==='http:'||u.protocol==='https:'?u.toString():null}catch{return null}}
 
 // === BOOT SEQUENCE ===
 function runBoot(){
-  const acledStatus = D.acled?.totalEvents > 0 ? `<span class="ok">${D.acled.totalEvents} EVENTS</span>` : '<span style="color:var(--warn)">DEGRADED</span>';
+  const acledStatus = D.acled?.totalEvents > 0 ? `<span class="ok">${D.acled.totalEvents} ${t('boot.events','EVENTS')}</span>` : '<span style="color:var(--warn)">'+t('boot.degraded','DEGRADED')+'</span>';
   const lines=[
     {text:t('boot.initializing','INITIALIZING CRUCIX ENGINE v2.1.0'),delay:0},
     {text:t('boot.connecting','CONNECTING {count} OSINT SOURCES...').replace('{count}',D.meta.sourcesQueried),delay:400},
@@ -1626,16 +1513,17 @@ function buildOsintPanel(panelClass='', maxHeight=260){
 function renderGlossary(){
   const body = document.getElementById('glossaryBody');
   if(!body) return;
-  body.innerHTML = signalGuideItems.map(item => `
+  const items = signalGuideItems.length ? signalGuideItems : [];
+  body.innerHTML = items.map(item => `
     <div class="glossary-card">
       <div class="glossary-term">
         <strong>${item.term}</strong>
         <span class="glossary-tag">${item.category}</span>
       </div>
-      <div class="glossary-line"><span class="glossary-label">Meaning</span>${item.meaning}</div>
-      <div class="glossary-line"><span class="glossary-label">Why it matters</span>${item.matters}</div>
-      <div class="glossary-line"><span class="glossary-label">Not proof of</span>${item.notMeaning}</div>
-      <div class="glossary-line"><span class="glossary-label">Example</span>${item.example}</div>
+      <div class="glossary-line"><span class="glossary-label">${t('glossary.labelMeaning','Meaning')}</span>${item.meaning}</div>
+      <div class="glossary-line"><span class="glossary-label">${t('glossary.labelMatters','Why it matters')}</span>${item.matters}</div>
+      <div class="glossary-line"><span class="glossary-label">${t('glossary.labelNotProof','Not proof of')}</span>${item.notMeaning}</div>
+      <div class="glossary-line"><span class="glossary-label">${t('glossary.labelExample','Example')}</span>${item.example}</div>
     </div>
   `).join('');
 }

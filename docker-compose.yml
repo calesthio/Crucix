@@ -1,6 +1,9 @@
 services:
   crucix:
-    build: .
+    build:
+      context: .
+      network: host
+    network_mode: host
     ports:
       - "${PORT:-3117}:${PORT:-3117}"
     env_file:

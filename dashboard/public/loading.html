@@ -47,7 +47,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 
   <div id="status">
     <span class="blink"></span>
-    <span id="statusText">COLLECTING DATA...</span>
+    <span id="statusText"></span>
   </div>
 
   <div id="countdown">
@@ -57,16 +57,30 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 </div>
 
 <script>
-const SWEEP_ESTIMATE_S = 50; // estimated sweep duration in seconds
+const L = window.__CRUCIX_LOCALE__ || {};
+function t(keyPath, fallback) {
+  const keys = keyPath.split('.');
+  let value = L;
+  for (const key of keys) {
+    if (value && typeof value === 'object' && key in value) {
+      value = value[key];
+    } else {
+      return fallback || keyPath;
+    }
+  }
+  return typeof value === 'string' ? value : (fallback || keyPath);
+}
+
+const SWEEP_ESTIMATE_S = 50;
 
 const lines = [
-  'CRUCIX INTELLIGENCE ENGINE v2.0.0',
-  'INITIATING FIRST SWEEP...',
-  '├── CONNECTING 25 OSINT SOURCES',
-  '├── GDELT · OPENSKY · FIRMS · MARITIME · SAFECAST',
-  '├── FRED · BLS · EIA · TREASURY · GSCPI',
-  '└── TELEGRAM · WHO · OFAC · ACLED · REDDIT · BLUESKY',
-  '<span class="ok">AWAITING SWEEP COMPLETION...</span>',
+  t('loading.engine', 'CRUCIX INTELLIGENCE ENGINE v2.0.0'),
+  t('loading.initiating', 'INITIATING FIRST SWEEP...'),
+  t('loading.connecting', 'CONNECTING 25 OSINT SOURCES'),
+  t('loading.sources1', 'GDELT · OPENSKY · FIRMS · MARITIME · SAFECAST'),
+  t('loading.sources2', 'FRED · BLS · EIA · TREASURY · GSCPI'),
+  t('loading.sources3', 'TELEGRAM · WHO · OFAC · ACLED · REDDIT · BLUESKY'),
+  '<span class="ok">' + t('loading.awaitingSweep', 'AWAITING SWEEP COMPLETION...') + '</span>',
 ];
 
 const container = document.getElementById('bootLines');
@@ -80,11 +94,11 @@ lines.forEach((text, i) => {
 });
 
 const statusMessages = [
-  'COLLECTING DATA...',
-  'PROCESSING SOURCES...',
-  'SYNTHESIZING SIGNALS...',
-  'CORRELATING FEEDS...',
-  'AWAITING COMPLETION...',
+  t('loading.statusCollecting', 'COLLECTING DATA...'),
+  t('loading.statusProcessing', 'PROCESSING SOURCES...'),
+  t('loading.statusSynthesizing', 'SYNTHESIZING SIGNALS...'),
+  t('loading.statusCorrelating', 'CORRELATING FEEDS...'),
+  t('loading.statusAwaiting', 'AWAITING COMPLETION...'),
 ];
 let statusIdx = 0;
 const statusText = document.getElementById('statusText');
@@ -92,6 +106,7 @@ setInterval(() => {
   statusIdx = (statusIdx + 1) % statusMessages.length;
   statusText.textContent = statusMessages[statusIdx];
 }, 4000);
+statusText.textContent = statusMessages[0];
 
 // === Countdown ===
 const etaText = document.getElementById('etaText');
@@ -103,13 +118,13 @@ function startCountdown(elapsedSeconds) {
 
   function tick() {
     if (remaining <= 0) {
-      etaText.textContent = 'FINALIZING...';
+      etaText.textContent = t('loading.statusFinalizing', 'FINALIZING...');
       barFill.style.width = '99%';
       return;
     }
     const pct = Math.min(99, ((SWEEP_ESTIMATE_S - remaining) / SWEEP_ESTIMATE_S) * 100);
     barFill.style.width = pct + '%';
-    etaText.innerHTML = `EST. READY IN <span class="eta">~${remaining}s</span>`;
+    etaText.innerHTML = t('loading.eta', 'EST. READY IN ~{remaining}s').replace('{remaining}', remaining);
     remaining--;
   }
 
@@ -139,7 +154,7 @@ function goToDashboard() {
   barFill.style.transition = 'width 0.4s ease';
   barFill.style.width = '100%';
   etaText.textContent = '';
-  statusText.textContent = 'TERMINAL READY — LOADING DASHBOARD';
+  statusText.textContent = t('loading.statusReady', 'TERMINAL READY — LOADING DASHBOARD');
   setTimeout(() => location.replace('/'), 800);
 }
 

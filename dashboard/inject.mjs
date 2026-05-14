@@ -10,6 +10,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import config from '../crucix.config.mjs';
+import { getLocale, currentLanguage } from '../lib/i18n.mjs';
 import { createLLMProvider } from '../lib/llm/index.mjs';
 import { generateLLMIdeas } from '../lib/llm/ideas.mjs';
 
@@ -729,6 +730,11 @@ async function cliInject() {
   let html = readFileSync(htmlPath, 'utf8');
   // Use a replacer function so JSON is inserted literally even if it contains `$`.
   html = html.replace(/^(let|const) D = .*;\s*$/m, () => 'let D = ' + json + ';');
+  // Inject locale data
+  const locale = getLocale();
+  const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
+  html = html.replace('</head>', `${localeScript}\n</head>`);
+  html = html.replace('<html lang="en">', `<html lang="${currentLanguage}">`);
   writeFileSync(htmlPath, html);
   console.log('Data injected into jarvis.html!');
 

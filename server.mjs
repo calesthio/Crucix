@@ -14,6 +14,7 @@ import { synthesize, generateIdeas } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider } from './lib/llm/index.mjs';
 import { generateLLMIdeas } from './lib/llm/ideas.mjs';
+import { translateNewsFeed, translateTelegramPosts } from './lib/llm/translate.mjs';
 import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
 
@@ -239,7 +240,13 @@ app.use(express.static(join(ROOT, 'dashboard/public')));
 // Serve loading page until first sweep completes, then the dashboard with injected locale
 app.get('/', (req, res) => {
   if (!currentData) {
-    res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
+    const htmlPath = join(ROOT, 'dashboard/public/loading.html');
+    let html = readFileSync(htmlPath, 'utf-8');
+    const locale = getLocale();
+    const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
+    html = html.replace('</head>', `${localeScript}\n</head>`);
+    html = html.replace('<html lang="en">', `<html lang="${currentLanguage}">`);
+    res.type('html').send(html);
   } else {
     const htmlPath = join(ROOT, 'dashboard/public/jarvis.html');
     let html = readFileSync(htmlPath, 'utf-8');
@@ -248,6 +255,13 @@ app.get('/', (req, res) => {
     const locale = getLocale();
     const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
     html = html.replace('</head>', `${localeScript}\n</head>`);
+    html = html.replace('<html lang="en">', `<html lang="${currentLanguage}">`);
+    
+    // Replace hardcoded demo data with current sweep data
+    if (currentData) {
+      const json = JSON.stringify(currentData);
+      html = html.replace(/^(let|const) D = .*;\s*$/m, () => 'let D = ' + json + ';');
+    }
     
     res.type('html').send(html);
   }
@@ -356,6 +370,46 @@ async function runSweepCycle() {
         console.error('[Crucix] LLM ideas failed (non-fatal):', llmErr.message);
         synthesized.ideas = [];
         synthesized.ideasSource = 'llm-failed';
+      }
+
+      // 5b. Translate news feed + OSINT posts to Chinese if language is zh
+      if (currentLanguage === 'zh') {
+        if (synthesized.newsFeed?.length) {
+          try {
+            console.log('[Crucix] Translating news feed to Chinese...');
+            const translated = await translateNewsFeed(llmProvider, synthesized.newsFeed, 'zh');
+            if (translated && translated !== synthesized.newsFeed) {
+              synthesized.newsFeed = translated;
+              console.log(`[Crucix] Translated ${translated.filter(n => n._translated).length} news items`);
+            }
+          } catch (transErr) {
+            console.error('[Crucix] News translation failed (non-fatal):', transErr.message);
+          }
+        }
+        if (synthesized.tg?.urgent?.length) {
+          try {
+            console.log('[Crucix] Translating OSINT urgent posts to Chinese...');
+            const translated = await translateTelegramPosts(llmProvider, synthesized.tg.urgent, 'zh');
+            if (translated && translated !== synthesized.tg.urgent) {
+              synthesized.tg.urgent = translated;
+              console.log(`[Crucix] Translated ${translated.filter(n => n._translated).length} urgent OSINT posts`);
+            }
+          } catch (transErr) {
+            console.error('[Crucix] OSINT translation failed (non-fatal):', transErr.message);
+          }
+        }
+        if (synthesized.tg?.topPosts?.length) {
+          try {
+            console.log('[Crucix] Translating OSINT top posts to Chinese...');
+            const translated = await translateTelegramPosts(llmProvider, synthesized.tg.topPosts, 'zh');
+            if (translated && translated !== synthesized.tg.topPosts) {
+              synthesized.tg.topPosts = translated;
+              console.log(`[Crucix] Translated ${translated.filter(n => n._translated).length} top OSINT posts`);
+            }
+          } catch (transErr) {
+            console.error('[Crucix] OSINT translation failed (non-fatal):', transErr.message);
+          }
+        }
       }
     } else {
       synthesized.ideas = [];

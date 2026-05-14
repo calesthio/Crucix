@@ -108,7 +108,10 @@
     "weatherAlert": "Alerte Météo",
     "epaRadNet": "EPA RadNet",
     "spaceStation": "Station Spatiale",
-    "gdeltEvent": "Événement GDELT"
+    "gdeltEvent": "Événement GDELT",
+    "initializing": "Initialisation du globe 3D",
+    "loadFailed": "ÉCHEC 3D · MODE PLAT",
+    "dragToRotate": "GLISSER POUR TOURNER · MOLETTE POUR ZOOMER"
   },
   "ideas": {
     "confidence": "Confiance",
@@ -142,7 +145,8 @@
     "stress": "STRESS",
     "sweeping": "SCAN EN COURS...",
     "europe": "EUROPE",
-    "orbital": "ORBITAL"
+    "orbital": "ORBITAL",
+    "views": "vues"
   },
   "delta": {
     "baseline": "RÉFÉRENCE",
@@ -221,7 +225,10 @@
     "totalTracked": "Total Suivi",
     "byCountry": "PAR PAYS",
     "constellations": "CONSTELLATIONS",
-    "launches": "lancements"
+    "launches": "lancements",
+    "militarySats": "Sats Militaires",
+    "milSats": "sats milit.",
+    "noData": "PAS DE DONNÉES SPATIALES"
   },
   "europe": {
     "noAlerts": "PAS D'ALERTES ACTIVES",
@@ -355,5 +362,155 @@
     "errors": {
       "noDataYet": "Pas encore de données — premier scan en cours"
     }
+  },
+  "glossary": {
+    "kicker": "Guide des Signaux",
+    "title": "Ce que les signaux signifient réellement",
+    "subtitle": "Interprétation simple, pourquoi c'est important et ce qu'il ne faut pas en déduire.",
+    "foot": "Traitez-les comme des guides d'interprétation, pas des conclusions. Des jugements plus solides devraient venir de la corroboration entre plusieurs couches, pas d'un seul signal isolé.",
+    "labelMeaning": "Signification",
+    "labelMatters": "Pourquoi c'est important",
+    "labelNotProof": "Ce que ce n'est pas",
+    "labelExample": "Exemple",
+    "categoryAir": "Aérien",
+    "categoryThermal": "Thermique",
+    "categoryMaritime": "Maritime",
+    "categorySignals": "Signaux",
+    "categoryRadiation": "Radiation",
+    "categoryMacro": "Macro",
+    "categoryHealth": "Santé",
+    "categoryPlatform": "Plateforme",
+    "items": [
+      {
+        "term": "Pas d'indicatif",
+        "category": "Aérien",
+        "meaning": "OpenSky a reçu une trace d'avion sans indicatif ou identifiant de vol utilisable dans cet enregistrement.",
+        "matters": "Utile comme signal d'opacité. Un cluster d'indicatifs manquants peut indiquer des métadonnées de transpondeur incomplètes ou un trafic moins transparent.",
+        "notMeaning": "Pas une preuve d'activité militaire, secrète ou hostile à elle seule.",
+        "example": "Mer de Chine méridionale : Pas d'indicatif 6 sur 152 signifie que 6 traces dans ce théâtre n'avaient pas d'indicatif utilisable dans le flux."
+      },
+      {
+        "term": "Haute altitude",
+        "category": "Aérien",
+        "meaning": "Avions au-dessus de 12 000 mètres, environ 39 000 pieds, dans l'instantané OpenSky actuel.",
+        "matters": "Sépare le trafic de croisière des mouvements locaux ou régionaux à plus basse altitude.",
+        "notMeaning": "Pas un score de danger et pas inhabituel en soi. Les jets commerciaux opèrent couramment à cette altitude.",
+        "example": "Haute altitude 2 signifie que seuls 2 avions suivis dans ce hotspot dépassaient le seuil de croisière à cet instantané."
+      },
+      {
+        "term": "Principaux pays",
+        "category": "Aérien",
+        "meaning": "Les valeurs origin_country les plus fréquentes d'OpenSky parmi les avions de ce hotspot.",
+        "matters": "Utile pour comprendre la composition approximative du trafic traversant un théâtre.",
+        "notMeaning": "Pas qui contrôle l'avion en ce moment et pas un indicateur direct de propriété militaire.",
+        "example": "Chine (61), Philippines (39), Taïwan (17) signifie que ceux-ci étaient les principaux pays d'origine enregistrés dans l'instantané."
+      },
+      {
+        "term": "FRP",
+        "category": "Thermique",
+        "meaning": "Puissance Radiative du Feu. C'est l'intensité d'un hotspot FIRMS spécifique, mesurée en mégawatts.",
+        "matters": "Un FRP plus élevé signifie généralement un événement de feu plus chaud, plus grand ou plus énergétique à ce point exact.",
+        "notMeaning": "Pas l'intensité de toute la région et pas une preuve automatique d'activité de conflit.",
+        "example": "Soudan / Corne de l'Afrique : FRP 92,3 MW décrit cet hotspot, tandis que Total 1 451 décrit le nombre total de détections régionales."
+      },
+      {
+        "term": "Détections totales",
+        "category": "Thermique",
+        "meaning": "Le nombre total de détections thermiques FIRMS dans le bucket régional entier pour le scan actuel.",
+        "matters": "Utile pour repérer des clusters de feu anormalement actifs, surtout comparé aux baselines historiques ou à l'activité nocturne.",
+        "notMeaning": "Pas un compte pour le point de carte unique sur lequel vous avez cliqué et pas nécessairement un compte de conflit.",
+        "example": "Total 1 451 signifie que le bucket Soudan / Corne de l'Afrique avait 1 451 détections lors de ce scan."
+      },
+      {
+        "term": "Détections nocturnes",
+        "category": "Thermique",
+        "meaning": "Détections thermiques marquées comme se produisant la nuit dans le bucket régional FIRMS plus large.",
+        "matters": "La chaleur nocturne peut être plus notable car elle est moins susceptible d'être un brûlage terrestre routinier diurne.",
+        "notMeaning": "Pas un indicateur de combat direct. Elle a toujours besoin de contexte de localisation, baseline et sources corroborantes.",
+        "example": "Nuit 140 signifie que 140 des 1 451 détections régionales étaient des détections nocturnes lors de ce scan."
+      },
+      {
+        "term": "Goulet d'étranglement",
+        "category": "Maritime",
+        "meaning": "Un corridor maritime stratégique ou un passage où les flux commerciaux et énergétiques peuvent être retardés, déviés ou interrompus.",
+        "matters": "Ces nœuds comptent car une perturbation ici peut affecter les coûts d'expédition, les temps de transit et les prix des matières premières à l'échelle mondiale.",
+        "notMeaning": "Pas une preuve qu'une perturbation se produit actuellement. C'est un emplacement de surveillance stratégique.",
+        "example": "Bab el-Mandeb ou le détroit d'Ormuz comptent car les flux d'expédition et d'énergie s'y concentrent."
+      },
+      {
+        "term": "Récepteur SDR",
+        "category": "Signaux",
+        "meaning": "Un récepteur radio définie par logiciel accessible publiquement dans ou près d'une région d'intérêt.",
+        "matters": "Une couverture dense de récepteurs peut vous donner plus de capacité à surveiller les communications ou l'activité signal dans un théâtre.",
+        "notMeaning": "Pas une preuve d'émissions hostiles ou une menace à elle seule. C'est une couche d'observation et de surveillance.",
+        "example": "Le nombre SDR de la mer de Chine méridionale signifie que des récepteurs KiwiSDR accessibles publiquement sont disponibles dans ou près de cette zone."
+      },
+      {
+        "term": "CPM",
+        "category": "Radiation",
+        "meaning": "Coups par minute d'une source de surveillance de radiation, utilisé ici pour l'état relatif de radiation d'un site.",
+        "matters": "Utile pour repérer des anomalies par rapport à la plage normale du site ou comparer des lectures consécutives.",
+        "notMeaning": "Pas un verdict de sécurité direct à lui seul. L'interprétation dépend de la baseline locale et de la tendance, pas du nombre brut seul.",
+        "example": "Une lecture de 33 CPM peut être normale si le niveau de fond habituel de cet emplacement est dans la même plage."
+      },
+      {
+        "term": "Spread HY",
+        "category": "Macro",
+        "meaning": "Écart de crédit high-yield, présenté ici comme proxy de stress à partir des données de crédit FRED.",
+        "matters": "Quand les écarts se creusent, les marchés pricent généralement plus de stress de crédit et des conditions financières plus restrictives.",
+        "notMeaning": "Pas un appel de récession à lui seul. C'est un signal de stress parmi d'autres.",
+        "example": "Un spread HY croissant avec VIX plus élevé et actions plus faibles est un pattern risk-off plus fort que HY seul."
+      },
+      {
+        "term": "VIX",
+        "category": "Macro",
+        "meaning": "L'indice de volatilité CBOE, couramment utilisé comme jauge de peur ou de volatilité implicite par le marché.",
+        "matters": "Un VIX plus élevé signifie souvent plus de volatilité équitaire attendue et un positionnement de marché plus défensif.",
+        "notMeaning": "Pas une prévision directe d'un krach et pas un indicateur géopolitique à lui seul.",
+        "example": "VIX au-dessus de 20 avec élargissement des spreads HY est un pattern de stress plus fort que VIX seul."
+      },
+      {
+        "term": "GSCPI",
+        "category": "Macro",
+        "meaning": "L'indice de pression sur la chaîne d'approvisionnement mondiale, un indicateur large de la tension sur les chaînes d'approvisionnement globales.",
+        "matters": "Il aide à traduire les perturbations géopolitiques ou météorologiques en pression probable sur l'expédition, les stocks et les prix.",
+        "notMeaning": "Pas un prix de marché en direct et pas un score de chaîne d'approvisionnement spécifique à une entreprise à lui seul.",
+        "example": "Un GSCPI plus élevé rend les chocs de route ou d'énergie plus susceptibles de se répandre en une pression de coûts plus large."
+      },
+      {
+        "term": "Alerte OMS",
+        "category": "Santé",
+        "meaning": "Un item Disease Outbreak News de l'OMS ou un bulletin lié à une épidémie apparu dans la couche santé.",
+        "matters": "Utile pour surveiller les épidémies qui pourraient affecter les voyages, les chaînes d'approvisionnement, le stress humanitaire ou les conditions opérationnelles régionales.",
+        "notMeaning": "Pas une déclaration de pandémie et pas automatiquement de haute sévérité.",
+        "example": "Une alerte OMS dans une région riche en ports compte plus si elle chevauche l'expédition, les contrôles frontaliers ou les signaux d'instabilité locale."
+      },
+      {
+        "term": "Delta de scan",
+        "category": "Plateforme",
+        "meaning": "Le résumé des changements entre le scan actuel et le précédent, y compris les signaux nouveaux, escaladés et désescaladés.",
+        "matters": "Utile pour repérer ce qui a récemment changé au lieu de relire le dashboard entier depuis le début.",
+        "notMeaning": "Pas un modèle de risque complet. C'est une couche de changement directionnelle au-dessus des signaux bruts.",
+        "example": "Un delta marqué risk-off avec plusieurs items nouveaux et escaladés signifie que le dernier scan a matériellement aggravé le mix de signaux."
+      }
+    ]
+  },
+  "loading": {
+    "title": "CRUCIX — Initialisation",
+    "statusCollecting": "COLLECTE DE DONNÉES...",
+    "statusProcessing": "TRAITEMENT DES SOURCES...",
+    "statusSynthesizing": "SYNTHÈSE DES SIGNAUX...",
+    "statusCorrelating": "CORRÉLATION DES FLUX...",
+    "statusAwaiting": "ATTENTE DE FINALISATION...",
+    "statusFinalizing": "FINALISATION...",
+    "statusReady": "TERMINAL PRÊT — CHARGEMENT DU DASHBOARD",
+    "eta": "PRÊT EST. DANS ~{remaining}s",
+    "awaitingSweep": "ATTENTE DE FINALISATION DU SCAN...",
+    "engine": "MOTEUR DE RENSEIGNEMENT CRUCIX v2.0.0",
+    "initiating": "DÉMARRAGE DU PREMIER SCAN...",
+    "connecting": "CONNEXION À 25 SOURCES OSINT",
+    "sources1": "GDELT · OPENSKY · FIRMS · MARITIME · SAFECAST",
+    "sources2": "FRED · BLS · EIA · TRÉSOR · GSCPI",
+    "sources3": "TELEGRAM · OMS · OFAC · ACLED · REDDIT · BLUESKY"
   }
 }
