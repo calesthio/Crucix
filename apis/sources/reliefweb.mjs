@@ -10,6 +10,24 @@ const BASE = 'https://api.reliefweb.int/v1';
 const APPNAME = process.env.RELIEFWEB_APPNAME || 'crucix';
 
 const HDX_BASE = 'https://data.humdata.org/api/3/action';
+const HEALTH_QUERY = [
+  'outbreak',
+  'epidemic',
+  'pandemic',
+  'cholera',
+  'measles',
+  'mpox',
+  'dengue',
+  'hantavirus',
+  'polio',
+  'influenza',
+  'ebola',
+  'marburg',
+  'meningitis',
+  '"yellow fever"',
+].join(' OR ');
+
+const HEALTH_KEYWORD_RE = /outbreak|epidemic|pandemic|cholera|measles|mpox|dengue|hantavirus|polio|influenza|ebola|marburg|meningitis|yellow fever|public health/i;
 
 // POST-based search for reports (ReliefWeb API v1 POST format)
 async function rwPost(endpoint, body) {
@@ -60,6 +78,11 @@ export async function searchReports(opts = {}) {
   return rwPost('reports', body);
 }
 
+export async function searchHealthReports(opts = {}) {
+  const { limit = 20 } = opts;
+  return searchReports({ query: HEALTH_QUERY, limit });
+}
+
 // Get active disasters via ReliefWeb API (POST method)
 export async function getDisasters(opts = {}) {
   const { limit = 15 } = opts;
@@ -94,18 +117,61 @@ async function hdxFallback(limit = 15) {
   return [];
 }
 
+async function hdxHealthFallback(limit = 15) {
+  const data = await safeFetch(
+    `${HDX_BASE}/package_search?q=${encodeURIComponent('who outbreak epidemic cholera measles dengue mpox health emergency')}&rows=${limit}&sort=metadata_modified+desc`
+  );
+  if (data?.result?.results) {
+    return data.result.results
+      .map(pkg => ({
+        title: pkg.title,
+        date: pkg.metadata_modified,
+        source: pkg.dataset_source || pkg.organization?.title,
+        countries: pkg.groups?.map(g => g.display_name),
+        url: `https://data.humdata.org/dataset/${pkg.name}`,
+      }))
+      .filter(pkg => HEALTH_KEYWORD_RE.test(pkg.title || ''));
+  }
+  return [];
+}
+
+function mapHealthAlert(report, sourceLabel = 'ReliefWeb') {
+  return {
+    title: report.fields?.title || report.title || null,
+    date: report.fields?.date?.created || report.date || null,
+    countries: report.fields?.country?.map(c => c.name) || report.countries || [],
+    disasterType: report.fields?.disaster_type?.map(d => d.name) || report.disasterType || [],
+    source: report.fields?.source?.map(s => s.name)?.join(', ') || report.source || sourceLabel,
+    url: report.fields?.url_alias
+      ? `https://reliefweb.int${report.fields.url_alias}`
+      : report.url || null,
+  };
+}
+
+function isHealthAlertCandidate(report = {}) {
+  const haystack = [
+    report.title,
+    ...(report.disasterType || []),
+    ...(report.countries || []),
+    report.source,
+  ].filter(Boolean).join(' ');
+  return HEALTH_KEYWORD_RE.test(haystack);
+}
+
 // Briefing — get latest humanitarian crises
 export async function briefing() {
-  const [reports, disasters] = await Promise.all([
+  const [reports, disasters, healthReports] = await Promise.all([
     searchReports({ limit: 15 }),
     getDisasters({ limit: 15 }),
+    searchHealthReports({ limit: 20 }),
   ]);
 
-  const rwFailed = !!reports?.error || !!disasters?.error;
+  const rwFailed = !!reports?.error || !!disasters?.error || !!healthReports?.error;
 
   let latestReports = [];
   let activeDisasters = [];
   let hdxDatasets = [];
+  let healthAlerts = [];
 
   if (!rwFailed) {
     latestReports = (reports?.data || []).map(r => ({
@@ -125,9 +191,13 @@ export async function briefing() {
       type: d.fields?.type?.map(t => t.name),
       status: d.fields?.status,
     }));
+    healthAlerts = (healthReports?.data || [])
+      .map(r => mapHealthAlert(r))
+      .filter(isHealthAlertCandidate);
   } else {
     // Fallback to HDX when ReliefWeb returns 403 (unapproved appname)
     hdxDatasets = await hdxFallback(15);
+    healthAlerts = (await hdxHealthFallback(15)).filter(isHealthAlertCandidate);
   }
 
   return {
@@ -138,10 +208,12 @@ export async function briefing() {
           rwError: reports?.error || disasters?.error,
           rwNote: 'ReliefWeb API requires an approved appname since Nov 2025. Set RELIEFWEB_APPNAME env var after registering at https://apidoc.reliefweb.int/parameters#appname',
           hdxDatasets,
+          healthAlerts,
         }
       : {
           latestReports,
           activeDisasters,
+          healthAlerts,
         }),
   };
 }

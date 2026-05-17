@@ -1,0 +1,359 @@
+{
+  "meta": {
+    "code": "hu",
+    "name": "Hungarian",
+    "nativeName": "Magyar"
+  },
+  "dashboard": {
+    "title": "CRUCIX — Hírszerzési Terminál",
+    "bootTitle": "CRUCIX HÍRSZERZÉSI MOTOR",
+    "bootSubtitle": "Helyi Palantir · 31 forrás",
+    "waitingForSweep": "Várakozás az első lekérdezésre...",
+    "sourcesOk": "Források rendben",
+    "lastSweep": "Utolsó lekérdezés",
+    "nextSweep": "Következő lekérdezés",
+    "sweep": "LEKÉRDEZÉS",
+    "sources": "FORRÁSOK",
+    "delta": "DELTA",
+    "highAlert": "MAGAS RIASZTÁS",
+    "riskOff": "RISK-OFF",
+    "riskOn": "RISK-ON",
+    "mixed": "VEGYES",
+    "terminalActive": "TERMINÁL AKTÍV",
+    "perf": "TELJ.",
+    "perfLow": "ALACSONY",
+    "perfHigh": "MAGAS",
+    "guideBtn": "Jelzések jelentése"
+  },
+  "boot": {
+    "initializing": "CRUCIX MOTOR INDÍTÁSA v2.1.0",
+    "connecting": "{count} OSINT-FORRÁS CSATLAKOZTATÁSA...",
+    "sourceGroup1": "OPENSKY · FIRMS · KIWISDR · MARITIME",
+    "sourceGroup2": "FRED · BLS · EIA · TREASURY · GSCPI",
+    "sourceGroup3": "TELEGRAM · SAFECAST · EPA · WHO · OFAC",
+    "sourceGroup4": "GDELT · NOAA · SZABADALMAK · BLUESKY · REDDIT",
+    "sourceGroup5": "USGS · EKB · CVE · COPERNICUS · CELESTRAK",
+    "sweepComplete": "LEKÉRDEZÉS KÉSZ — {ok}/{total} FORRÁS",
+    "ok": "OK",
+    "acledLayer": "ACLED KONFLIKTUSRÉTEG",
+    "events": "ESEMÉNYEK",
+    "degraded": "KORLÁTOZOTT",
+    "flightCorridors": "LÉGI FOLYOSÓK",
+    "active": "AKTÍV",
+    "dualProjection": "KETTŐS VETÍTÉS",
+    "ready": "KÉSZ",
+    "intelligenceSynthesis": "HÍRSZERZÉSI SZINTÉZIS"
+  },
+  "panels": {
+    "sensorGrid": "Szenzorháló",
+    "tradeIdeas": "Kereskedési ötletek",
+    "osintFeed": "OSINT hírcsatorna",
+    "osintStream": "OSINT adatfolyam",
+    "nuclearWatch": "Nukleáris figyelés",
+    "newsTicker": "Élő hírsáv",
+    "sweepDelta": "Lekérdezési delta",
+    "macroMarkets": "Makró + piacok",
+    "healthAlerts": "Egészségügyi riasztások",
+    "riskGauges": "Kockázati mutatók",
+    "crossSourceSignals": "Többforrású jelzések",
+    "signalCore": "Jelzésmag",
+    "seismicWatch": "Szeizmikus figyelés",
+    "cyberWatch": "Kiberfigyelés",
+    "spaceWatch": "Űrfigyelés",
+    "europeAlerts": "Európai riasztások",
+    "ecbIndicators": "EKB-mutatók"
+  },
+  "layers": {
+    "airActivity": "Légi aktivitás",
+    "thermalSpikes": "Hőanomáliák",
+    "sdrCoverage": "SDR-lefedettség",
+    "maritimeWatch": "Tengeri figyelés",
+    "nuclearSites": "Nukleáris helyszínek",
+    "conflictEvents": "Konfliktusesemények",
+    "healthWatch": "Egészségügyi figyelés",
+    "worldNews": "Világhírek",
+    "osintFeed": "OSINT csatorna",
+    "theaters": "térség",
+    "nightDet": "éjjeli det.",
+    "online": "online",
+    "chokepoints": "szűk keresztm.",
+    "monitors": "monitor",
+    "fatalities": "halálos áld.",
+    "whoAlerts": "WHO-riasztás",
+    "rssGeolocated": "RSS geokódolva",
+    "earthquakes": "Földrengések",
+    "seismicEvents": "Szeizmikus események",
+    "cyberVulns": "Kibersebezhetőségek",
+    "spaceActivity": "Űrtevékenység",
+    "europeEmergency": "Európai vészhelyzet"
+  },
+  "map": {
+    "worldNews": "Világhírek",
+    "healthAlert": "Egészségügyi riasztás",
+    "chokepoint": "Szűk keresztmetszet",
+    "nuclearSite": "Nukleáris helyszín",
+    "osintEvent": "OSINT-esemény",
+    "thermalDetection": "Hőészlelés",
+    "aircraft": "Légi jármű",
+    "rssGeolocated": "RSS geokódolva",
+    "airTraffic": "Légiforgalom",
+    "thermalFire": "Hő/Tűz",
+    "conflict": "Konfliktus",
+    "sdrReceiver": "SDR-vevő",
+    "scrollToZoom": "GÖRGESS A ZOOMHOZ · HÚZD A MOZGATÁSHOZ",
+    "globeMode": "GÖMB NÉZET",
+    "flatMode": "SÍK NÉZET",
+    "earthquake": "Földrengés",
+    "disaster": "Katasztrófa",
+    "weatherAlert": "Időjárási riasztás",
+    "epaRadNet": "EPA RadNet",
+    "spaceStation": "Űrállomás",
+    "gdeltEvent": "GDELT-esemény"
+  },
+  "ideas": {
+    "confidence": "Bizonyosság",
+    "horizon": "Időtáv",
+    "risk": "Kockázat",
+    "signals": "Jelzések",
+    "rationale": "Indoklás",
+    "aiEnhanced": "MI-TÁMOGATOTT",
+    "llmOff": "LLM KI",
+    "pending": "FOLYAMATBAN",
+    "llmNotConfigured": "LLM NINCS BEÁLLÍTVA",
+    "llmHelp": "Állítsd be a .env fájlban az LLM_PROVIDER és a hitelesítési adatokat az MI-alapú ötletekhez",
+    "disclosure": "KIZÁRÓLAG TÁJÉKOZTATÁSI CÉLRA. Ez nem pénzügyi tanácsadás, nem vételi vagy eladási ajánlás, és nem minősül felhívásnak. Minden jelzésalapú megállapítás nyilvánosan elérhető OSINT-adatokból származik, ezért befektetési döntés alapjául önmagában nem szolgálhat. Befektetés előtt konzultálj engedéllyel rendelkező pénzügyi tanácsadóval. A múltbeli teljesítmény nem jelent garanciát a jövőbeli eredményekre."
+  },
+  "regions": {
+    "world": "Világ",
+    "americas": "Amerikák",
+    "europe": "Európa",
+    "middleEast": "Közel-Kelet",
+    "asiaPacific": "Ázsia és Csendes-óceán",
+    "africa": "Afrika"
+  },
+  "badges": {
+    "radiation": "SUGÁRZÁS",
+    "live": "ÉLŐ",
+    "delayed": "KÉSETETT",
+    "items": "TÉTEL",
+    "urgent": "SÜRGŐS",
+    "worldview": "GLOBÁLIS NÉZET",
+    "hotMetrics": "KIEMELT MUTATÓK",
+    "stress": "TERHELÉS",
+    "sweeping": "LEKÉRDEZÉS...",
+    "europe": "EURÓPA",
+    "orbital": "ORBITÁLIS"
+  },
+  "delta": {
+    "baseline": "ALAPÁLLAPOT",
+    "escalation": "ESZKALÁCIÓ",
+    "deescalation": "DEESZKALÁCIÓ",
+    "stable": "STABIL",
+    "newSignals": "Új jelzések",
+    "resolved": "Lezárt",
+    "noChanges": "Az előző lekérdezés óta nincs változás",
+    "changes": "Változások",
+    "critical": "Kritikus",
+    "new": "ÚJ"
+  },
+  "metrics": {
+    "wtiCrude": "WTI nyersolaj",
+    "brent": "Brent",
+    "natGas": "Földgáz",
+    "vix": "VIX",
+    "fedFunds": "Fed-alapkamat",
+    "gscpi": "GSCPI",
+    "cpiMom": "CPI hó/hó",
+    "unemployment": "Munkanélküliség",
+    "hySpread": "HY spread",
+    "usdIndex": "USD-index",
+    "joblessClaims": "Segélykérelmek",
+    "mortgage30y": "30 éves jelzálog",
+    "m2Supply": "M2 pénzmennyiség",
+    "natDebt": "Államadósság",
+    "wti5day": "WTI 5 NAP",
+    "indexes": "INDEXEK",
+    "crypto": "KRIPTÓ",
+    "energyMacro": "ENERGIA + MAKRÓ",
+    "vsPrior": "előzőhöz képest",
+    "ecbRate": "EKB-kamat",
+    "eurusd": "EUR/USD",
+    "euM3": "EU M3",
+    "euHicp": "EU HICP",
+    "earthquakes7d": "Földrengések (7 n.)",
+    "criticalCves": "Kritikus CVE-k",
+    "spaceObjects": "Űrobjektumok",
+    "starlink": "Starlink",
+    "europeAlerts": "EU-riasztások"
+  },
+  "signalMetrics": {
+    "incidentTempo": "Incidenstempó",
+    "airTheaters": "Légi térségek",
+    "thermalSpikes": "Hőanomáliák",
+    "sdrNodes": "SDR-csomópontok",
+    "chokepoints": "Szűk keresztm.",
+    "whoAlerts": "WHO-riasztások"
+  },
+  "nuclear": {
+    "allSitesNormal": "MINDEN HELYSZÍN NORMÁL",
+    "anomalyDetected": "ANOMÁLIA ÉSZLELVE",
+    "noData": "Nincs adat"
+  },
+  "seismic": {
+    "noRecentQuakes": "NINCS JELENTŐS FÖLDRENGÉS",
+    "majorQuake": "NAGY FÖLDRENGÉS ÉSZLELVE",
+    "tsunamiRisk": "SZÖKŐÁRVESZÉLY",
+    "mag": "M"
+  },
+  "cyber": {
+    "noAlerts": "NINCS KRITIKUS CVE",
+    "criticalAlert": "KRITIKUS SEBEZHETŐSÉGEK",
+    "cvss": "CVSS",
+    "critical": "KRITIKUS"
+  },
+  "space": {
+    "noActivity": "NORMÁL AKTIVITÁS",
+    "launchDetected": "INDÍTÁSI AKTIVITÁS",
+    "objectsTracked": "követett objektum",
+    "newLast30d": "új (30 n.)",
+    "satellites": "műhold",
+    "recentLaunches": "Friss indítások",
+    "totalTracked": "Összes követett",
+    "byCountry": "ORSZÁGONKÉNT",
+    "constellations": "KONSTELLÁCIÓK",
+    "launches": "indítás"
+  },
+  "europe": {
+    "noAlerts": "NINCS AKTÍV RIASZTÁS",
+    "activeAlerts": "AKTÍV RIASZTÁSOK",
+    "fires": "Tüzek",
+    "floods": "Árvizek",
+    "types": "típus"
+  },
+  "time": {
+    "justNow": "épp most",
+    "hoursAgo": "{hours} órája",
+    "daysAgo": "{days} napja"
+  },
+  "bot": {
+    "commands": {
+      "status": "A rendszer állapota, az utolsó lekérdezés és a források állapota",
+      "sweep": "Kézi lekérdezési ciklus indítása",
+      "brief": "Tömör szöveges összefoglaló a legfrissebb hírszerzési képről",
+      "portfolio": "Aktuális pozíciók és P&L megjelenítése (ha Alpaca kapcsolódik)",
+      "alerts": "A legutóbbi riasztások előzményei",
+      "mute": "Riasztások némítása 1 órára (vagy /mute 2h, /mute 4h)",
+      "unmute": "Riasztások újraengedélyezése",
+      "help": "Elérhető parancsok megjelenítése"
+    },
+    "messages": {
+      "alertsMuted": "🔇 A riasztások {hours} órára némítva — eddig: {time} UTC",
+      "useUnmute": "A folytatáshoz használd az /unmute parancsot.",
+      "alertsResumed": "🔔 A riasztások újra aktívak. A következő jelzésértékelést megkapod.",
+      "sweepTriggered": "🚀 A kézi lekérdezés elindult. Ha jelentős jelzés érkezik, kapsz róla riasztást.",
+      "sweepInProgress": "🔄 Már fut egy lekérdezés. Kérlek, várj.",
+      "noDataYet": "⏳ Még nincs adat — az első lekérdezés befejezésére vár.",
+      "noRecentAlerts": "Nincsenek friss riasztások.",
+      "recentAlerts": "📋 Legutóbbi riasztások (utolsó {count})",
+      "commandsTip": "Tipp: a parancsok nem kis- és nagybetűérzékenyek",
+      "commandFailed": "❌ A parancs sikertelen: {error}",
+      "portfolioNotAvailable": "📊 A portfólióintegrációhoz Alpaca MCP-kapcsolat szükséges.\nPortfóliólekérdezéshez használd a Crucix irányítópultját vagy a Claude ügynököt."
+    },
+    "status": {
+      "title": "🖥️ CRUCIX ÁLLAPOT",
+      "uptime": "Üzemidő",
+      "lastSweep": "Utolsó lekérdezés",
+      "nextSweep": "Következő lekérdezés",
+      "sweepInProgress": "Lekérdezés folyamatban",
+      "yes": "🔄 Igen",
+      "no": "⏸️ Nem",
+      "sources": "Források",
+      "failed": "hibás",
+      "llm": "LLM",
+      "enabled": "✅",
+      "disabled": "❌ Kikapcsolva",
+      "sseClients": "SSE-kliensek",
+      "dashboard": "Irányítópult",
+      "pending": "folyamatban",
+      "never": "soha"
+    },
+    "brief": {
+      "title": "📋 CRUCIX ÖSSZEFOGLALÓ",
+      "direction": "Irány",
+      "changes": "változás",
+      "criticalChanges": "kritikus",
+      "osint": "📡 OSINT",
+      "urgentSignals": "sürgős jelzés",
+      "totalPosts": "összes bejegyzés",
+      "topIdeas": "💡 Kiemelt ötletek"
+    },
+    "alertTiers": {
+      "flash": "AZONNALI",
+      "priority": "ELSŐDLEGES",
+      "routine": "RUTIN"
+    }
+  },
+  "alerts": {
+    "tiers": {
+      "flash": {
+        "label": "AZONNALI",
+        "description": "Azonnali beavatkozás szükséges — piacmozgató, időkritikus"
+      },
+      "priority": {
+        "label": "ELSŐDLEGES",
+        "description": "Fontos jelzéscsoport — órákon belül reagálni kell"
+      },
+      "routine": {
+        "label": "RUTIN",
+        "description": "Figyelemre méltó változás — tájékoztató jellegű, nem sürgős"
+      }
+    },
+    "confidence": {
+      "high": "MAGAS",
+      "medium": "KÖZEPES",
+      "low": "ALACSONY"
+    },
+    "fields": {
+      "direction": "Irány",
+      "confidence": "Bizonyosság",
+      "crossCorrelation": "Keresztkorreláció",
+      "action": "Teendő",
+      "signals": "Jelzések",
+      "monitor": "Figyelés"
+    },
+    "messages": {
+      "alertsMuted": "Riasztások némítva",
+      "mutedUntil": "A riasztások {hours} órára némítva — eddig: {time} UTC.",
+      "useUnmuteToResume": "A folytatáshoz használd az /unmute parancsot.",
+      "alertsResumed": "Riasztások újra aktívak",
+      "willReceiveNext": "A következő jelzésértékelést meg fogod kapni."
+    },
+    "ruleBasedHeadlines": {
+      "nuclearAnomaly": "Nukleáris anomália észlelve",
+      "crossDomainSignals": "{count} kritikus, többdoménű jelzés",
+      "escalatingSignals": "{count} eszkalálódó jelzés",
+      "osintSurge": "OSINT-kiugrás: {count} új sürgős bejegyzés",
+      "signalChangeDetected": "Jelzésváltozás észlelve"
+    }
+  },
+  "discord": {
+    "commands": {
+      "status": "Rendszerállapot, utolsó lekérdezés, forrásállapot",
+      "sweep": "Kézi lekérdezési ciklus indítása",
+      "brief": "Tömör hírszerzési összefoglaló",
+      "portfolio": "Portfólióállapot (ha Alpaca kapcsolódik)",
+      "alerts": "Legutóbbi riasztási előzmények",
+      "mute": "Riasztások némítása (alapértelmezés: 1 óra)",
+      "unmute": "Riasztások újraengedélyezése",
+      "muteHoursOption": "Némítás ideje órában (alapértelmezés: 1)"
+    }
+  },
+  "llm": {
+    "systemPrompt": "Te egy makrohírszerzési vállalat kvantitatív elemzője vagy. 25 forrásból származó strukturált OSINT- és gazdasági adatokat kapsz, és ezekből 5-8 végrehajtható kereskedési ötletet állítasz elő.\n\nSzabályok:\n- Minden ötlet hivatkozzon a bemenet konkrét adatpontjaira\n- Tartalmazza a belépési indoklást, a fő kockázatokat és az időtávot\n- Kapcsold össze a geopolitikai, gazdasági és piaci jelzéseket\n- Légy konkrét: nevezd meg az instrumentumokat (tickerek, futures, ETF-ek), ne csak általános szektorokat\n- Ha a delta jelentős változásokat mutat, azokkal kezdj\n- NE ismételd meg a \"previous ideas\" listában szereplő ötleteket, kivéve ha a feltételek érdemben változtak\n- A bizonyosság besorolása: HIGH (több megerősítő jelzés), MEDIUM (alátámasztott tézis), LOW (spekulatív)\n\nA kimenet CSAK érvényes JSON tömb legyen. Minden objektum:\n{\n  \"title\": \"Rövid magyar cím (max. 10 szó)\",\n  \"type\": \"LONG|SHORT|HEDGE|WATCH|AVOID\",\n  \"ticker\": \"Elsődleges instrumentum\",\n  \"confidence\": \"HIGH|MEDIUM|LOW\",\n  \"rationale\": \"2-3 magyar mondatos indoklás konkrét adathivatkozásokkal\",\n  \"risk\": \"Fő kockázati tényező magyarul\",\n  \"horizon\": \"Intraday|Days|Weeks|Months\",\n  \"signals\": [\"signal1\", \"signal2\"]\n}"
+  },
+  "api": {
+    "errors": {
+      "noDataYet": "Még nincs adat — az első lekérdezés folyamatban"
+    }
+  }
+}

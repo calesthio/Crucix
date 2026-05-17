@@ -243,12 +243,16 @@ app.get('/', (req, res) => {
   } else {
     const htmlPath = join(ROOT, 'dashboard/public/jarvis.html');
     let html = readFileSync(htmlPath, 'utf-8');
+    const dataScript = JSON.stringify(currentData).replace(/<\/script>/gi, '<\\/script>');
     
+    html = html.replace(/^(let|const) D = .*;\s*$/m, () => `let D = ${dataScript};`);
+
     // Inject locale data into the HTML
     const locale = getLocale();
     const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
     html = html.replace('</head>', `${localeScript}\n</head>`);
     
+    res.set('Cache-Control', 'no-store');
     res.type('html').send(html);
   }
 });
@@ -343,7 +347,13 @@ async function runSweepCycle() {
       try {
         console.log('[Crucix] Generating LLM trade ideas...');
         const previousIdeas = memory.getLastRun()?.ideas || [];
-        const llmIdeas = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas);
+        const llmIdeas = await generateLLMIdeas(
+          llmProvider,
+          synthesized,
+          delta,
+          previousIdeas,
+          config.llm.tradeIdeasLang
+        );
         if (llmIdeas) {
           synthesized.ideas = llmIdeas;
           synthesized.ideasSource = 'llm';

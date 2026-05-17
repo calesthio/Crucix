@@ -25,6 +25,7 @@ function isEnglish(text) {
 
 // === Geo-tagging keyword map ===
 const geoKeywords = {
+  'World':[0,0],
   'Ukraine':[49,32],'Russia':[56,38],'Moscow':[55.7,37.6],'Kyiv':[50.4,30.5],
   'China':[35,105],'Beijing':[39.9,116.4],'Iran':[32,53],'Tehran':[35.7,51.4],
   'Israel':[31.5,35],'Gaza':[31.4,34.4],'Palestine':[31.9,35.2],
@@ -90,6 +91,118 @@ function geoTagText(text) {
     }
   }
   return null;
+}
+
+const whoGeoKeywords = {
+  'Democratic Republic of the Congo': [-2.88, 23.66],
+  'DR Congo': [-2.88, 23.66],
+  'Republic of the Congo': [-0.69, 15.83],
+  'Congo': [-2.88, 23.66],
+  'Uganda': [1.37, 32.29],
+  'Kenya': [-1.29, 36.82],
+  'Tanzania': [-6.37, 34.89],
+  'Rwanda': [-1.94, 29.87],
+  'Burundi': [-3.37, 29.92],
+  'South Sudan': [7.86, 29.69],
+  'Sudan': [15.5, 32.56],
+  'Saudi Arabia': [23.89, 45.08],
+  'Yemen': [15.55, 48.52],
+  'Pakistan': [30.38, 69.35],
+  'Afghanistan': [33.94, 67.71],
+  'Nepal': [28.39, 84.12],
+  'India': [20.59, 78.96],
+  'Cambodia': [12.57, 104.99],
+  'Laos': [19.86, 102.5],
+  'Thailand': [15.87, 100.99],
+  'China': [35.86, 104.2],
+  'Mongolia': [46.86, 103.85],
+  'Indonesia': [-2.55, 118.01],
+  'Papua New Guinea': [-6.31, 143.96],
+  'Gabon': [-0.8, 11.61],
+  'Ghana': [7.95, -1.02],
+  'Niger': [17.61, 8.08],
+  'Nigeria': [9.08, 8.68],
+  'Cameroon': [5.96, 12.89],
+  'Ethiopia': [9.15, 40.49],
+  'Somalia': [5.15, 46.2],
+  'Madagascar': [-18.77, 46.87],
+  'Brazil': [-14.24, -51.93],
+  'Peru': [-9.19, -75.02],
+  'Bolivia': [-16.29, -63.59],
+  'Mexico': [23.63, -102.55],
+  'United States': [39.83, -98.58],
+  'USA': [39.83, -98.58]
+};
+
+const whoRegionCentroids = {
+  AFRO: { lat: 0.3, lon: 20.5, region: 'African Region' },
+  AMRO: { lat: -8.8, lon: -67.3, region: 'Region of the Americas' },
+  EMRO: { lat: 24.4, lon: 43.8, region: 'Eastern Mediterranean Region' },
+  EURO: { lat: 54.5, lon: 15.3, region: 'European Region' },
+  SEARO: { lat: 15.9, lon: 92.8, region: 'South-East Asia Region' },
+  WPRO: { lat: 21.4, lon: 124.7, region: 'Western Pacific Region' }
+};
+
+function geoTagWhoAlert(alert = {}) {
+  if (alert.whoRegionCode && whoRegionCentroids[alert.whoRegionCode]) {
+    return whoRegionCentroids[alert.whoRegionCode];
+  }
+
+  const text = [alert.title, alert.summary, alert.overview, alert.assessment]
+    .filter(Boolean)
+    .join(' ');
+
+  for (const [keyword, [lat, lon]] of Object.entries(whoGeoKeywords)) {
+    if (text.includes(keyword)) return { lat, lon, region: keyword };
+  }
+
+  return geoTagText(text);
+}
+
+function getWhoMarkerSize(alert) {
+  if (alert.severity === 'critical') return 0.34;
+  if (alert.severity === 'high') return 0.3;
+  if (alert.severity === 'elevated') return 0.26;
+  return 0.22;
+}
+
+function rankSupplementalHealthAlert(alert = {}) {
+  const text = [alert.title, ...(alert.disasterType || []), ...(alert.countries || [])]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  let score = 18;
+
+  const weights = [
+    [/ebola|marburg|hantavirus/i, 26],
+    [/cholera|polio|yellow fever|meningitis/i, 20],
+    [/measles|dengue|mpox|influenza|avian influenza/i, 15],
+    [/outbreak|epidemic|pandemic|surveillance/i, 10],
+    [/response|update|situation report/i, 4],
+  ];
+  for (const [pattern, weight] of weights) {
+    if (pattern.test(text)) score += weight;
+  }
+
+  const recencyDays = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(alert.date || 0).getTime()) / (24 * 60 * 60 * 1000))
+  );
+  score += Math.max(0, 20 - recencyDays);
+
+  let severity = 'monitor';
+  if (score >= 50) severity = 'critical';
+  else if (score >= 35) severity = 'high';
+  else if (score >= 24) severity = 'elevated';
+
+  return { score, severity };
+}
+
+function getSupplementalMarkerSize(alert) {
+  if (alert.severity === 'critical') return 0.28;
+  if (alert.severity === 'high') return 0.25;
+  if (alert.severity === 'elevated') return 0.22;
+  return 0.18;
 }
 
 function sanitizeExternalUrl(raw) {
@@ -432,9 +545,64 @@ export async function synthesize(data) {
   const tgTop = (tgData.topPosts || []).filter(p => isEnglish(p.text)).map(p => ({
     channel: p.channel, text: p.text?.substring(0, 200), views: p.views, date: p.date, urgentFlags: []
   }));
-  const who = (data.sources.WHO?.diseaseOutbreakNews || []).slice(0, 10).map(w => ({
-    title: w.title?.substring(0, 120), date: w.date, summary: w.summary?.substring(0, 150)
-  }));
+  const who = (data.sources.WHO?.diseaseOutbreakNews || [])
+    .map(w => {
+      const geo = geoTagWhoAlert(w);
+      return {
+        title: w.title?.substring(0, 120),
+        date: w.date,
+        lastModified: w.lastModified,
+        summary: w.summary?.substring(0, 150),
+        overview: w.overview?.substring(0, 220),
+        assessment: w.assessment?.substring(0, 180),
+        response: w.response?.substring(0, 150),
+        url: sanitizeExternalUrl(w.url),
+        severity: w.severity || 'monitor',
+        score: w.severityScore || 0,
+        lat: geo?.lat ?? null,
+        lon: geo?.lon ?? null,
+        region: geo?.region || w.whoRegion || 'Global',
+        whoRegion: w.whoRegion || null,
+        whoRegionCode: w.whoRegionCode || null,
+        emergencyEvent: w.emergencyEvent || null,
+        emergencyEventId: w.emergencyEventId || null,
+        emergencyEventStartDate: w.emergencyEventStartDate || null,
+        markerSize: getWhoMarkerSize(w),
+      };
+    })
+    .filter(w => w.lat != null && w.lon != null)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return new Date(b.date || 0) - new Date(a.date || 0);
+    })
+    .slice(0, 10);
+  const supplementalHealth = (data.sources.ReliefWeb?.healthAlerts || [])
+    .map(item => {
+      const primaryGeo = geoTagText((item.countries || []).join(' '));
+      const fallbackGeo = geoTagText(item.title || '');
+      const geo = primaryGeo || fallbackGeo;
+      const ranked = rankSupplementalHealthAlert(item);
+      return {
+        title: item.title?.substring(0, 130),
+        date: item.date,
+        source: Array.isArray(item.source) ? item.source.join(', ') : item.source,
+        countries: item.countries || [],
+        disasterType: item.disasterType || [],
+        url: sanitizeExternalUrl(item.url),
+        severity: ranked.severity,
+        score: ranked.score,
+        lat: geo?.lat ?? null,
+        lon: geo?.lon ?? null,
+        region: geo?.region || item.countries?.[0] || 'Global',
+        markerSize: getSupplementalMarkerSize(ranked),
+      };
+    })
+    .filter(item => item.lat != null && item.lon != null)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return new Date(b.date || 0) - new Date(a.date || 0);
+    })
+    .slice(0, 10);
   const fred = (data.sources.FRED?.indicators || []).map(f => ({
     id: f.id, label: f.label, value: f.value, date: f.date,
     recent: f.recent || [],
@@ -608,7 +776,7 @@ export async function synthesize(data) {
     },
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
     tg: { posts: tgData.totalPosts || 0, urgent: tgUrgent, topPosts: tgTop },
-    who, fred, energy, metals, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, news,
+    who, supplementalHealth, fred, energy, metals, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, news,
     markets, // Live Yahoo Finance market data
     ideas: [], ideasSource: 'disabled',
     // newsFeed for ticker (merged RSS + GDELT + Telegram)

@@ -616,7 +616,7 @@ function renderLeftRail(){
     {name:t('layers.maritimeWatch','Maritime Watch'),count:D.chokepoints.length,dot:'maritime',sub:t('layers.chokepoints','chokepoints')},
     {name:t('layers.nuclearSites','Nuclear Sites'),count:D.nuke.length,dot:'nuke',sub:t('layers.monitors','monitors')},
     {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'thermal',sub:`${conflictFatal.toLocaleString()} ${t('layers.fatalities','fatalities')}`},
-    {name:t('layers.healthWatch','Health Watch'),count:D.who.length,dot:'health',sub:t('layers.whoAlerts','WHO alerts')},
+    {name:t('layers.healthWatch','Health Watch'),count:(D.who.length+(D.supplementalHealth||[]).length),dot:'health',sub:`${t('layers.whoAlerts','WHO alerts')} + ReliefWeb/HDX`},
     {name:t('layers.worldNews','World News'),count:newsCount,dot:'news',sub:t('layers.rssGeolocated','RSS geolocated')},
     {name:t('layers.osintFeed','OSINT Feed'),count:D.tg.posts,dot:'incident',sub:`${D.tg.urgent.length} ${t('badges.urgent','urgent').toLowerCase()}`},
     {name:t('layers.spaceActivity','Satellites'),count:D.space?.militarySats||0,dot:'space',sub:`${D.space?.totalNewObjects||0} ${t('space.newLast30d','new (30d)')}`}
@@ -681,7 +681,7 @@ function bindMapLifecycleEvents(){
 function renderMapLegend(){
   document.getElementById('mapLegend').innerHTML=
     [{c:'#64f0c8',l:t('map.airTraffic','Air Traffic')},{c:'#ff5f63',l:t('map.thermalFire','Thermal/Fire')},{c:'rgba(255,120,80,0.8)',l:t('map.conflict','Conflict')},{c:'#44ccff',l:t('map.sdrReceiver','SDR Receiver')},
-     {c:'#ffe082',l:t('map.nuclearSite','Nuclear Site')},{c:'#b388ff',l:t('map.chokepoint','Chokepoint')},{c:'#ffb84c',l:t('map.osintEvent','OSINT Event')},{c:'#69f0ae',l:t('map.healthAlert','Health Alert')},{c:'#81d4fa',l:t('map.worldNews','World News')},{c:'#ff9800',l:t('map.weatherAlert','Weather Alert')},{c:'#cddc39',l:t('map.epaRadNet','EPA RadNet')},{c:'#ffffff',l:t('map.spaceStation','Space Station')},{c:'#6495ed',l:t('map.gdeltEvent','GDELT Event')}]
+     {c:'#ffe082',l:t('map.nuclearSite','Nuclear Site')},{c:'#b388ff',l:t('map.chokepoint','Chokepoint')},{c:'#ffb84c',l:t('map.osintEvent','OSINT Event')},{c:'#69f0ae',l:t('map.healthAlert','Health Alert')},{c:'#9be7b1',l:'Supplemental Health'},{c:'#81d4fa',l:t('map.worldNews','World News')},{c:'#ff9800',l:t('map.weatherAlert','Weather Alert')},{c:'#cddc39',l:t('map.epaRadNet','EPA RadNet')},{c:'#ffffff',l:t('map.spaceStation','Space Station')},{c:'#6495ed',l:t('map.gdeltEvent','GDELT Event')}]
     .map(x=>`<div class="leg-item"><div class="leg-dot" style="background:${x.c}"></div>${x.l}</div>`).join('');
 }
 
@@ -912,13 +912,22 @@ function plotMarkers(){
   });
 
   // === WHO health alerts (green) ===
-  const whoGeo=[{lat:0.3,lon:32.6},{lat:-6.2,lon:106.8},{lat:-4.3,lon:15.3},{lat:35,lon:105},{lat:12.5,lon:105},{lat:35,lon:105},{lat:28,lon:84},{lat:24,lon:45},{lat:30,lon:70},{lat:-0.8,lon:11.6}];
-  D.who.slice(0,10).forEach((w,i)=>{
-    const c=whoGeo[i]; if(!c) return;
+  D.who.slice(0,10).forEach(w=>{
+    if(w.lat==null || w.lon==null) return;
+    const sev=(w.severity||'monitor').toUpperCase();
     points.push({
-      lat:c.lat, lng:c.lon, size:0.25, alt:0.01,
+      lat:w.lat, lng:w.lon, size:w.markerSize||0.25, alt:0.01,
       color:'rgba(105,240,174,0.7)', type:'health', priority:2,
-      popHead:w.title, popMeta:'WHO Outbreak', popText:w.summary||''
+      popHead:w.title, popMeta:`WHO ${sev} · ${w.region||'Global'} · ${getAge(w.date)}`, popText:w.summary||w.response||w.overview||''
+    });
+  });
+  (D.supplementalHealth||[]).slice(0,10).forEach(w=>{
+    if(w.lat==null || w.lon==null) return;
+    const sev=(w.severity||'monitor').toUpperCase();
+    points.push({
+      lat:w.lat, lng:w.lon, size:w.markerSize||0.2, alt:0.008,
+      color:'rgba(155,231,177,0.78)', type:'healthSupplemental', priority:3,
+      popHead:w.title, popMeta:`${w.source||'ReliefWeb/HDX'} · ${sev} · ${w.region||'Global'} · ${getAge(w.date)}`, popText:(w.countries||[]).join(', ')||''
     });
   });
 
@@ -1236,8 +1245,9 @@ function plotFlatMarkers(){
   const osintGeo=[{lat:45,lon:41,idx:0},{lat:48,lon:37,idx:1},{lat:48.5,lon:37.5,idx:2},{lat:45,lon:40.2,idx:3},{lat:50.6,lon:36.6,idx:5},{lat:48.5,lon:35,idx:6}];
   osintGeo.forEach(o=>{const p=D.tg.urgent[o.idx];if(!p)return;addPt(o.lat,o.lon,4,'rgba(255,184,76,0.7)','rgba(255,184,76,0.3)',ev=>showPopup(ev,(p.channel||'').toUpperCase(),cleanText(p.text?.substring(0,200)||''),`${p.views||'?'} views`),2)});
   // WHO
-  const whoGeo=[{lat:0.3,lon:32.6},{lat:-6.2,lon:106.8},{lat:-4.3,lon:15.3},{lat:35,lon:105},{lat:12.5,lon:105},{lat:35,lon:105},{lat:28,lon:84},{lat:24,lon:45},{lat:30,lon:70},{lat:-0.8,lon:11.6}];
-  D.who.slice(0,10).forEach((w,i)=>{const c=whoGeo[i];if(!c)return;addPt(c.lat,c.lon,3.5,'rgba(105,240,174,0.6)','rgba(105,240,174,0.2)',ev=>showPopup(ev,w.title,w.summary||'','WHO'),2)});
+  D.who.slice(0,10).forEach(w=>{if(w.lat==null||w.lon==null)return;addPt(w.lat,w.lon,w.severity==='critical'?4.8:w.severity==='high'?4.2:3.6,'rgba(105,240,174,0.6)','rgba(105,240,174,0.2)',ev=>showPopup(ev,w.title,w.summary||w.response||w.overview||'',`WHO ${(w.severity||'monitor').toUpperCase()} · ${w.region||'Global'}`),2)});
+  // Supplemental health
+  (D.supplementalHealth||[]).slice(0,10).forEach(w=>{if(w.lat==null||w.lon==null)return;addPt(w.lat,w.lon,w.severity==='critical'?4.2:w.severity==='high'?3.8:3.3,'rgba(155,231,177,0.68)','rgba(155,231,177,0.22)',ev=>showPopup(ev,w.title,(w.countries||[]).join(', ')||'',`${w.source||'ReliefWeb/HDX'} · ${(w.severity||'monitor').toUpperCase()}`),3)});
   // News
   (D.news||[]).forEach(n=>{addPt(n.lat,n.lon,3,'rgba(129,212,250,0.6)','rgba(129,212,250,0.2)',ev=>showPopup(ev,n.source+' NEWS',cleanText(n.title),n.region),3)});
   // NOAA weather
@@ -1493,6 +1503,36 @@ function renderRight(){
   const mobile = isMobileLayout();
   // CROSS-SOURCE SIGNALS — moved from lower grid to right rail
   const signals=D.tSignals.slice(0,6).map((s,i)=>`<div class="signal-row"><strong>Signal ${i+1}</strong><p>${s}</p></div>`).join('');
+  const whoRows=(D.who||[]).slice(0,10).map((w,i)=>{
+    const sev=(w.severity||'monitor').toUpperCase();
+    const sevColor=w.severity==='critical'?'var(--warn)':w.severity==='high'?'#ffb74d':w.severity==='elevated'?'#b2ff59':'var(--dim)';
+    const link=safeExternalUrl(w.url);
+    return `<div class="signal-row">
+      <strong>#${i+1} <span style="color:${sevColor}">${sev}</span> ${w.region?`· ${w.region}`:''}</strong>
+      <p>${cleanText(w.title||'')}</p>
+      <div style="display:flex;justify-content:space-between;gap:8px;font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:5px">
+        <span>${getAge(w.date)}</span>
+        <span>score ${w.score||0}</span>
+        ${link?`<a href="${link}" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);text-decoration:none">WHO</a>`:''}
+      </div>
+      ${(w.emergencyEvent||w.whoRegionCode)?`<div style="margin-top:4px;font-family:var(--mono);font-size:9px;color:var(--dim)">${cleanText([w.emergencyEvent,w.whoRegionCode].filter(Boolean).join(' · '))}</div>`:''}
+    </div>`;
+  }).join('') || `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">No active WHO alerts</div>`;
+  const supplementalRows=(D.supplementalHealth||[]).slice(0,10).map((w,i)=>{
+    const sev=(w.severity||'monitor').toUpperCase();
+    const sevColor=w.severity==='critical'?'var(--warn)':w.severity==='high'?'#ffb74d':w.severity==='elevated'?'#b2ff59':'var(--dim)';
+    const link=safeExternalUrl(w.url);
+    return `<div class="signal-row">
+      <strong>#${i+1} <span style="color:${sevColor}">${sev}</span> ${w.region?`· ${w.region}`:''}</strong>
+      <p>${cleanText(w.title||'')}</p>
+      <div style="display:flex;justify-content:space-between;gap:8px;font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:5px">
+        <span>${getAge(w.date)}</span>
+        <span>score ${w.score||0}</span>
+        ${link?`<a href="${link}" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);text-decoration:none">OPEN</a>`:''}
+      </div>
+      ${w.source?`<div style="margin-top:4px;font-family:var(--mono);font-size:9px;color:var(--dim)">${cleanText(w.source)}</div>`:''}
+    </div>`;
+  }).join('') || `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">No supplemental health alerts</div>`;
 
   // OSINT TICKER — Telegram + WHO as flowing cards
   const signalMetrics=[
@@ -1501,7 +1541,8 @@ function renderRight(){
     {l:'Thermal Spikes',v:D.thermal.reduce((s,t)=>s+t.hc,0),p:80},
     {l:'SDR Nodes',v:D.sdr.total,p:92},
     {l:'Chokepoints',v:D.chokepoints.length,p:50},
-    {l:'WHO Alerts',v:D.who.length,p:40}
+    {l:'WHO Alerts',v:D.who.length,p:40},
+    {l:'Supp Health',v:(D.supplementalHealth||[]).length,p:36}
   ];
 
   // DELTA PANEL — what changed since last sweep
@@ -1537,6 +1578,14 @@ function renderRight(){
     <div class="g-panel right-core">
       <div class="sec-head"><h3>${t('panels.signalCore','Signal Core')}</h3><span class="badge">${t('badges.hotMetrics','HOT METRICS')}</span></div>
       ${signalMetrics.map(s=>`<div class="sm"><span class="sml">${s.l}</span><div class="smb"><span style="width:${s.p}%"></span></div><span class="smv">${s.v}</span></div>`).join('')}
+    </div>
+    <div class="g-panel right-health">
+      <div class="sec-head"><h3>${t('panels.healthAlerts','Health Alerts')}</h3><span class="badge">WHO TOP ${Math.min((D.who||[]).length,10)}</span></div>
+      ${whoRows}
+    </div>
+    <div class="g-panel right-health-supp">
+      <div class="sec-head"><h3>${t('panels.healthAlerts','Health Alerts')}</h3><span class="badge">RELIEFWEB/HDX ${Math.min((D.supplementalHealth||[]).length,10)}</span></div>
+      ${supplementalRows}
     </div>
     <div class="g-panel right-delta">
       <div class="sec-head"><h3>${t('panels.sweepDelta','Sweep Delta')}</h3><span class="badge ${dirClass}">${dirEmoji} ${ds.direction?t('delta.'+ds.direction,ds.direction.toUpperCase()):t('delta.baseline','BASELINE')}</span></div>
@@ -1763,13 +1812,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const hasInlineData = !!(D && D.meta);
   const canProbeApi = location.protocol !== 'file:';
 
-  if (canProbeApi && !hasInlineData) {
-    // Server mode: always fetch live data from API (ignore any stale inline D)
+  if (canProbeApi) {
+    // Server mode: always fetch live data from API and connect live updates.
     fetch('/api/data')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`API unavailable (${r.status})`);
+        return r.json();
+      })
       .then(data => { D = data; init(); connectSSE(); })
       .catch(() => {
-        // Should not reach here — server routes to loading.html when no data
+        // Fallback to inline snapshot if the API is temporarily unavailable.
         if (D && D.meta) { init(); connectSSE(); }
       });
   } else if (hasInlineData) {
