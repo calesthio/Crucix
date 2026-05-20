@@ -1,5 +1,6 @@
 # Contributing to Crucix
 
+
 Crucix moves quickly, but review bandwidth is limited. The easiest way to get a change merged is to keep it small, well-scoped, and aligned with the project's direction.
 
 ## What Contributions Are Most Helpful
