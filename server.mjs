@@ -239,7 +239,15 @@ app.use(express.static(join(ROOT, 'dashboard/public')));
 // Serve loading page until first sweep completes, then the dashboard with injected locale
 app.get('/', (req, res) => {
   if (!currentData) {
-    res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
+    const loadingPath = join(ROOT, 'dashboard/public/loading.html');
+    if (existsSync(loadingPath)) {
+      res.sendFile(loadingPath, err => {
+        if (err && !res.headersSent) res.status(503).send('Starting up — first sweep in progress');
+      });
+    } else {
+      res.status(503).send('Starting up — first sweep in progress');
+    }
+    return;
   } else {
     const htmlPath = join(ROOT, 'dashboard/public/jarvis.html');
     let html = readFileSync(htmlPath, 'utf-8');
@@ -250,6 +258,29 @@ app.get('/', (req, res) => {
     html = html.replace('</head>', `${localeScript}\n</head>`);
     
     res.type('html').send(html);
+  }
+});
+
+// API: ADS-B live aircraft proxy (avoids browser CORS restrictions from adsb.lol)
+let adsbCache = { data: null, ts: 0 };
+app.get('/api/adsb', async (req, res) => {
+  const TTL = 30000;
+  if (adsbCache.data && Date.now() - adsbCache.ts < TTL) return res.json(adsbCache.data);
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    const r = await fetch('https://api.adsb.lol/v2/lat/0/lon/0/dist/99999', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CrucixDashboard/1.0)' },
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    if (!r.ok) return res.status(r.status).json({ error: 'ADS-B upstream error' });
+    const data = await r.json();
+    adsbCache = { data, ts: Date.now() };
+    res.json(data);
+  } catch (e) {
+    if (adsbCache.data) return res.json(adsbCache.data); // serve stale on error
+    res.status(503).json({ error: 'ADS-B unavailable', detail: e.message });
   }
 });
 
