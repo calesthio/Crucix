@@ -6,6 +6,7 @@ export default {
   port: parseInt(process.env.PORT) || 3117,
   publicUrl: process.env.PUBLIC_URL || null,
   refreshIntervalMinutes: parseInt(process.env.REFRESH_INTERVAL_MINUTES) || 15,
+  llmEveryNSweeps: parseInt(process.env.LLM_EVERY_N_SWEEPS) || 1,
 
   llm: {
     provider: process.env.LLM_PROVIDER || null, // anthropic | openai | gemini | codex | openrouter | minimax | mistral | ollama | grok
