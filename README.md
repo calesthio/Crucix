@@ -14,6 +14,8 @@
 [![Dependencies](https://img.shields.io/badge/dependencies-1%20(express)-orange)](#architecture)
 [![Sources](https://img.shields.io/badge/OSINT%20sources-27-cyan)](#data-sources-27)
 [![Docker](https://img.shields.io/badge/docker-ready-blue?logo=docker)](#docker)
+[![Helm Chart](https://img.shields.io/badge/helm%20chart-0.2.0-blue?logo=helm)](https://artifacthub.io/packages/helm/helm-crucix/crucix)
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/helm-crucix)](https://artifacthub.io/packages/helm/helm-crucix/crucix)
 
 **Enter The Signal Network**
 
@@ -104,6 +106,16 @@ docker compose up -d
 ```
 
 Dashboard at `http://localhost:3117`. Sweep data persists in `./runs/` via volume mount. Includes a health check endpoint.
+
+### Kubernetes (Helm)
+
+```bash
+helm repo add crucix https://lmacka.github.io/helm-crucix/
+helm repo update
+helm install crucix crucix/crucix -n crucix --create-namespace
+```
+
+Dashboard at `http://<service-ip>`. Configure API keys via `extraEnv` or a Secret with `extraEnvFrom`. Persistent storage for sweep memory is enabled by default. See the [Helm chart repo](https://github.com/lmacka/helm-crucix) for full values documentation.
 
 ---
 
