@@ -19,7 +19,10 @@ export async function getFlightsInArea(lamin, lomin, lamax, lomax) {
     lamax: String(lamax),
     lomax: String(lomax),
   });
-  return safeFetch(`${BASE}/states/all?${params}`, { timeout: 20000 });
+  // OpenSky rate-limits aggressively (4k credits/day unauthenticated).
+  // Exponential backoff with retries handles 429 gracefully so partial
+  // hotspot data is returned instead of blank fallback.
+  return safeFetch(`${BASE}/states/all?${params}`, { timeout: 20000, retries: 2 });
 }
 
 // Get flights by specific aircraft (ICAO24 hex codes)
