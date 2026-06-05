@@ -630,13 +630,13 @@ function buildNewsFeed(rssNews, gdeltData, tgUrgent, tgTop) {
     });
   }
 
-  // GDELT top articles
+  // GDELT top articles — use actual article date (seendate) not fake current time
   for (const a of (gdeltData.allArticles || []).slice(0, 10)) {
     if (a.title) {
       const geo = geoTagText(a.title);
       feed.push({
         headline: a.title.substring(0, 100), source: 'GDELT', type: 'gdelt',
-        timestamp: new Date().toISOString(), region: geo?.region || 'Global', urgent: false, url: sanitizeExternalUrl(a.url)
+        timestamp: a.date || new Date().toISOString(), region: geo?.region || 'Global', urgent: false, url: sanitizeExternalUrl(a.url)
       });
     }
   }
@@ -659,9 +659,15 @@ function buildNewsFeed(rssNews, gdeltData, tgUrgent, tgTop) {
     });
   }
 
-  // Filter to last 30 days, sort by timestamp descending, limit to 50
-  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const recent = feed.filter(item => !item.timestamp || new Date(item.timestamp) >= cutoff);
+  // Filter by recency: RSS up to 30 days, OSINT (telegram/gdelt) up to 72h
+  const rssCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const osintCutoff = new Date(Date.now() - 72 * 60 * 60 * 1000);
+  const recent = feed.filter(item => {
+    if (!item.timestamp) return item.type === 'rss'; // undated items: only RSS
+    const t = new Date(item.timestamp);
+    if (item.type === 'telegram' || item.type === 'gdelt') return t >= osintCutoff;
+    return t >= rssCutoff;
+  });
   recent.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
 
   const selected = [];

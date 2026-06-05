@@ -144,6 +144,42 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .glossary-line + .glossary-line{margin-top:5px}
 .glossary-label{font-family:var(--mono);font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:var(--dim);margin-right:6px}
 .glossary-foot{padding:10px 16px 14px;border-top:1px solid rgba(255,255,255,0.06);font-family:var(--mono);font-size:9px;line-height:1.5;color:rgba(106,138,130,0.8)}
+/* INTEL AI CHAT */
+.chat-overlay{position:fixed;inset:0;z-index:1200;background:rgba(2,6,10,0.65);backdrop-filter:blur(8px);opacity:0;pointer-events:none;transition:opacity 0.25s ease}
+.chat-overlay.show{opacity:1;pointer-events:auto}
+.chat-panel{position:absolute;top:18px;right:18px;width:min(460px,calc(100vw - 32px));max-height:calc(100vh - 36px);display:flex;flex-direction:column;border:1px solid rgba(100,240,200,0.22);background:rgba(5,12,19,0.97);box-shadow:0 18px 48px rgba(0,0,0,0.5)}
+.chat-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.06)}
+.chat-head-left{display:flex;flex-direction:column;gap:3px}
+.chat-kicker{font-family:var(--mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:var(--accent);display:flex;align-items:center;gap:6px}
+.chat-kicker .chat-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);animation:pulse-blink 2s ease-in-out infinite}
+.chat-sub{font-size:10px;color:var(--dim)}
+.chat-close{border:1px solid var(--border);background:rgba(255,255,255,0.03);color:var(--dim);width:28px;height:28px;font-size:16px;cursor:pointer;flex-shrink:0;transition:all 0.2s}
+.chat-close:hover{border-color:var(--accent);color:var(--text)}
+.chat-messages{overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;flex:1;min-height:200px;max-height:calc(100vh - 220px)}
+.chat-msg{display:flex;flex-direction:column;gap:4px;max-width:88%}
+.chat-msg.user{align-self:flex-end;align-items:flex-end}
+.chat-msg.assistant{align-self:flex-start;align-items:flex-start}
+.chat-bubble{padding:8px 12px;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+.chat-msg.user .chat-bubble{background:rgba(100,240,200,0.1);border:1px solid rgba(100,240,200,0.2);color:var(--text)}
+.chat-msg.assistant .chat-bubble{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);color:#c8d8d2}
+.chat-msg-role{font-family:var(--mono);font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--dim)}
+.chat-thinking{display:flex;gap:4px;padding:8px 12px;border:1px solid rgba(255,255,255,0.07);background:rgba(255,255,255,0.02);align-self:flex-start}
+.chat-thinking span{width:6px;height:6px;border-radius:50%;background:var(--dim);animation:chatDot 1.2s ease-in-out infinite}
+.chat-thinking span:nth-child(2){animation-delay:0.2s}
+.chat-thinking span:nth-child(3){animation-delay:0.4s}
+@keyframes chatDot{0%,80%,100%{opacity:0.3;transform:scale(0.8)}40%{opacity:1;transform:scale(1)}}
+.chat-input-row{display:flex;gap:8px;padding:10px 14px;border-top:1px solid rgba(255,255,255,0.06)}
+.chat-input{flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:var(--text);font-family:var(--mono);font-size:11px;padding:8px 10px;outline:none;transition:border-color 0.2s}
+.chat-input:focus{border-color:rgba(100,240,200,0.35)}
+.chat-input::placeholder{color:var(--dim)}
+.chat-send{padding:8px 14px;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;border:1px solid rgba(100,240,200,0.3);color:var(--accent);background:rgba(100,240,200,0.08);cursor:pointer;transition:all 0.2s;white-space:nowrap}
+.chat-send:hover:not(:disabled){border-color:rgba(100,240,200,0.6);background:rgba(100,240,200,0.15)}
+.chat-send:disabled{opacity:0.4;cursor:not-allowed}
+.chat-disclaimer{padding:6px 14px 10px;font-family:var(--mono);font-size:9px;color:rgba(106,138,130,0.6);line-height:1.4}
+.ai-btn{padding:5px 12px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;border:1px solid rgba(100,240,200,0.28);color:var(--accent);background:rgba(100,240,200,0.06);cursor:pointer;transition:all 0.2s;display:flex;align-items:center;gap:5px}
+.ai-btn:hover{border-color:rgba(100,240,200,0.5);background:rgba(100,240,200,0.12)}
+.ai-btn .ai-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent)}
+@media(max-width:600px){.chat-panel{top:auto;right:0;left:0;bottom:0;width:100%;max-height:min(80vh,680px);border-left:none;border-right:none;border-bottom:none}}
 .map-loading{position:absolute;inset:0;z-index:12;display:none;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(2,6,10,0.78),rgba(2,6,10,0.9));backdrop-filter:blur(10px)}
 .map-loading.show{display:flex}
 .map-loading-card{display:flex;flex-direction:column;align-items:center;gap:10px;padding:16px 18px;border:1px solid rgba(68,204,255,0.18);background:rgba(6,14,22,0.88);box-shadow:0 12px 32px rgba(0,0,0,0.35)}
@@ -596,6 +632,7 @@ function renderTopbar(){
       <span class="meta-pill">${t('dashboard.sources','SOURCES')} <span class="v">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</span></span>
       ${D.delta?.summary ? `<span class="meta-pill">${t('dashboard.delta','DELTA')} <span class="v">${D.delta.summary.direction==='risk-off'?'&#x25B2; '+t('dashboard.riskOff','RISK-OFF'):D.delta.summary.direction==='risk-on'?'&#x25BC; '+t('dashboard.riskOn','RISK-ON'):'&#x25C6; '+t('dashboard.mixed','MIXED')}</span></span>` : ''}
       <button class="guide-btn" onclick="openGlossary()">${t('dashboard.guideBtn','What Signals Mean')}</button>
+      <button class="ai-btn" onclick="openChatPanel()"><span class="ai-dot"></span>INTEL AI</button>
       <span class="alert-badge">${t('dashboard.highAlert','HIGH ALERT')}</span>
     </div>`;
   renderRegionControls();
@@ -1776,6 +1813,118 @@ document.addEventListener('DOMContentLoaded', () => {
     // File mode: use inline data
     init();
   }
+});
+</script>
+
+<!-- INTEL AI CHAT PANEL -->
+<div class="chat-overlay" id="chatOverlay" onclick="if(event.target===this) closeChatPanel()">
+  <div class="chat-panel">
+    <div class="chat-head">
+      <div class="chat-head-left">
+        <div class="chat-kicker"><span class="chat-dot"></span>Intel Assistant</div>
+        <div class="chat-sub">Grounded in live 27-source sweep data</div>
+      </div>
+      <button class="chat-close" onclick="closeChatPanel()" aria-label="Close">&times;</button>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input-row">
+      <input class="chat-input" id="chatInput" type="text" placeholder="Ask about trade projections, risk signals, conflicts..." autocomplete="off" />
+      <button class="chat-send" id="chatSendBtn" onclick="sendChatMessage()">SEND</button>
+    </div>
+    <div class="chat-disclaimer">AI analysis based on OSINT data. Not financial advice.</div>
+  </div>
+</div>
+
+<script>
+// === INTEL AI CHAT ===
+let chatHistory = [];
+
+function openChatPanel() {
+  document.getElementById('chatOverlay').classList.add('show');
+  document.getElementById('chatInput').focus();
+  if (chatHistory.length === 0) {
+    appendChatMsg('assistant', 'Hello. I have access to the current live intelligence sweep. Ask me about trade projections, geopolitical signals, market conditions, or anything you see in the dashboard.');
+  }
+}
+
+function closeChatPanel() {
+  document.getElementById('chatOverlay').classList.remove('show');
+}
+
+function appendChatMsg(role, text) {
+  const box = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = `chat-msg ${role}`;
+  div.innerHTML = `<span class="chat-msg-role">${role === 'user' ? 'YOU' : 'INTEL AI'}</span><div class="chat-bubble">${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function showThinking() {
+  const box = document.getElementById('chatMessages');
+  const el = document.createElement('div');
+  el.id = 'chatThinking';
+  el.className = 'chat-thinking';
+  el.innerHTML = '<span></span><span></span><span></span>';
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
+function removeThinking() {
+  const el = document.getElementById('chatThinking');
+  if (el) el.remove();
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  const btn = document.getElementById('chatSendBtn');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  input.value = '';
+  input.disabled = true;
+  btn.disabled = true;
+
+  appendChatMsg('user', msg);
+  chatHistory.push({ role: 'user', content: msg });
+  showThinking();
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg, history: chatHistory.slice(0, -1) }),
+    });
+    const data = await res.json();
+    removeThinking();
+    if (res.ok && data.response) {
+      appendChatMsg('assistant', data.response);
+      chatHistory.push({ role: 'assistant', content: data.response });
+      // Keep last 20 turns to avoid bloat
+      if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
+    } else {
+      appendChatMsg('assistant', `Error: ${data.error || 'Unknown error'}`);
+      chatHistory.pop();
+    }
+  } catch (err) {
+    removeThinking();
+    appendChatMsg('assistant', 'Connection error. Is the server running?');
+    chatHistory.pop();
+  }
+
+  input.disabled = false;
+  btn.disabled = false;
+  input.focus();
+}
+
+document.addEventListener('keydown', e => {
+  if (document.getElementById('chatOverlay').classList.contains('show')) {
+    if (e.key === 'Escape') { closeChatPanel(); return; }
+  }
+});
+
+document.getElementById('chatInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
 });
 </script>
 </body>
