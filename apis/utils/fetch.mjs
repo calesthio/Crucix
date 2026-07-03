@@ -9,7 +9,7 @@ export async function safeFetch(url, opts = {}) {
       const timer = setTimeout(() => controller.abort(), timeout);
       const res = await fetch(url, {
         signal: controller.signal,
-        headers: { 'User-Agent': 'Crucix/1.0', ...headers },
+        headers: { 'User-Agent': 'Crucix/2.0', ...headers },
       });
       clearTimeout(timer);
       if (!res.ok) {
