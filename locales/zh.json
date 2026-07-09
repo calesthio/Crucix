@@ -1,0 +1,120 @@
+{
+  "app": {
+    "title": "CRUCIX 情报引擎",
+    "subtitle": "本地 Palantir · 26 个情报源",
+    "dashboard": "仪表盘",
+    "health": "健康状态",
+    "refresh": "刷新间隔",
+    "everyMinutes": "每 {minutes} 分钟",
+    "nextSweep": "下次扫描",
+    "lastSweep": "上次扫描",
+    "sourcesOk": "正常",
+    "sourcesFailed": "失败",
+    "sourcesQueried": "已查询",
+    "sweepInProgress": "扫描中...",
+    "manualSweep": "手动扫描",
+    "viewDashboard": "查看仪表盘"
+  },
+  "status": {
+    "online": "在线",
+    "offline": "离线",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "configured": "已配置",
+    "notConfigured": "未配置",
+    "running": "运行中",
+    "stopped": "已停止"
+  },
+  "alerts": {
+    "title": "告警",
+    "flash": "紧急",
+    "priority": "重要",
+    "routine": "常规",
+    "muted": "已静音",
+    "unmuted": "已恢复",
+    "recentAlerts": "最近告警",
+    "noAlerts": "暂无告警",
+    "alertHistory": "告警历史",
+    "muteFor": "静音 {hours} 小时",
+    "unmute": "恢复告警"
+  },
+  "commands": {
+    "status": "系统状态",
+    "sweep": "手动扫描",
+    "brief": "情报简报",
+    "portfolio": "投资组合",
+    "alerts": "告警列表",
+    "mute": "静音告警",
+    "unmute": "恢复告警",
+    "help": "帮助"
+  },
+  "briefing": {
+    "title": "情报简报",
+    "generated": "生成时间",
+    "sources": "情报源",
+    "signals": "信号",
+    "critical": "关键",
+    "high": "高",
+    "medium": "中",
+    "low": "低",
+    "direction": "方向",
+    "escalating": "升级",
+    "deescalating": "降级",
+    "stable": "稳定",
+    "noSignals": "暂无信号"
+  },
+  "ideas": {
+    "title": "交易思路",
+    "generated": "生成思路",
+    "confidence": "置信度",
+    "high": "高",
+    "medium": "中",
+    "low": "低",
+    "horizon": "时间跨度",
+    "intraday": "日内",
+    "days": "数日",
+    "weeks": "数周",
+    "rationale": "理由",
+    "risk": "风险",
+    "signals": "信号",
+    "noIdeas": "暂无思路"
+  },
+  "news": {
+    "title": "新闻",
+    "latest": "最新",
+    "sources": "来源",
+    "noNews": "暂无新闻"
+  },
+  "markets": {
+    "title": "市场",
+    "indexes": "指数",
+    "rates": "利率",
+    "commodities": "大宗商品",
+    "crypto": "加密货币",
+    "volatility": "波动率",
+    "price": "价格",
+    "change": "变化",
+    "volume": "成交量"
+  },
+  "macro": {
+    "title": "宏观经济",
+    "china": "中国",
+    "us": "美国",
+    "cpi": "CPI",
+    "ppi": "PPI",
+    "m2": "M2",
+    "pmi": "PMI",
+    "gdp": "GDP",
+    "unemployment": "失业率",
+    "interestRate": "利率",
+    "inflation": "通胀"
+  },
+  "errors": {
+    "fetchFailed": "获取失败",
+    "parseFailed": "解析失败",
+    "timeout": "超时",
+    "unauthorized": "未授权",
+    "rateLimited": "限流",
+    "unknown": "未知错误"
+  }
+}
