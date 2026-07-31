@@ -12,13 +12,22 @@ describe('MiniMaxProvider', () => {
   it('should set defaults correctly', () => {
     const provider = new MiniMaxProvider({ apiKey: 'sk-test' });
     assert.equal(provider.name, 'minimax');
-    assert.equal(provider.model, 'MiniMax-M2.5');
+    assert.equal(provider.model, 'MiniMax-M3');
+    assert.deepEqual(provider.modelIds, ['MiniMax-M3', 'MiniMax-M2.7']);
     assert.equal(provider.isConfigured, true);
   });
 
   it('should accept custom model', () => {
-    const provider = new MiniMaxProvider({ apiKey: 'sk-test', model: 'MiniMax-M2.5-highspeed' });
-    assert.equal(provider.model, 'MiniMax-M2.5-highspeed');
+    const provider = new MiniMaxProvider({ apiKey: 'sk-test', model: 'MiniMax-M2.7' });
+    assert.equal(provider.model, 'MiniMax-M2.7');
+    // explicit model does not change the supported model set
+    assert.deepEqual(provider.modelIds, ['MiniMax-M3', 'MiniMax-M2.7']);
+  });
+
+  it('should expose both supported model ids', () => {
+    const provider = new MiniMaxProvider({ apiKey: 'sk-test' });
+    assert.ok(provider.modelIds.includes('MiniMax-M3'), 'should include MiniMax-M3');
+    assert.ok(provider.modelIds.includes('MiniMax-M2.7'), 'should include MiniMax-M2.7');
   });
 
   it('should report not configured without API key', () => {
@@ -50,7 +59,7 @@ describe('MiniMaxProvider', () => {
     const mockResponse = {
       choices: [{ message: { content: 'Hello from MiniMax' } }],
       usage: { prompt_tokens: 10, completion_tokens: 5 },
-      model: 'MiniMax-M2.5',
+      model: 'MiniMax-M3',
     };
     const originalFetch = globalThis.fetch;
     globalThis.fetch = mock.fn(() =>
@@ -61,14 +70,14 @@ describe('MiniMaxProvider', () => {
       assert.equal(result.text, 'Hello from MiniMax');
       assert.equal(result.usage.inputTokens, 10);
       assert.equal(result.usage.outputTokens, 5);
-      assert.equal(result.model, 'MiniMax-M2.5');
+      assert.equal(result.model, 'MiniMax-M3');
     } finally {
       globalThis.fetch = originalFetch;
     }
   });
 
   it('should send correct request format', async () => {
-    const provider = new MiniMaxProvider({ apiKey: 'sk-test-key', model: 'MiniMax-M2.5' });
+    const provider = new MiniMaxProvider({ apiKey: 'sk-test-key', model: 'MiniMax-M3' });
     let capturedUrl, capturedOpts;
     const originalFetch = globalThis.fetch;
     globalThis.fetch = mock.fn((url, opts) => {
@@ -79,7 +88,7 @@ describe('MiniMaxProvider', () => {
         json: () => Promise.resolve({
           choices: [{ message: { content: 'ok' } }],
           usage: { prompt_tokens: 1, completion_tokens: 1 },
-          model: 'MiniMax-M2.5',
+          model: 'MiniMax-M3',
         }),
       });
     });
@@ -91,7 +100,7 @@ describe('MiniMaxProvider', () => {
       assert.equal(headers['Content-Type'], 'application/json');
       assert.equal(headers['Authorization'], 'Bearer sk-test-key');
       const body = JSON.parse(capturedOpts.body);
-      assert.equal(body.model, 'MiniMax-M2.5');
+      assert.equal(body.model, 'MiniMax-M3');
       assert.equal(body.max_tokens, 2048);
       assert.equal(body.messages[0].role, 'system');
       assert.equal(body.messages[0].content, 'system prompt');
