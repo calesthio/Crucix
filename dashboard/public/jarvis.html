@@ -1703,12 +1703,30 @@ function reinit(){
 }
 
 // === SSE: Live Updates from Server ===
+let sseConnected = false;
+let pollTimer = null;
+async function fetchData(reason){
+  try {
+    const r = await fetch('/api/data', { cache: 'no-store' });
+    if (!r.ok) return;
+    const fresh = await r.json();
+    if (fresh && fresh.meta) { D = fresh; reinit(); }
+  } catch {}
+}
+function startPolling(){
+  if (pollTimer) return;
+  pollTimer = setInterval(() => { if (!sseConnected) fetchData('poll'); }, 60000);
+}
+function stopPolling(){
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
 function connectSSE(){
   if (typeof EventSource === 'undefined') return;
   // Only connect if served from localhost (not file://)
   if (location.protocol === 'file:') return;
 
   const es = new EventSource('/events');
+  es.onopen = () => { sseConnected = true; stopPolling(); };
   es.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
@@ -1728,10 +1746,14 @@ function connectSSE(){
     } catch {}
   };
   es.onerror = () => {
-    // Reconnect after 5s on error
+    // Mark disconnected, fall back to polling, reconnect after 5s
+    sseConnected = false;
     es.close();
+    startPolling();
     setTimeout(connectSSE, 5000);
   };
+  // Safety net: if SSE hasn't opened within 10s, start polling
+  setTimeout(() => { if (!sseConnected) startPolling(); }, 10000);
 }
 
 // === INIT ===
@@ -1763,14 +1785,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const hasInlineData = !!(D && D.meta);
   const canProbeApi = location.protocol !== 'file:';
 
-  if (canProbeApi && !hasInlineData) {
-    // Server mode: always fetch live data from API (ignore any stale inline D)
-    fetch('/api/data')
+  if (canProbeApi) {
+    // Server mode: ALWAYS fetch live data from API, ignore stale inline D
+    fetch('/api/data', { cache: 'no-store' })
       .then(r => r.json())
-      .then(data => { D = data; init(); connectSSE(); })
+      .then(data => { if (data && data.meta) D = data; init(); connectSSE(); })
       .catch(() => {
-        // Should not reach here — server routes to loading.html when no data
-        if (D && D.meta) { init(); connectSSE(); }
+        // Network hiccup — render whatever we have, SSE/polling will refresh
+        init(); connectSSE();
       });
   } else if (hasInlineData) {
     // File mode: use inline data
