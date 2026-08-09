@@ -2,8 +2,6 @@
 // No auth required. Monitors the Specially Designated Nationals (SDN) list
 // and consolidated sanctions list for changes.
 
-import { safeFetch } from '../utils/fetch.mjs';
-
 const EXPORTS_BASE = 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports';
 
 // SDN list endpoints
@@ -11,18 +9,72 @@ const SDN_XML_URL = `${EXPORTS_BASE}/SDN.XML`;
 const SDN_ADVANCED_URL = `${EXPORTS_BASE}/SDN_ADVANCED.XML`;
 const CONS_ADVANCED_URL = `${EXPORTS_BASE}/CONS_ADVANCED.XML`;
 
+// These exports are whole-database dumps — SDN.XML is ~27 MB and
+// SDN_ADVANCED.XML ~120 MB — but everything this briefing reports (publish
+// date, record count, a sample of entries) sits in the first few KB. Ask for
+// just that range: the S3 origin sets `Accept-Ranges: bytes` and answers 206.
+const HEAD_BYTES = 64 * 1024;
+
+// Read at most `bytes` from `url`. Uses a Range request, and still stops early
+// if an intermediary ignores it and starts streaming the full body, so a 120 MB
+// export can never be pulled into memory.
+async function fetchHead(url, { bytes = HEAD_BYTES, timeout = 20000 } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'Crucix/1.0', 'Range': `bytes=0-${bytes - 1}` },
+    });
+    // 206 = Range honoured, 200 = ignored (we bound the read below either way).
+    if (!res.ok && res.status !== 206) throw new Error(`HTTP ${res.status}`);
+
+    const reader = res.body.getReader();
+    const chunks = [];
+    let received = 0;
+    while (received < bytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+    }
+    await reader.cancel().catch(() => {});
+
+    return { rawText: Buffer.concat(chunks).toString('utf8') };
+  } catch (e) {
+    return { error: e.message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// The ADVANCED exports date themselves with <DateOfIssue><Year/><Month/><Day/>
+// rather than a <Publish_Date> string. Normalise it to YYYY-MM-DD.
+function parseDateOfIssue(raw) {
+  const block = raw.match(/<DateOfIssue[^>]*>([\s\S]*?)<\/DateOfIssue>/i)?.[1];
+  if (!block) return null;
+  const y = block.match(/<Year>(\d+)<\/Year>/i)?.[1];
+  const m = block.match(/<Month>(\d+)<\/Month>/i)?.[1];
+  const d = block.match(/<Day>(\d+)<\/Day>/i)?.[1];
+  return y && m && d ? `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}` : null;
+}
+
 // Parse basic info from SDN XML (publish date, entry count)
 function parseSDNMetadata(xml) {
   if (!xml || xml.error) return { error: xml?.error || 'No data returned' };
 
   const raw = xml.rawText || '';
 
-  // Extract publish date
+  // Extract publish date. SDN.XML uses <Publish_Date>; the ADVANCED exports
+  // carry a structured <DateOfIssue> block instead, which is why the advanced
+  // list's publishDate was always null.
   const publishDate = raw.match(/<Publish_Date>(.*?)<\/Publish_Date>/)?.[1]
     || raw.match(/<publish_date>(.*?)<\/publish_date>/i)?.[1]
+    || parseDateOfIssue(raw)
     || null;
 
-  // Count SDN entries
+  // Entries visible in the sampled window — `recordCount` below is the
+  // authoritative total for the whole list.
   const entryMatches = raw.match(/<sdnEntry>/gi);
   const entryCount = entryMatches ? entryMatches.length : null;
 
@@ -40,24 +92,19 @@ function parseSDNMetadata(xml) {
   };
 }
 
-// Fetch SDN list metadata (smaller initial chunk via timeout)
+// Fetch SDN list metadata from the head of the export
 export async function getSDNMetadata() {
-  // The full SDN XML is large; safeFetch will get the first 500 chars
-  // which should include the header/publish date
-  const data = await safeFetch(SDN_XML_URL, { timeout: 20000 });
-  return parseSDNMetadata(data);
+  return parseSDNMetadata(await fetchHead(SDN_XML_URL));
 }
 
 // Fetch advanced SDN data (includes more structured info)
 export async function getSDNAdvanced() {
-  const data = await safeFetch(SDN_ADVANCED_URL, { timeout: 20000 });
-  return parseSDNMetadata(data);
+  return parseSDNMetadata(await fetchHead(SDN_ADVANCED_URL));
 }
 
 // Fetch consolidated list metadata
 export async function getConsolidatedMetadata() {
-  const data = await safeFetch(CONS_ADVANCED_URL, { timeout: 20000 });
-  return parseSDNMetadata(data);
+  return parseSDNMetadata(await fetchHead(CONS_ADVANCED_URL));
 }
 
 // Parse recent SDN entries from XML snippet
@@ -101,15 +148,18 @@ function parseRecentEntries(xml) {
 
 // Briefing — report on sanctions list status and metadata
 export async function briefing() {
-  const [sdnMeta, advancedMeta] = await Promise.all([
-    getSDNMetadata(),
-    getSDNAdvanced(),
+  // One ranged read per list, reused for both metadata and sample entries.
+  // The advanced export was previously downloaded twice — once here and again
+  // for the sample — and neither pass could ever succeed on it: SDN_ADVANCED.XML
+  // contains no <sdnEntry> elements at all. Sample from SDN.XML, which does.
+  const [sdnHead, advancedHead] = await Promise.all([
+    fetchHead(SDN_XML_URL),
+    fetchHead(SDN_ADVANCED_URL),
   ]);
 
-  // Try to extract any entries visible in the advanced data
-  const sampleEntries = parseRecentEntries(
-    await safeFetch(SDN_ADVANCED_URL, { timeout: 25000 })
-  );
+  const sdnMeta = parseSDNMetadata(sdnHead);
+  const advancedMeta = parseSDNMetadata(advancedHead);
+  const sampleEntries = parseRecentEntries(sdnHead);
 
   return {
     source: 'OFAC Sanctions',
