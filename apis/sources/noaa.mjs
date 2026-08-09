@@ -11,10 +11,12 @@ export async function getActiveAlerts(opts = {}) {
     severity = null,  // Extreme, Severe, Moderate, Minor
     urgency = null,   // Immediate, Expected, Future
     event = null,     // e.g. "Tornado Warning", "Hurricane Warning"
-    limit = 50,
   } = opts;
 
-  const params = new URLSearchParams({ limit: String(limit), status: 'actual' });
+  // /alerts/active does not accept `limit` — sending it fails the whole request
+  // with HTTP 400 ("Query parameter \"limit\" is not recognized"). The endpoint
+  // only returns currently-active alerts, so the response is naturally bounded.
+  const params = new URLSearchParams({ status: 'actual' });
   if (severity) params.set('severity', severity);
   if (urgency) params.set('urgency', urgency);
   if (event) params.set('event', event);
@@ -48,6 +50,10 @@ export async function briefing() {
   return {
     source: 'NOAA/NWS',
     timestamp: new Date().toISOString(),
+    // Surface upstream failures rather than reporting a confident all-clear.
+    // safeFetch resolves to { error } instead of throwing, so without this a
+    // failed request looks identical to "no severe weather anywhere in the US".
+    ...(alerts?.error ? { error: alerts.error } : {}),
     totalSevereAlerts: features.length,
     summary: {
       hurricanes: hurricanes.length,
