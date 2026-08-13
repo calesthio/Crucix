@@ -121,7 +121,10 @@
     "pending": "EN ATTENTE",
     "llmNotConfigured": "LLM NON CONFIGURÉ",
     "llmHelp": "Définir LLM_PROVIDER + identifiants dans .env pour activer les idées de trade IA",
-    "disclosure": "À TITRE INFORMATIF UNIQUEMENT. Ceci ne constitue pas un conseil financier, une recommandation d'achat ou de vente de titre, ni une sollicitation quelconque. Toutes les observations basées sur les signaux sont dérivées de données OSINT publiques et ne doivent pas être utilisées pour prendre des décisions d'investissement. Consultez un conseiller financier agréé avant tout investissement. Les performances passées ne garantissent pas les résultats futurs."
+    "disclosure": "À TITRE INFORMATIF UNIQUEMENT. Ceci ne constitue pas un conseil financier, une recommandation d'achat ou de vente de titre, ni une sollicitation quelconque. Toutes les observations basées sur les signaux sont dérivées de données OSINT publiques et ne doivent pas être utilisées pour prendre des décisions d'investissement. Consultez un conseiller financier agréé avant tout investissement. Les performances passées ne garantissent pas les résultats futurs.",
+    "signalBased": "BASE SIGNAUX",
+    "noTriggers": "AUCUN SEUIL FRANCHI",
+    "noTriggersHint": "Aucun seuil de signal franchi lors de ce balayage. Definissez LLM_PROVIDER + identifiants dans .env pour des idees generees par IA."
   },
   "regions": {
     "world": "Monde",

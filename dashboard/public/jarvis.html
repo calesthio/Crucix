@@ -1433,7 +1433,8 @@ function renderLower(){
   }).join('');
   const tickerDuration = Math.max(20, feed.length * 2.5);
 
-  // Leverageable Ideas (LLM-only feature)
+  // Leverageable Ideas — LLM-generated when a provider is configured, otherwise
+  // the deterministic signal-rule engine.
   const hasIdeas = D.ideas && D.ideas.length > 0;
   const ideasHtml = hasIdeas ? (D.ideas||[]).map(idea=>`
     <div class="idea-card">
@@ -1446,8 +1447,8 @@ function renderLower(){
       ${idea.risk ? `<div class="idea-text" style="color:var(--warn);margin-top:3px">Risk: ${idea.risk}</div>` : ''}
     </div>`).join('') : `<div style="padding:20px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:11px">
       <div style="font-size:24px;margin-bottom:8px;opacity:0.3">&#9888;</div>
-      <div>LLM NOT CONFIGURED</div>
-      <div style="font-size:9px;margin-top:6px;opacity:0.6">Set LLM_PROVIDER + credentials in .env to enable AI-powered trade ideas</div>
+      <div>${t('ideas.noTriggers','NO SIGNAL TRIGGERS')}</div>
+      <div style="font-size:9px;margin-top:6px;opacity:0.6">${t('ideas.noTriggersHint','No signal thresholds crossed this sweep. Set LLM_PROVIDER + credentials in .env for AI-generated ideas.')}</div>
     </div>`;
 
 
@@ -1481,7 +1482,7 @@ function renderLower(){
       </div>
     </div>`;
   const ideasPanel = `<div class="g-panel lp-ideas">
-      <div class="sec-head"><h3>${t('panels.tradeIdeas','Leverageable Ideas')}</h3>${D.ideasSource==='llm'?'<span class="ideas-src llm">'+t('ideas.aiEnhanced','AI ENHANCED')+'</span>':D.ideasSource==='disabled'?'<span class="ideas-src static">'+t('ideas.llmOff','LLM OFF')+'</span>':'<span class="ideas-src static">'+t('ideas.pending','PENDING')+'</span>'}</div>
+      <div class="sec-head"><h3>${t('panels.tradeIdeas','Leverageable Ideas')}</h3>${ideasBadge(D.ideasSource)}</div>
       ${ideasHtml}
       <div class="disclosure">FOR INFORMATIONAL PURPOSES ONLY. This is not financial advice, a recommendation to buy or sell any security, or a solicitation of any kind. All signal-based observations are derived from publicly available OSINT data and should not be relied upon for investment decisions. Consult a licensed financial advisor before making any investment. Past performance does not guarantee future results.</div>
     </div>`;
@@ -1552,6 +1553,13 @@ function renderRight(){
 // === HELPERS ===
 function getAge(d){const ms=Date.now()-new Date(d).getTime();const h=Math.floor(ms/3600000);if(h<1)return 'just now';if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago'}
 function cleanText(t){return t.replace(/&#39;/g,"'").replace(/&#33;/g,"!").replace(/&amp;/g,"&").replace(/<[^>]+>/g,'')}
+// Provenance badge for the Ideas panel. 'llm' = AI-generated, 'rules' = deterministic
+// signal engine (the fallback when no LLM is configured or the provider failed).
+function ideasBadge(src){
+  if(src==='llm') return '<span class="ideas-src llm">'+t('ideas.aiEnhanced','AI ENHANCED')+'</span>';
+  if(src==='rules') return '<span class="ideas-src static">'+t('ideas.signalBased','SIGNAL BASED')+'</span>';
+  return '<span class="ideas-src static">'+t('ideas.pending','PENDING')+'</span>';
+}
 function safeExternalUrl(raw){try{const u=new URL(raw,location.href);return u.protocol==='http:'||u.protocol==='https:'?u.toString():null}catch{return null}}
 
 // === BOOT SEQUENCE ===

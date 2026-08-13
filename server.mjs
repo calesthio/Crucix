@@ -10,10 +10,9 @@ import { exec } from 'child_process';
 import config from './crucix.config.mjs';
 import { getLocale, currentLanguage, getSupportedLocales } from './lib/i18n.mjs';
 import { fullBriefing } from './apis/briefing.mjs';
-import { synthesize, generateIdeas } from './dashboard/inject.mjs';
+import { synthesize, resolveIdeas } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider } from './lib/llm/index.mjs';
-import { generateLLMIdeas } from './lib/llm/ideas.mjs';
 import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
 
@@ -338,29 +337,14 @@ async function runSweepCycle() {
     const delta = memory.addRun(synthesized);
     synthesized.delta = delta;
 
-    // 5. LLM-powered trade ideas (LLM-only feature) — isolated so failures don't kill sweep
-    if (llmProvider?.isConfigured) {
-      try {
-        console.log('[Crucix] Generating LLM trade ideas...');
-        const previousIdeas = memory.getLastRun()?.ideas || [];
-        const llmIdeas = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas);
-        if (llmIdeas) {
-          synthesized.ideas = llmIdeas;
-          synthesized.ideasSource = 'llm';
-          console.log(`[Crucix] LLM generated ${llmIdeas.length} ideas`);
-        } else {
-          synthesized.ideas = [];
-          synthesized.ideasSource = 'llm-failed';
-        }
-      } catch (llmErr) {
-        console.error('[Crucix] LLM ideas failed (non-fatal):', llmErr.message);
-        synthesized.ideas = [];
-        synthesized.ideasSource = 'llm-failed';
-      }
-    } else {
-      synthesized.ideas = [];
-      synthesized.ideasSource = 'disabled';
-    }
+    // 5. Trade ideas — LLM when available, deterministic signal rules otherwise.
+    //    resolveIdeas() never throws, so a provider outage cannot blank the panel.
+    if (llmProvider?.isConfigured) console.log('[Crucix] Generating LLM trade ideas...');
+    const previousIdeas = memory.getLastRun()?.ideas || [];
+    const resolvedIdeas = await resolveIdeas(llmProvider, synthesized, delta, previousIdeas);
+    synthesized.ideas = resolvedIdeas.ideas;
+    synthesized.ideasSource = resolvedIdeas.ideasSource;
+    console.log(`[Crucix] ${synthesized.ideas.length} ideas generated (${synthesized.ideasSource})`);
 
     // 6. Alert evaluation — Telegram + Discord (LLM with rule-based fallback, multi-tier, semantic dedup)
     if (delta?.summary?.totalChanges > 0) {
