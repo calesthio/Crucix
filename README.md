@@ -146,7 +146,7 @@ The server runs a sweep cycle every 15 minutes (configurable). Each cycle:
 1. Queries all 27 sources in parallel (~30s)
 2. Synthesizes raw data into dashboard format
 3. Computes delta from previous run (what changed, escalated, de-escalated) — visible in the **Sweep Delta** panel on the dashboard
-4. Generates LLM trade ideas (if configured)
+4. Generates trade ideas — LLM-generated if a provider is configured, otherwise (or if the provider fails) the deterministic signal-rule engine
 5. Evaluates breaking news alerts — multi-tier (FLASH / PRIORITY / ROUTINE) with semantic dedup. Sends to Telegram and/or Discord if configured. Works with LLM evaluation or falls back to rule-based alerting when LLM is unavailable.
 6. Pushes update to all connected browsers via SSE
 
