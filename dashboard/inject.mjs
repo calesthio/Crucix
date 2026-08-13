@@ -720,7 +720,14 @@ async function cliInject() {
   }
   console.log(`Generated ${V2.ideas.length} leverageable ideas`);
 
-  const json = JSON.stringify(V2);
+  // Feed text (RSS titles, Telegram posts, GDELT headlines) lands verbatim in this
+  // blob. Inside a <script> element the HTML parser still honours `</script` and
+  // `<!--`, so an upstream item containing either would terminate the script block
+  // and let the remainder of the item be parsed as markup. Neutralize both with
+  // JS string escapes that JSON.parse-equivalent semantics leave unchanged.
+  const json = JSON.stringify(V2)
+    .replace(/<\/(script)/gi, '<\\/$1')
+    .replace(/<!--/g, '<\\u0021--');
   console.log('\n--- Synthesis ---');
   console.log('Size:', json.length, 'bytes | Air:', V2.air.length, '| Thermal:', V2.thermal.length,
     '| News:', V2.news.length, '| Ideas:', V2.ideas.length, '| Sources:', V2.health.length);
