@@ -12,6 +12,7 @@ export default {
     apiKey: process.env.LLM_API_KEY || null,
     model: process.env.LLM_MODEL || null,
     baseUrl: process.env.OLLAMA_BASE_URL || null,
+    reasoningEffort: process.env.OLLAMA_REASONING_EFFORT || null,
   },
 
   telegram: {

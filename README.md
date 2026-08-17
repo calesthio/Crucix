@@ -222,7 +222,7 @@ These three unlock the most valuable economic and satellite data. Each takes abo
 
 ### LLM Provider (optional, for AI-enhanced ideas)
 
-Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, `grok`
+Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, `grok`, `ollama`
 
 | Provider | Key Required | Default Model |
 |----------|-------------|---------------|
@@ -234,6 +234,7 @@ Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrou
 | `minimax` | `LLM_API_KEY` | MiniMax-M2.5 |
 | `mistral` | `LLM_API_KEY` | mistral-large-latest |
 | `grok` | `LLM_API_KEY` | grok-4-latest |
+| `ollama` | None (local Ollama) | llama3.1:8b |
 
 For Codex, run `npx @openai/codex login` to authenticate via your ChatGPT subscription.
 
@@ -414,9 +415,15 @@ All settings are in `.env` with sensible defaults:
 |----------|---------|-------------|
 | `PORT` | `3117` | Dashboard server port |
 | `REFRESH_INTERVAL_MINUTES` | `15` | Auto-refresh interval |
-| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, or `grok` |
-| `LLM_API_KEY` | — | API key (not needed for codex) |
+| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, `grok`, or `ollama` |
+| `LLM_API_KEY` | — | API key (not needed for codex or ollama) |
 | `LLM_MODEL` | per-provider default | Override model selection |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
+| `OLLAMA_REASONING_EFFORT` | — | Set to `none` to disable thinking on hybrid models (e.g. qwen3) |
+| `LLM_IDEAS_MAX_TOKENS` | `8192` | Token budget for LLM trade ideas |
+| `LLM_IDEAS_TIMEOUT_MS` | `90000` | Timeout for LLM trade ideas |
+| `LLM_ALERT_MAX_TOKENS` | `800` | Token budget for LLM alert evaluation |
+| `LLM_ALERT_TIMEOUT_MS` | `30000` | Timeout for LLM alert evaluation |
 | `TELEGRAM_BOT_TOKEN` | disabled | For Telegram alerts + bot commands |
 | `TELEGRAM_CHAT_ID` | — | Your Telegram chat ID |
 | `TELEGRAM_CHANNELS` | — | Extra channel IDs to monitor (comma-separated) |

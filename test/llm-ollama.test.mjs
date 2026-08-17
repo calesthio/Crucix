@@ -144,6 +144,110 @@ describe('OllamaProvider', () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it('should throw when reasoning consumes the whole budget (empty content, finish_reason=length)', async () => {
+    const provider = new OllamaProvider({});
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          choices: [{ message: { content: '', reasoning: 'thinking...' }, finish_reason: 'length' }],
+          usage: { prompt_tokens: 10, completion_tokens: 800 },
+          model: 'qwen3.8:27b-mlx',
+        }),
+      })
+    );
+    try {
+      await assert.rejects(
+        () => provider.complete('sys', 'user'),
+        (err) => {
+          assert.match(err.message, /finish_reason=length/);
+          return true;
+        }
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('should surface finish_reason on successful responses', async () => {
+    const provider = new OllamaProvider({});
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          choices: [{ message: { content: 'hi' }, finish_reason: 'stop' }],
+          usage: {},
+          model: 'qwen3.8:27b-mlx',
+        }),
+      })
+    );
+    try {
+      const result = await provider.complete('sys', 'user');
+      assert.equal(result.finishReason, 'stop');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('should not mask an explicit maxTokens of 0 with the default', async () => {
+    const provider = new OllamaProvider({});
+    let capturedBody;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock.fn((url, opts) => {
+      capturedBody = JSON.parse(opts.body);
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ choices: [{ message: { content: 'x' }, finish_reason: 'stop' }], usage: {} }),
+      });
+    });
+    try {
+      await provider.complete('sys', 'user', { maxTokens: 0 });
+      assert.equal(capturedBody.max_tokens, 0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('should send reasoning_effort when configured', async () => {
+    const provider = new OllamaProvider({ model: 'qwen3:8b', reasoningEffort: 'none' });
+    let capturedBody;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock.fn((url, opts) => {
+      capturedBody = JSON.parse(opts.body);
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }], usage: {} }),
+      });
+    });
+    try {
+      await provider.complete('sys', 'user');
+      assert.equal(capturedBody.reasoning_effort, 'none');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('should omit reasoning_effort when not configured', async () => {
+    const provider = new OllamaProvider({});
+    let capturedBody;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock.fn((url, opts) => {
+      capturedBody = JSON.parse(opts.body);
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }], usage: {} }),
+      });
+    });
+    try {
+      await provider.complete('sys', 'user');
+      assert.equal('reasoning_effort' in capturedBody, false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
 
 // ─── Factory Tests ───
