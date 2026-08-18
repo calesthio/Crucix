@@ -38,7 +38,7 @@ const sseClients = new Set();
 // === Delta/Memory ===
 const memory = new MemoryManager(RUNS_DIR);
 
-// === LLM + Telegram + Discord ===
+// === LLM + Telegram + Discord + Feishu ===
 const llmProvider = createLLMProvider(config.llm);
 const telegramAlerter = new TelegramAlerter(config.telegram);
 const discordAlerter = new DiscordAlerter(config.discord || {});
@@ -372,6 +372,11 @@ async function runSweepCycle() {
       if (discordAlerter.isConfigured) {
         discordAlerter.evaluateAndAlert(llmProvider, delta, memory).catch(err => {
           console.error('[Crucix] Discord alert error:', err.message);
+        });
+      }
+      if (feishuAlerter.isConfigured) {
+        feishuAlerter.evaluateAndAlert(llmProvider, delta, memory).catch(err => {
+          console.error('[Crucix] Feishu alert error:', err.message);
         });
       }
     }

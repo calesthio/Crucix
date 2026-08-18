@@ -28,6 +28,11 @@ export default {
     webhookUrl: process.env.DISCORD_WEBHOOK_URL || null, // Fallback: webhook-only alerts (no bot needed)
   },
 
+  feishu: {
+    webhookUrl: process.env.FEISHU_WEBHOOK_URL || null, // Feishu Bot Webhook URL
+    secret: process.env.FEISHU_SECRET || null,           // Optional: webhook signature secret
+  },
+
   // Delta engine thresholds — override defaults from lib/delta/engine.mjs
   // Set to null to use built-in defaults
   delta: {
