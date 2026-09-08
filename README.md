@@ -186,10 +186,10 @@ Alerts are delivered as rich embeds with color-coded sidebars: red for FLASH, ye
 **Optional dependency:** The full bot requires `discord.js`. Install it with `npm install discord.js`. If it's not installed, Crucix automatically falls back to webhook-only mode.
 
 ### Optional LLM Layer
-Connect any of 8 LLM providers for enhanced analysis:
+Connect any of 9 LLM providers for enhanced analysis:
 - **AI trade ideas** — quantitative analyst producing 5-8 actionable ideas citing specific data
 - **Smarter alert evaluation** — LLM classifies signals into FLASH/PRIORITY/ROUTINE tiers with cross-domain correlation and confidence scoring
-- Providers: Anthropic Claude, OpenAI, Google Gemini, OpenRouter (Unified API), OpenAI Codex (ChatGPT subscription), MiniMax, Mistral, Grok
+- Providers: Anthropic Claude, OpenAI, Google Gemini, OpenRouter (Unified API), Requesty (Unified API), OpenAI Codex (ChatGPT subscription), MiniMax, Mistral, Grok
 - Graceful fallback — when LLM is unavailable, a rule-based engine takes over alert evaluation. LLM failures never crash the sweep cycle.
 
 ---
@@ -222,7 +222,7 @@ These three unlock the most valuable economic and satellite data. Each takes abo
 
 ### LLM Provider (optional, for AI-enhanced ideas)
 
-Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, `grok`
+Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `requesty`, `minimax`, `mistral`, `grok`
 
 | Provider | Key Required | Default Model |
 |----------|-------------|---------------|
@@ -230,6 +230,7 @@ Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrou
 | `openai` | `LLM_API_KEY` | gpt-5.4 |
 | `gemini` | `LLM_API_KEY` | gemini-3.1-pro |
 | `openrouter` | `LLM_API_KEY` | openrouter/auto |
+| `requesty` | `LLM_API_KEY` | openai/gpt-4o-mini |
 | `codex` | None (uses `~/.codex/auth.json`) | gpt-5.3-codex |
 | `minimax` | `LLM_API_KEY` | MiniMax-M2.5 |
 | `mistral` | `LLM_API_KEY` | mistral-large-latest |
@@ -303,13 +304,14 @@ crucix/
 │       └── jarvis.html        # Self-contained Jarvis HUD
 │
 ├── lib/
-│   ├── llm/                   # LLM abstraction (8 providers, raw fetch, no SDKs)
+│   ├── llm/                   # LLM abstraction (9 providers, raw fetch, no SDKs)
 │   │   ├── provider.mjs       # Base class
 │   │   ├── anthropic.mjs      # Claude
 │   │   ├── openai.mjs         # GPT
 │   │   ├── gemini.mjs         # Gemini
 │   │   ├── grok.mjs           # Grok
 │   │   ├── openrouter.mjs     # OpenRouter (Unified API)
+│   │   ├── requesty.mjs       # Requesty (Unified API)
 │   │   ├── codex.mjs          # Codex (ChatGPT subscription)
 │   │   ├── minimax.mjs        # MiniMax (M2.5, 204K context)
 │   │   ├── mistral.mjs        # Mistral AI
@@ -414,7 +416,7 @@ All settings are in `.env` with sensible defaults:
 |----------|---------|-------------|
 | `PORT` | `3117` | Dashboard server port |
 | `REFRESH_INTERVAL_MINUTES` | `15` | Auto-refresh interval |
-| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, or `grok` |
+| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `requesty`, `minimax`, `mistral`, or `grok` |
 | `LLM_API_KEY` | — | API key (not needed for codex) |
 | `LLM_MODEL` | per-provider default | Override model selection |
 | `TELEGRAM_BOT_TOKEN` | disabled | For Telegram alerts + bot commands |
