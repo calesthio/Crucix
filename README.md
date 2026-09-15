@@ -530,6 +530,8 @@ To update them: run the dashboard, wait for a sweep to complete, then use your b
 
 ## Contributing
 
+For provider failure modes, retry behavior, and local checks, see the [source operations guides](docs/sources/README.md), starting with [OpenSky](docs/sources/opensky.md).
+
 Found a bug? Want to add a 28th source? PRs welcome. Each source is a standalone module in `apis/sources/` — just export a `briefing()` function that returns structured data and add it to the orchestrator in `apis/briefing.mjs`.
 
 If you find this useful, a star helps others find it too.
