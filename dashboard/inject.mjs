@@ -618,6 +618,18 @@ export async function synthesize(data) {
   return V2;
 }
 
+// GDELT's `date` field (from its API's `seendate`) looks like "20260921T120000Z" —
+// not directly parseable by `Date`. Convert to ISO 8601, or return null if malformed.
+function parseGdeltDate(raw) {
+  if (!raw) return null;
+  const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?$/.exec(raw);
+  if (!m) return null;
+  const [, y, mo, d, h, mi, s] = m;
+  const iso = `${y}-${mo}-${d}T${h}:${mi}:${s}Z`;
+  const ms = new Date(iso).getTime();
+  return Number.isFinite(ms) ? iso : null;
+}
+
 // === Unified News Feed for Ticker ===
 function buildNewsFeed(rssNews, gdeltData, tgUrgent, tgTop) {
   const feed = [];
@@ -636,7 +648,7 @@ function buildNewsFeed(rssNews, gdeltData, tgUrgent, tgTop) {
       const geo = geoTagText(a.title);
       feed.push({
         headline: a.title.substring(0, 100), source: 'GDELT', type: 'gdelt',
-        timestamp: new Date().toISOString(), region: geo?.region || 'Global', urgent: false, url: sanitizeExternalUrl(a.url)
+        timestamp: parseGdeltDate(a.date), region: geo?.region || 'Global', urgent: false, url: sanitizeExternalUrl(a.url)
       });
     }
   }
