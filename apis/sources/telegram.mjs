@@ -74,6 +74,13 @@ const URGENT_KEYWORDS = [
   'default', 'bank run', 'circuit breaker', 'flash crash', 'emergency rate',
 ];
 
+// Word-boundary regexes so short keywords (e.g. 'dam', 'coup', 'nato') don't
+// match as substrings inside unrelated words ('damage', 'recoup', 'senator').
+const URGENT_KEYWORD_PATTERNS = URGENT_KEYWORDS.map(keyword => ({
+  keyword,
+  regex: new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i'),
+}));
+
 // ─── Bot API mode ───────────────────────────────────────────────────────────
 
 const botBase = () => `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`;
@@ -231,8 +238,8 @@ async function scrapeChannel(channelId) {
 
 // Flag urgent/high-priority posts
 function flagUrgent(post) {
-  const lower = (post.text || '').toLowerCase();
-  const matched = URGENT_KEYWORDS.filter(k => lower.includes(k));
+  const text = post.text || '';
+  const matched = URGENT_KEYWORD_PATTERNS.filter(({ regex }) => regex.test(text)).map(({ keyword }) => keyword);
   return matched.length > 0 ? matched : null;
 }
 
