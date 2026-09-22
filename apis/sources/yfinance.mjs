@@ -41,7 +41,7 @@ async function fetchQuote(symbol) {
     });
 
     const result = data?.chart?.result?.[0];
-    if (!result) return null;
+    if (!result) return { symbol, name: SYMBOLS[symbol] || symbol, error: data?.error || 'No chart data (possibly rate-limited by Yahoo)' };
 
     const meta = result.meta || {};
     const quotes = result.indicators?.quote?.[0] || {};
