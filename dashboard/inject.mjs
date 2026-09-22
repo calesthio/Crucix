@@ -116,11 +116,15 @@ function summarizeAirHotspots(hotspots = []) {
   }));
 }
 
+// Historical OpenSky snapshots older than this are considered too stale to
+// stand in for a live reading — an empty/no-data state is shown instead.
+const OPENSKY_FALLBACK_MAX_AGE_MS = 4 * 60 * 60 * 1000; // 4 hours
+
 function loadOpenSkyFallback(currentTimestamp) {
   const runsDir = join(ROOT, 'runs');
   if (!existsSync(runsDir)) return null;
 
-  const currentMs = currentTimestamp ? new Date(currentTimestamp).getTime() : NaN;
+  const currentMs = currentTimestamp ? new Date(currentTimestamp).getTime() : Date.now();
   const files = readdirSync(runsDir)
     .filter(name => /^briefing_.*\.json$/.test(name))
     .sort()
@@ -131,11 +135,14 @@ function loadOpenSkyFallback(currentTimestamp) {
     try {
       const prior = JSON.parse(readFileSync(filePath, 'utf8'));
       const priorTimestamp = prior.sources?.OpenSky?.timestamp || prior.crucix?.timestamp || null;
-      if (priorTimestamp && Number.isFinite(currentMs) && new Date(priorTimestamp).getTime() >= currentMs) continue;
+      const priorMs = priorTimestamp ? new Date(priorTimestamp).getTime() : NaN;
+      if (!Number.isFinite(priorMs)) continue;
+      if (priorMs >= currentMs) continue;
+      if (currentMs - priorMs > OPENSKY_FALLBACK_MAX_AGE_MS) break; // files are sorted newest-first; older ones only get staler
 
       const hotspots = prior.sources?.OpenSky?.hotspots || [];
       if (sumAirHotspots(hotspots) > 0) {
-        return { file, timestamp: priorTimestamp, hotspots };
+        return { file, timestamp: priorTimestamp, hotspots, stale: true };
       }
     } catch {
       // Ignore unreadable historical runs and continue searching backward.
@@ -602,8 +609,8 @@ export async function synthesize(data) {
       fallback: Boolean(airFallback),
       liveTotal: sumAirHotspots(liveAirHotspots),
       timestamp: airFallback?.timestamp || data.sources.OpenSky?.timestamp || data.crucix?.timestamp || null,
-      source: airFallback ? 'OpenSky fallback' : 'OpenSky',
-      ...(airFallback ? { fallbackFile: airFallback.file } : {}),
+      source: airFallback ? 'OpenSky fallback (stale)' : 'OpenSky',
+      ...(airFallback ? { fallbackFile: airFallback.file, stale: true } : {}),
       ...(data.sources.OpenSky?.error ? { error: data.sources.OpenSky.error } : {}),
     },
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
