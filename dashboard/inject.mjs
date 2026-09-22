@@ -178,13 +178,13 @@ const REGIONAL_NEWS_SOURCES = ['MercoPress', 'Indian Express', 'The Hindu', 'SBS
 export async function fetchAllNews() {
   const feeds = [
     // Global
-    ['http://feeds.bbci.co.uk/news/world/rss.xml', 'BBC'],
+    ['https://feeds.bbci.co.uk/news/world/rss.xml', 'BBC'],
     ['https://rss.nytimes.com/services/xml/rss/nyt/World.xml', 'NYT'],
     ['https://www.aljazeera.com/xml/rss/all.xml', 'Al Jazeera'],
     // USA
     ['https://feeds.npr.org/1001/rss.xml', 'NPR'],
     ['https://feeds.bbci.co.uk/news/technology/rss.xml', 'BBC Tech'],
-    ['http://feeds.bbci.co.uk/news/science_and_environment/rss.xml', 'BBC Science'],
+    ['https://feeds.bbci.co.uk/news/science_and_environment/rss.xml', 'BBC Science'],
     ['https://rss.nytimes.com/services/xml/rss/nyt/Americas.xml', 'NYT Americas'],
     // Europe
     ['https://rss.dw.com/rdf/rss-en-all', 'DW'],
