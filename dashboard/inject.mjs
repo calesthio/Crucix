@@ -227,8 +227,8 @@ export async function fetchAllNews() {
         source: item.source,
         date: item.date,
         url: item.url,
-        lat: geo.lat + (Math.random() - 0.5) * 2,
-        lon: geo.lon + (Math.random() - 0.5) * 2,
+        lat: geo.lat,
+        lon: geo.lon,
         region: geo.region
       });
     }
