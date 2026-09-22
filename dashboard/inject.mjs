@@ -259,14 +259,19 @@ export async function fetchAllNews() {
 // === Leverageable Ideas from Signals ===
 export function generateIdeas(V2) {
   const ideas = [];
-  const vix = V2.fred.find(f => f.id === 'VIXCLS');
-  const hy = V2.fred.find(f => f.id === 'BAMLH0A0HYM2');
-  const spread = V2.fred.find(f => f.id === 'T10Y2Y');
+  const fred = V2.fred || [];
+  const bls = V2.bls || [];
+  const thermal = V2.thermal || [];
+  const urgent = V2.tg?.urgent || [];
+  const wtiRecent = V2.energy?.wtiRecent || [];
+  const vix = fred.find(f => f.id === 'VIXCLS');
+  const hy = fred.find(f => f.id === 'BAMLH0A0HYM2');
+  const spread = fred.find(f => f.id === 'T10Y2Y');
 
-  if (V2.tg.urgent.length > 3 && V2.energy.wti > 68) {
+  if (urgent.length > 3 && V2.energy?.wti > 68) {
     ideas.push({
       title: 'Conflict-Energy Nexus Active',
-      text: `${V2.tg.urgent.length} urgent conflict signals with WTI at $${V2.energy.wti}. Geopolitical risk premium may expand. Consider energy exposure.`,
+      text: `${urgent.length} urgent conflict signals with WTI at $${V2.energy.wti}. Geopolitical risk premium may expand. Consider energy exposure.`,
       type: 'long', confidence: 'Medium', horizon: 'swing'
     });
   }
@@ -284,10 +289,10 @@ export function generateIdeas(V2) {
       type: 'hedge', confidence: 'Medium', horizon: 'tactical'
     });
   }
-  if (V2.energy.wtiRecent.length > 1) {
-    const latest = V2.energy.wtiRecent[0];
-    const oldest = V2.energy.wtiRecent[V2.energy.wtiRecent.length - 1];
-    const pct = ((latest - oldest) / oldest * 100).toFixed(1);
+  if (wtiRecent.length > 1) {
+    const latest = wtiRecent[0];
+    const oldest = wtiRecent[wtiRecent.length - 1];
+    const pct = oldest ? ((latest - oldest) / oldest * 100).toFixed(1) : 0;
     if (Math.abs(pct) > 3) {
       ideas.push({
         title: pct > 0 ? 'Oil Momentum Building' : 'Oil Under Pressure',
@@ -303,7 +308,7 @@ export function generateIdeas(V2) {
       type: 'watch', confidence: 'Medium', horizon: 'strategic'
     });
   }
-  const debt = parseFloat(V2.treasury.totalDebt);
+  const debt = parseFloat(V2.treasury?.totalDebt);
   if (debt > 35e12) {
     ideas.push({
       title: 'Fiscal Trajectory Supports Hard Assets',
@@ -311,18 +316,18 @@ export function generateIdeas(V2) {
       type: 'long', confidence: 'High', horizon: 'strategic'
     });
   }
-  const totalThermal = V2.thermal.reduce((s, t) => s + t.det, 0);
-  if (totalThermal > 30000 && V2.tg.urgent.length > 2) {
+  const totalThermal = thermal.reduce((s, t) => s + t.det, 0);
+  if (totalThermal > 30000 && urgent.length > 2) {
     ideas.push({
       title: 'Satellite Confirms Conflict Intensity',
-      text: `${totalThermal.toLocaleString()} thermal detections + ${V2.tg.urgent.length} urgent OSINT flags. Defense sector procurement may accelerate.`,
+      text: `${totalThermal.toLocaleString()} thermal detections + ${urgent.length} urgent OSINT flags. Defense sector procurement may accelerate.`,
       type: 'watch', confidence: 'Medium', horizon: 'swing'
     });
   }
 
   // Yield Curve + Labor Interaction
-  const unemployment = V2.bls.find(b => b.id === 'LNS14000000' || b.id === 'UNRATE');
-  const payrolls = V2.bls.find(b => b.id === 'CES0000000001' || b.id === 'PAYEMS');
+  const unemployment = bls.find(b => b.id === 'LNS14000000' || b.id === 'UNRATE');
+  const payrolls = bls.find(b => b.id === 'CES0000000001' || b.id === 'PAYEMS');
   if (spread && unemployment && payrolls) {
     const weakLabor = (unemployment.value > 4.3) || (payrolls.momChange && payrolls.momChange < -50);
     if (spread.value > 0.3 && weakLabor) {
@@ -336,8 +341,8 @@ export function generateIdeas(V2) {
 
   // ACLED Conflict + Energy Momentum
   const conflictEvents = V2.acled?.totalEvents || 0;
-  if (conflictEvents > 50 && V2.energy.wtiRecent.length > 1) {
-    const wtiMove = V2.energy.wtiRecent[0] - V2.energy.wtiRecent[V2.energy.wtiRecent.length - 1];
+  if (conflictEvents > 50 && wtiRecent.length > 1) {
+    const wtiMove = wtiRecent[0] - wtiRecent[wtiRecent.length - 1];
     if (wtiMove > 2) {
       ideas.push({
         title: 'Conflict Fueling Energy Momentum',
@@ -349,7 +354,7 @@ export function generateIdeas(V2) {
 
   // Defense + Conflict Intensity
   const totalFatalities = V2.acled?.totalFatalities || 0;
-  const totalThermalAll = V2.thermal.reduce((s, t) => s + t.det, 0);
+  const totalThermalAll = thermal.reduce((s, t) => s + t.det, 0);
   if (totalFatalities > 500 && totalThermalAll > 20000) {
     ideas.push({
       title: 'Defense Procurement Acceleration Signal',
@@ -380,8 +385,8 @@ export function generateIdeas(V2) {
   }
 
   // Supply Chain + Inflation Pipeline
-  const ppi = V2.bls.find(b => b.id === 'WPUFD49104' || b.id === 'PCU--PCU--');
-  const cpi = V2.bls.find(b => b.id === 'CUUR0000SA0' || b.id === 'CPIAUCSL');
+  const ppi = bls.find(b => b.id === 'WPUFD49104' || b.id === 'PCU--PCU--');
+  const cpi = bls.find(b => b.id === 'CUUR0000SA0' || b.id === 'CPIAUCSL');
   if (ppi && cpi && V2.gscpi) {
     const supplyPressure = V2.gscpi.value > 0.5;
     const ppiRising = ppi.momChangePct > 0.3;
@@ -705,18 +710,18 @@ async function cliInject() {
         V2.ideasSource = 'llm';
         console.log(`[LLM] Generated ${llmIdeas.length} ideas`);
       } else {
-        V2.ideas = [];
-        V2.ideasSource = 'llm-failed';
-        console.log('[LLM] No ideas returned');
+        V2.ideas = generateIdeas(V2);
+        V2.ideasSource = 'rules';
+        console.log('[LLM] No ideas returned, falling back to rule-based ideas');
       }
     } catch (err) {
-      V2.ideas = [];
-      V2.ideasSource = 'llm-failed';
-      console.log('[LLM] Idea generation failed:', err.message);
+      V2.ideas = generateIdeas(V2);
+      V2.ideasSource = 'rules';
+      console.log('[LLM] Idea generation failed, falling back to rule-based ideas:', err.message);
     }
   } else {
-    V2.ideas = [];
-    V2.ideasSource = 'disabled';
+    V2.ideas = generateIdeas(V2);
+    V2.ideasSource = 'rules';
   }
   console.log(`Generated ${V2.ideas.length} leverageable ideas`);
 
