@@ -349,17 +349,17 @@ async function runSweepCycle() {
           synthesized.ideasSource = 'llm';
           console.log(`[Crucix] LLM generated ${llmIdeas.length} ideas`);
         } else {
-          synthesized.ideas = [];
-          synthesized.ideasSource = 'llm-failed';
+          synthesized.ideas = generateIdeas(synthesized);
+          synthesized.ideasSource = 'rules';
         }
       } catch (llmErr) {
         console.error('[Crucix] LLM ideas failed (non-fatal):', llmErr.message);
-        synthesized.ideas = [];
-        synthesized.ideasSource = 'llm-failed';
+        synthesized.ideas = generateIdeas(synthesized);
+        synthesized.ideasSource = 'rules';
       }
     } else {
-      synthesized.ideas = [];
-      synthesized.ideasSource = 'disabled';
+      synthesized.ideas = generateIdeas(synthesized);
+      synthesized.ideasSource = 'rules';
     }
 
     // 6. Alert evaluation — Telegram + Discord (LLM with rule-based fallback, multi-tier, semantic dedup)
