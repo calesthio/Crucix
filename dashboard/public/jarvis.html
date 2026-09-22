@@ -1763,7 +1763,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const hasInlineData = !!(D && D.meta);
   const canProbeApi = location.protocol !== 'file:';
 
-  if (canProbeApi && !hasInlineData) {
+  if (canProbeApi) {
     // Server mode: always fetch live data from API (ignore any stale inline D)
     fetch('/api/data')
       .then(r => r.json())
