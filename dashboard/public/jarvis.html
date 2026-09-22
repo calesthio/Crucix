@@ -1176,8 +1176,7 @@ function initFlatMap(){
     flatG.attr('transform',event.transform);
     const k=event.transform.k;
     flatG.selectAll('.marker-circle').attr('r',function(){return +this.dataset.baseR/Math.sqrt(k)});
-    flatG.selectAll('.marker-label').style('font-size',Math.max(7,9/Math.sqrt(k))+'px')
-      .style('display',k>=2.5?'block':'none');
+    flatG.selectAll('.marker-label').style('font-size',Math.max(7,9/Math.sqrt(k))+'px');
   });
   flatSvg.call(flatZoom);
   drawFlatMap();
