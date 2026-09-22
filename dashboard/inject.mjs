@@ -220,15 +220,22 @@ export async function fetchAllNews() {
     const key = item.title.substring(0, 40).toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    const geo = geoTagText(item.title) || RSS_SOURCE_FALLBACKS[item.source];
+    // Only a real title match gives a defensible map pin. A source-level fallback
+    // (e.g. every unmatched "The Hindu" story) identifies a publication's home
+    // region, not the location of the story itself, so it must not be plotted
+    // as a coordinate — it's still kept for the ticker, just unpinned.
+    const preciseGeo = geoTagText(item.title);
+    const geo = preciseGeo || RSS_SOURCE_FALLBACKS[item.source];
     if (geo) {
       geoNews.push({
         title: item.title.substring(0, 100),
         source: item.source,
         date: item.date,
         url: item.url,
-        lat: geo.lat + (Math.random() - 0.5) * 2,
-        lon: geo.lon + (Math.random() - 0.5) * 2,
+        ...(preciseGeo ? {
+          lat: geo.lat + (Math.random() - 0.5) * 2,
+          lon: geo.lon + (Math.random() - 0.5) * 2,
+        } : {}),
         region: geo.region
       });
     }
