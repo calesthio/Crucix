@@ -219,6 +219,7 @@ These three unlock the most valuable economic and satellite data. Each takes abo
 | `ACLED_EMAIL` + `ACLED_PASSWORD` | Armed conflict event data | [acleddata.com/register](https://acleddata.com/register/) — free, OAuth2 |
 | `AISSTREAM_API_KEY` | Maritime AIS vessel tracking | [aisstream.io](https://aisstream.io/) — free |
 | `ADSB_API_KEY` | Unfiltered flight tracking | [RapidAPI](https://rapidapi.com/adsbexchange/api/adsbexchange-com1) — ~$10/mo |
+| `OPENSKY_CLIENT_ID` + `OPENSKY_CLIENT_SECRET` | Higher OpenSky flight-tracking limits (4,000 credits/day vs 400 anonymous) | [opensky-network.org](https://opensky-network.org/) — free account, then Account → create API client |
 
 ### LLM Provider (optional, for AI-enhanced ideas)
 
@@ -345,7 +346,7 @@ crucix/
 | Source | What It Tracks | Auth |
 |--------|---------------|------|
 | **GDELT** | Global news events, conflict mapping (100+ languages) | None |
-| **OpenSky** | Real-time ADS-B flight tracking across 6 hotspot regions | None |
+| **OpenSky** | Real-time ADS-B flight tracking across 10 hotspot regions | None (optional free account) |
 | **NASA FIRMS** | Satellite fire/thermal anomaly detection (3hr latency) | Free key |
 | **Maritime/AIS** | Vessel tracking, dark ships, sanctions evasion | Free key |
 | **Safecast** | Citizen-science radiation monitoring near 6 nuclear sites | None |
@@ -496,6 +497,8 @@ This is normal — the first sweep takes 30–60 seconds to query all 27 sources
 Expected behavior. Sources that require API keys will return structured errors if the key isn't set. The rest of the sweep continues normally. Check the Source Integrity section in the dashboard (or the server logs) to see which sources failed and why. The 3 most impactful free keys to add are `FRED_API_KEY`, `FIRMS_MAP_KEY`, and `EIA_API_KEY`.
 
 OpenSky can also return `HTTP 429` when its public hotspots are queried too aggressively. Crucix does not try to evade that limit. Instead, it surfaces the throttle/error in source health and preserves the most recent non-empty air traffic snapshot from `runs/` so the dashboard flight layer does not suddenly go blank on a throttled sweep.
+
+Anonymous OpenSky access is limited to 400 API credits per day, which a full hotspot sweep every 15 minutes exceeds. Setting `OPENSKY_CLIENT_ID` and `OPENSKY_CLIENT_SECRET` (a free OpenSky account → Account page → create API client) raises this to 4,000 credits per day. If the credentials are rejected, Crucix falls back to anonymous access and reports the reason as `authError` in the OpenSky source output.
 
 ### Telegram bot not responding to commands
 
