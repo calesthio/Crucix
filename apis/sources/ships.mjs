@@ -1,65 +1,117 @@
 // Ship/Vessel Tracking — aisstream.io (free real-time global AIS)
-// Also includes fallback to public vessel tracking data
-// Detects: dark ships, sanctions evasion, naval deployments, port congestion
+// Detects: chokepoint traffic, tanker flows, naval presence, AIS gaps
+//
+// Live AIS is a WebSocket stream, which a one-shot sweep can't hold open. When Crucix
+// runs as a server, lib/maritime/ais-collector.mjs keeps a persistent connection and
+// this source reports a snapshot of it. When run standalone (npm run sweep), it samples
+// the stream for AIS_SAMPLE_SECONDS instead. Without AISSTREAM_API_KEY it returns the
+// static chokepoint list, as before.
 
-import { safeFetch } from '../utils/fetch.mjs';
+import '../utils/env.mjs';
+import { CHOKEPOINTS, chokepointBoxes } from '../../lib/maritime/chokepoints.mjs';
+import { AisCollector, AIS_STREAM_URL, aisCollector, aisDisabled } from '../../lib/maritime/ais-collector.mjs';
 
-// aisstream.io requires a WebSocket connection for real-time data
-// For briefing mode, we'll use snapshot-based approaches
+const MONITORING_CAPABILITIES = [
+  'Vessel counts per chokepoint (tankers, cargo, passenger, military)',
+  'Stationary / anchored vessel build-up',
+  'AIS gaps (underway vessels that go silent — often coverage, sometimes transponder shutoff)',
+  'Chokepoint traffic anomalies between sweeps',
+];
 
-// MarineTraffic-style density estimation via public endpoints
-// The real power comes from running a persistent WebSocket listener
+function sampleSeconds() {
+  const n = Number(process.env.AIS_SAMPLE_SECONDS);
+  // Stay well inside the 30s per-source sweep timeout
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 25) : 20;
+}
 
-// Key maritime chokepoints to monitor
-const CHOKEPOINTS = {
-  straitOfHormuz: { label: 'Strait of Hormuz', lat: 26.5, lon: 56.5, note: '20% of world oil' },
-  suezCanal: { label: 'Suez Canal', lat: 30.5, lon: 32.3, note: '12% of world trade' },
-  straitOfGibraltar: { label: 'Strait of Gibraltar', lat: 36.0, lon: -5.7, note: 'Gateway to Mediterranean, ~10-20% global trade influence' },
-  straitOfMalacca: { label: 'Strait of Malacca', lat: 2.5, lon: 101.5, note: '25% of world trade' },
-  babElMandeb: { label: 'Bab el-Mandeb', lat: 12.6, lon: 43.3, note: 'Red Sea gateway' },
-  taiwanStrait: { label: 'Taiwan Strait', lat: 24.0, lon: 119.0, note: '88% of largest container ships' },
-  bosporusStrait: { label: 'Bosphorus', lat: 41.1, lon: 29.1, note: 'Black Sea access' },
-  panamaCanal: { label: 'Panama Canal', lat: 9.1, lon: -79.7, note: '5% of world trade' },
-  capeOfGoodHope: { label: 'Cape of Good Hope', lat: -34.4, lon: 18.5, note: 'Suez alternative' },
-};
-
-// For non-realtime briefing, use web-searchable vessel data
-export async function briefing() {
-  const hasKey = !!process.env.AISSTREAM_API_KEY;
-
+function fromSnapshot(snapshot, mode) {
   return {
     source: 'Maritime/AIS',
     timestamp: new Date().toISOString(),
-    status: hasKey ? 'ready' : 'limited',
-    message: hasKey
-      ? 'AIS stream connected — use WebSocket listener for real-time data'
-      : 'Set AISSTREAM_API_KEY for real-time global vessel tracking (free at aisstream.io)',
-    chokepoints: CHOKEPOINTS,
-    monitoringCapabilities: [
-      'Dark ship detection (AIS transponder shutoffs)',
-      'Sanctions evasion (ship-to-ship transfers)',
-      'Naval deployment tracking',
-      'Port congestion (vessel dwell time)',
-      'Chokepoint traffic anomalies',
-      'Oil tanker route changes',
-    ],
-    hint: 'For now, I can use web search to check maritime news and shipping disruptions',
+    mode,
+    status: snapshot.status,
+    live: snapshot.live,
+    warmingUp: snapshot.warmingUp,
+    stream: snapshot.stream,
+    totals: snapshot.totals,
+    chokepoints: snapshot.chokepoints,
+    vessels: snapshot.vessels,
+    gaps: snapshot.gaps,
+    monitoringCapabilities: MONITORING_CAPABILITIES,
   };
 }
 
-// WebSocket listener setup (for persistent monitoring)
+async function sampleStream(apiKey) {
+  const seconds = sampleSeconds();
+  const collector = new AisCollector({ fromEnv: true, warmupMinutes: Infinity });
+  collector.start(apiKey);
+  await new Promise(resolve => {
+    const timer = setTimeout(resolve, seconds * 1000);
+    timer.unref?.();
+  });
+  const snapshot = collector.getSnapshot();
+  collector.stop();
+  return { snapshot, seconds };
+}
+
+export async function briefing() {
+  const apiKey = process.env.AISSTREAM_API_KEY;
+  const base = {
+    source: 'Maritime/AIS',
+    timestamp: new Date().toISOString(),
+    chokepoints: CHOKEPOINTS,
+    monitoringCapabilities: MONITORING_CAPABILITIES,
+  };
+
+  if (!apiKey) {
+    return {
+      ...base,
+      status: 'limited',
+      message: 'Set AISSTREAM_API_KEY for live vessel counts at chokepoints (free at aisstream.io)',
+    };
+  }
+
+  if (aisDisabled()) {
+    return { ...base, status: 'disabled', message: 'AIS_DISABLED is set — live AIS collection is off' };
+  }
+
+  // Standalone run (no server-managed collector): take a short sample
+  if (aisCollector.state === 'idle') {
+    const { snapshot, seconds } = await sampleStream(apiKey);
+    const result = fromSnapshot(snapshot, 'sampled');
+    result.message = `Sampled the AIS stream for ${seconds}s — counts are partial`;
+    if (snapshot.stream.messages === 0) {
+      result.error = snapshot.stream.lastError || `No AIS messages received in ${seconds}s`;
+    }
+    return result;
+  }
+
+  const snapshot = aisCollector.getSnapshot();
+  const result = fromSnapshot(snapshot, 'stream');
+
+  if (snapshot.status === 'auth_failed' || snapshot.status === 'unsupported') {
+    result.error = snapshot.stream.lastError || `AIS collector ${snapshot.status}`;
+  } else if (!snapshot.live && snapshot.totals.vessels === 0) {
+    result.error = snapshot.stream.lastError || 'AIS stream not connected yet';
+  }
+  if (snapshot.warmingUp && !result.error) {
+    result.message = 'AIS stream recently connected — counts are still filling in';
+  }
+  return result;
+}
+
+// Kept for compatibility: the subscription the collector sends
 export function getWebSocketConfig(apiKey) {
   return {
-    url: 'wss://stream.aisstream.io/v0/stream',
+    url: AIS_STREAM_URL,
     message: JSON.stringify({
       APIKey: apiKey,
-      BoundingBoxes: Object.values(CHOKEPOINTS).map(cp => [
-        [cp.lat - 2, cp.lon - 2],
-        [cp.lat + 2, cp.lon + 2],
-      ]),
+      BoundingBoxes: chokepointBoxes(),
     }),
   };
 }
+
+export { CHOKEPOINTS };
 
 if (process.argv[1]?.endsWith('ships.mjs')) {
   const data = await briefing();

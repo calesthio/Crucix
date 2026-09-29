@@ -411,9 +411,25 @@ export async function synthesize(data) {
     fires: (h.highIntensity || []).slice(0, 8).map(f => ({ lat: f.lat, lon: f.lon, frp: f.frp || 0 }))
   }));
   const tSignals = data.sources.FIRMS?.signals || [];
-  const chokepoints = Object.values(data.sources.Maritime?.chokepoints || {}).map(c => ({
-    label: c.label || c.name, note: c.note || '', lat: c.lat || 0, lon: c.lon || 0
+  const maritimeSrc = data.sources.Maritime || {};
+  const chokepoints = Object.values(maritimeSrc.chokepoints || {}).map(c => ({
+    label: c.label || c.name, note: c.note || '', lat: c.lat || 0, lon: c.lon || 0,
+    // Live AIS counts (present only when AISSTREAM_API_KEY is set)
+    ...(Number.isFinite(c.total) ? {
+      vessels: c.total, tankers: c.tanker || 0, cargo: c.cargo || 0,
+      military: c.military || 0, stationary: c.stationary || 0, aisGaps: c.aisGaps || 0,
+    } : {}),
   }));
+  const maritime = {
+    status: maritimeSrc.status || 'limited',
+    mode: maritimeSrc.mode || null,
+    live: Boolean(maritimeSrc.live),
+    warmingUp: Boolean(maritimeSrc.warmingUp),
+    totals: maritimeSrc.totals || null,
+    vessels: maritimeSrc.vessels || [],
+    gaps: maritimeSrc.gaps || [],
+    ...(maritimeSrc.error ? { error: maritimeSrc.error } : {}),
+  };
   const nuke = (data.sources.Safecast?.sites || []).map(s => ({
     site: s.site, anom: s.anomaly || false, cpm: s.avgCPM, n: s.recentReadings || 0
   }));
@@ -597,7 +613,7 @@ export async function synthesize(data) {
   const news = await fetchAllNews();
 
   const V2 = {
-    meta: data.crucix, air, thermal, tSignals, chokepoints, nuke, nukeSignals,
+    meta: data.crucix, air, thermal, tSignals, chokepoints, maritime, nuke, nukeSignals,
     airMeta: {
       fallback: Boolean(airFallback),
       liveTotal: sumAirHotspots(liveAirHotspots),

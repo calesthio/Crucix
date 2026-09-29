@@ -16,6 +16,7 @@ import { createLLMProvider } from './lib/llm/index.mjs';
 import { generateLLMIdeas } from './lib/llm/ideas.mjs';
 import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
+import { aisCollector, aisDisabled } from './lib/maritime/ais-collector.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -277,6 +278,10 @@ app.get('/api/health', (req, res) => {
     telegramEnabled: !!(config.telegram.botToken && config.telegram.chatId),
     refreshIntervalMinutes: config.refreshIntervalMinutes,
     language: currentLanguage,
+    ais: (() => {
+      const { state, vessels, messages, lastMessageAt, lastError } = aisCollector.getStatus();
+      return { state, vessels, messages, lastMessageAt, lastError };
+    })(),
   });
 });
 
@@ -419,8 +424,15 @@ async function start() {
   ║  LLM:        ${(config.llm.provider || 'disabled').padEnd(31)}║
   ║  Telegram:   ${config.telegram.botToken ? 'enabled' : 'disabled'}${' '.repeat(config.telegram.botToken ? 24 : 23)}║
   ║  Discord:    ${config.discord?.botToken ? 'enabled' : config.discord?.webhookUrl ? 'webhook only' : 'disabled'}${' '.repeat(config.discord?.botToken ? 24 : config.discord?.webhookUrl ? 20 : 23)}║
+  ║  AIS:        ${(process.env.AISSTREAM_API_KEY && !aisDisabled() ? 'live stream' : 'disabled').padEnd(31)}║
   ╚══════════════════════════════════════════════╝
   `);
+
+  // Live AIS needs a persistent WebSocket, so it runs for the life of the server
+  // and the Maritime source reads a snapshot from it on each sweep.
+  if (process.env.AISSTREAM_API_KEY && !aisDisabled()) {
+    aisCollector.start(process.env.AISSTREAM_API_KEY);
+  }
 
   const server = app.listen(port);
 

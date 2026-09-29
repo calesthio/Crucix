@@ -217,7 +217,7 @@ These three unlock the most valuable economic and satellite data. Each takes abo
 | Key | Source | How to Get |
 |-----|--------|------------|
 | `ACLED_EMAIL` + `ACLED_PASSWORD` | Armed conflict event data | [acleddata.com/register](https://acleddata.com/register/) — free, OAuth2 |
-| `AISSTREAM_API_KEY` | Maritime AIS vessel tracking | [aisstream.io](https://aisstream.io/) — free |
+| `AISSTREAM_API_KEY` | Live vessel counts at maritime chokepoints (see [Live AIS](#live-ais-vessel-data)) | [aisstream.io](https://aisstream.io/) — free |
 | `ADSB_API_KEY` | Unfiltered flight tracking | [RapidAPI](https://rapidapi.com/adsbexchange/api/adsbexchange-com1) — ~$10/mo |
 
 ### LLM Provider (optional, for AI-enhanced ideas)
@@ -264,6 +264,27 @@ For Codex, run `npx @openai/codex login` to authenticate via your ChatGPT subscr
 6. Install the dependency: `npm install discord.js`
 
 Alerts work with or without an LLM on both Telegram and Discord. With an LLM configured, signal evaluation is richer and more context-aware. Without one, a deterministic rule engine evaluates signals based on severity, cross-domain correlation, and signal counts.
+
+### Live AIS Vessel Data
+
+With `AISSTREAM_API_KEY` set, the server keeps a persistent WebSocket connection to aisstream.io for as long as it runs, subscribed to a box around each of the 9 monitored chokepoints. A sweep can't hold a stream open (each source has a 30-second limit), so the Maritime source reports a snapshot of that connection on every sweep:
+
+- vessel counts per chokepoint, split into tankers, cargo, passenger, military and other
+- stationary vessels (anchored, moored or barely moving)
+- **AIS gaps**: vessels that were underway and then stopped reporting. This is often just a ship leaving receiver coverage, so treat it as a prompt to look, not proof of a transponder being switched off
+- a capped sample of recent vessel positions
+
+Counts start from zero when the server starts and fill in over the first few minutes, so the first sweeps after a restart are partial. Sweep Delta ignores maritime changes until the stream has been connected for 10 minutes, so restarts and outages don't look like traffic collapsing. Stream state is shown under `ais` in `/api/health`.
+
+Running `npm run sweep` without the server samples the stream for `AIS_SAMPLE_SECONDS` instead.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AIS_DISABLED` | — | Set to `true` to keep live AIS off even with a key |
+| `AIS_STALE_MINUTES` | `60` | Forget vessels not heard from for this long |
+| `AIS_MAX_VESSELS` | `20000` | Hard cap on vessels held in memory |
+| `AIS_BBOX_DEG` | `2` | Half-width of each chokepoint box, in degrees |
+| `AIS_SAMPLE_SECONDS` | `20` | Sampling window for standalone `npm run sweep` (max 25) |
 
 ### Without Any Keys
 
@@ -347,7 +368,7 @@ crucix/
 | **GDELT** | Global news events, conflict mapping (100+ languages) | None |
 | **OpenSky** | Real-time ADS-B flight tracking across 6 hotspot regions | None |
 | **NASA FIRMS** | Satellite fire/thermal anomaly detection (3hr latency) | Free key |
-| **Maritime/AIS** | Vessel tracking, dark ships, sanctions evasion | Free key |
+| **Maritime/AIS** | Live vessel counts, tanker traffic and AIS gaps at 9 chokepoints | Free key |
 | **Safecast** | Citizen-science radiation monitoring near 6 nuclear sites | None |
 | **ACLED** | Armed conflict events: battles, explosions, protests | Free (OAuth2) |
 | **ReliefWeb** | UN humanitarian crisis tracking | None |
@@ -438,7 +459,7 @@ When running `npm run dev`:
 |----------|-------------|
 | `GET /` | Jarvis HUD dashboard |
 | `GET /api/data` | Current synthesized intelligence data (JSON) |
-| `GET /api/health` | Server status, uptime, source count, LLM status |
+| `GET /api/health` | Server status, uptime, source count, LLM status, AIS stream state |
 | `GET /events` | SSE stream for live push updates |
 
 ---
