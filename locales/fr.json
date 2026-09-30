@@ -23,7 +23,10 @@
     "perf": "PERF",
     "perfLow": "BAS",
     "perfHigh": "HAUT",
-    "guideBtn": "Signification des Signaux"
+    "tooltips": "INFOBULLES",
+    "tooltipsHint": "Expliquer les termes au survol ou au toucher",
+    "on": "OUI",
+    "off": "NON"
   },
   "boot": {
     "initializing": "INITIALISATION MOTEUR CRUCIX v{version}",
@@ -374,5 +377,18 @@
     "noHistory": "Historique insuffisant",
     "needsServer": "L'historique en direct nécessite le serveur",
     "unavailable": "Historique en direct indisponible — dernier balayage affiché"
+  },
+  "notes": {
+    "fredDown": "Données FRED indisponibles — la plupart des jauges nécessitent FRED_API_KEY. Le VIX se rabat sur Yahoo.",
+    "spaceDown": "CelesTrak indisponible pour ce balayage — aucune donnée satellite.",
+    "spaceStale": "Données CelesTrak en cache (actualisées toutes les 2 h).",
+    "firmsDown": "Aucun signal — ils proviennent des détections d'incendies NASA FIRMS, qui nécessitent FIRMS_MAP_KEY.",
+    "noSignals": "Aucun signal croisé pour ce balayage."
+  },
+  "tooltips": {
+    "meaning": "Signification",
+    "matters": "Pourquoi c'est important",
+    "notProof": "Ne prouve pas",
+    "foot": "Un guide d'interprétation, pas une conclusion — recoupez les couches."
   }
 }

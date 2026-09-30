@@ -121,9 +121,10 @@ A self-contained Jarvis-style HUD with:
 - **News ticker** — merged RSS + GDELT headlines + Telegram posts, auto-scrolling
 - **Feed controls** — slow down, speed up (0.25x–3x) or pause the News Ticker and OSINT Stream from their panel headers; settings are remembered per feed
 - **Sweep delta** — live panel showing what changed since last sweep (new signals, escalations, de-escalations with severity)
-- **Cross-source signals** — correlated intelligence across satellite, economic, conflict, and social domains
+- **Cross-source signals** — notable patterns in NASA FIRMS satellite fire detections (requires `FIRMS_MAP_KEY`; the panel says so when the key is missing)
 - **Nuclear watch** — real-time radiation readings from Safecast + EPA RadNet
 - **Space watch** — CelesTrak satellite tracking: recent launches, ISS, military constellations, Starlink/OneWeb counts
+- **Signal tooltips** — hover, focus or tap any dotted-underlined term (FRP, CPM, HY Spread, Chokepoint…) for what it means, why it matters and what it does *not* prove. Toggle with **TOOLTIPS ON/OFF** in the top bar
 - **Leverageable ideas** — AI-generated trade ideas (with LLM) or signal-correlated ideas (without)
 
 ### Performance Modes
@@ -525,6 +526,10 @@ This is normal — the first sweep takes 30–60 seconds to query all 29 sources
 ### Some sources show errors
 
 Expected behavior. Sources that require API keys will return structured errors if the key isn't set. The rest of the sweep continues normally. Check the Source Integrity section in the dashboard (or the server logs) to see which sources failed and why. The 3 most impactful free keys to add are `FRED_API_KEY`, `FIRMS_MAP_KEY`, and `EIA_API_KEY`.
+
+**Space Watch is empty or says CelesTrak is unavailable.** CelesTrak firewalls IP addresses that re-download the same data too often. Crucix caches each CelesTrak group in `runs/cache/celestrak/` and refreshes it at most every 2 hours, falling back to the cached copy if a refresh fails. If your IP was blocked by an older version, the block usually lifts on its own after a while; `curl -I https://celestrak.org` from the host shows whether it can connect.
+
+**Risk Gauges show `--` or Cross-Source Signals is empty.** These need `FRED_API_KEY` and `FIRMS_MAP_KEY` respectively, and each panel shows a note when its source is missing. With Docker, keys must be in the `.env` next to `docker-compose.yml` (no quotes, no inline comments); check with `docker-compose exec crucix printenv FRED_API_KEY`.
 
 OpenSky can also return `HTTP 429` when its public hotspots are queried too aggressively. Crucix does not try to evade that limit. Instead, it surfaces the throttle/error in source health and preserves the most recent non-empty air traffic snapshot from `runs/` so the dashboard flight layer does not suddenly go blank on a throttled sweep.
 
