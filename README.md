@@ -161,13 +161,15 @@ Crucix doubles as an interactive Telegram bot. Beyond sending alerts, it respond
 | `/status` | System health, last sweep time, source status, LLM status |
 | `/sweep` | Trigger a manual sweep cycle |
 | `/brief` | Compact text summary of the latest intelligence (direction, key metrics, top OSINT) |
-| `/portfolio` | Portfolio status (if Alpaca connected) |
+| `/portfolio` | Placeholder explaining portfolio integration; does not fetch account or position data |
 | `/alerts` | Recent alert history with tiers |
 | `/mute` / `/mute 2h` | Silence alerts for 1h (or custom duration) |
 | `/unmute` | Resume alerts |
 | `/help` | Show all available commands |
 
 This requires `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env`. The bot polls for messages every 5 seconds (configurable via `TELEGRAM_POLL_INTERVAL`).
+
+Portfolio queries currently require a separate agent with an Alpaca MCP connection. Crucix does not connect to Alpaca directly; `/portfolio` returns the same informational message on both Telegram and Discord.
 
 ### Discord Bot (Two-Way)
 
@@ -457,6 +459,7 @@ All settings are in `.env` with sensible defaults:
 |----------|---------|-------------|
 | `PORT` | `3117` | Dashboard server port |
 | `REFRESH_INTERVAL_MINUTES` | `15` | Auto-refresh interval |
+| `CRUCIX_LANG` | system language, then `en` | Dashboard and analysis language: `en` or `fr`; overrides `LANGUAGE` and `LANG` |
 | `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, `ollama`, or `grok` |
 | `LLM_API_KEY` | — | API key (not needed for codex) |
 | `LLM_MODEL` | per-provider default | Override model selection |
@@ -471,6 +474,8 @@ All settings are in `.env` with sensible defaults:
 
 Delta engine thresholds (how sensitive the system is to changes between sweeps) can be customized in `crucix.config.mjs` under the `delta.thresholds` section. The defaults are tuned to filter out noise while catching meaningful moves.
 
+Set `CRUCIX_LANG=fr` in `.env` for French, or `CRUCIX_LANG=en` for English, then restart the server. Language selection uses `CRUCIX_LANG`, then `LANGUAGE`, then `LANG`; unsupported languages fall back to English.
+
 ---
 
 ## API Endpoints
@@ -483,6 +488,7 @@ When running `npm run dev`:
 | `GET /api/data` | Current synthesized intelligence data (JSON) |
 | `GET /api/history?symbol=^GSPC&range=1mo` | Price history for one dashboard market symbol (`range`: `1d`, `5d`, `1mo`, `6mo`, `1y`). Only the symbols the dashboard shows are allowed; responses are cached for 2–10 minutes |
 | `GET /api/health` | Server status, uptime, source count, LLM status, AIS stream state |
+| `GET /api/locales` | Current language and supported locales (`en`, `fr`) with display names |
 | `GET /events` | SSE stream for live push updates |
 
 ---

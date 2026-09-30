@@ -20,9 +20,13 @@ The user wants signal, judgment, and utility.
 
 Run the full Crucix sweep:
 
+From the repository root:
+
 ```bash
-cd C:/Users/ishan/Documents/Crucix && node apis/briefing.mjs 2>&1
+node apis/briefing.mjs
 ```
+
+The sweep writes JSON to stdout and progress logs to stderr.
 
 Also gather:
 
