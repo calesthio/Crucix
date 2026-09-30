@@ -380,10 +380,13 @@
   },
   "notes": {
     "fredDown": "FRED data unavailable — most gauges need FRED_API_KEY. VIX falls back to Yahoo.",
-    "spaceDown": "CelesTrak unavailable this sweep — no satellite data.",
-    "spaceStale": "Showing cached CelesTrak data (refreshes every 2h).",
+    "spaceDown": "No satellite data this sweep — CelesTrak and the fallbacks were unavailable.",
+    "spaceStale": "Some groups are from the cache (refreshes every 2h).",
     "firmsDown": "No signals — these are built from NASA FIRMS fire detections, which need FIRMS_MAP_KEY.",
-    "noSignals": "No cross-source signals this sweep."
+    "noSignals": "No cross-source signals this sweep.",
+    "spaceVia": "CelesTrak unavailable — data via",
+    "spaceNoMilitary": "Military count needs CelesTrak.",
+    "spaceNoLaunches": "New objects need CelesTrak or a Space-Track account."
   },
   "tooltips": {
     "meaning": "Meaning",

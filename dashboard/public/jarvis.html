@@ -751,9 +751,9 @@ const signalGuideItems = [
     id:"spaceWatch",
     term:"Space Watch",
     category:"Space",
-    meaning:"Satellite catalogue statistics from CelesTrak: new objects, military satellites, mega-constellations and the ISS.",
+    meaning:"Satellite catalogue statistics: new objects, military satellites, mega-constellations and space stations. From CelesTrak, falling back to Space-Track and then a keyless TLE service.",
     matters:"Tracks the pace of launches and the growth of strategic constellations.",
-    notMeaning:"Not real-time. CelesTrak data is cached for up to 2 hours to respect its download limits.",
+    notMeaning:"Not real-time. Data is cached for up to 2 hours to respect the providers' download limits, and the panel notes when a fallback or the cache was used.",
     example:"Starlink rising by hundreds in a month reflects routine launches, not a crisis."
   },
   {
@@ -879,7 +879,7 @@ const signalGuideItems = [
     category:"Space",
     meaning:"The number of Starlink satellites in CelesTrak's catalogue.",
     matters:"Starlink has become strategic infrastructure, including battlefield communications in Ukraine.",
-    notMeaning:"Not the number actively serving users. It includes satellites still raising orbit or being retired.",
+    notMeaning:"Not the number actively serving users. It includes satellites still raising orbit or being retired, and the keyless fallback counts every name match, so it can read higher.",
     example:"Around 8,000 reflects SpaceX's constant launch cadence."
   },
   {
@@ -1320,7 +1320,7 @@ function renderLeftRail(){
     {name:t('layers.healthWatch','Health Watch'),count:D.who.length,dot:'health',sub:t('layers.whoAlerts','WHO alerts'),sig:'whoAlert'},
     {sig:'worldNews',name:t('layers.worldNews','World News'),count:newsCount,dot:'news',sub:t('layers.rssGeolocated','RSS geolocated')},
     {sig:'osintFeed',name:t('layers.osintFeed','OSINT Feed'),count:D.tg.posts,dot:'incident',sub:`${D.tg.urgent.length} ${t('badges.urgent','urgent').toLowerCase()}`},
-    {sig:'satellites',name:t('layers.spaceActivity','Satellites'),count:D.space?.militarySats||0,dot:'space',sub:`${D.space?.totalNewObjects||0} ${t('space.newLast30d','new (30d)')}`}
+    {sig:'satellites',name:t('layers.spaceActivity','Satellites'),count:D.space?.militarySats??'--',dot:'space',sub:`${D.space?.totalNewObjects??'--'} ${t('space.newLast30d','new (30d)')}`}
   ];
   const allNormal=D.nuke.every(s=>!s.anom);
   const nukeHtml=D.nuke.map(s=>`<div class="site-row sig-box"${sigAttrs('cpm')}><span>${s.site}</span><span class="site-val">${s.n>0?(s.cpm?.toFixed(1)||'--')+' CPM':'No data'}</span></div>`).join('');
@@ -1355,10 +1355,10 @@ function renderLeftRail(){
     </div>
     <div class="g-panel">
       <div class="sec-head sig-box"${sigAttrs('spaceWatch')}><h3>${t('panels.spaceWatch','Space Watch')}</h3><span class="badge">${t('badges.orbital','CELESTRAK')}</span></div>
-      ${sourceDown('Space') ? `<div class="panel-note">${t('notes.spaceDown','CelesTrak unavailable this sweep — no satellite data.')}</div>` : D.space?.stale ? `<div class="panel-note">${t('notes.spaceStale','Showing cached CelesTrak data (refreshes every 2h).')}</div>` : ''}
+      ${sourceDown('Space') ? `<div class="panel-note">${t('notes.spaceDown','No satellite data this sweep — CelesTrak and the fallbacks were unavailable.')}</div>` : spaceProviderNote()}
       ${D.space && !sourceDown('Space') ? `
-        <div class="econ-row sig-box"${sigAttrs('newObjects')}><span class="elabel">New Objects (30d)</span><span class="eval" style="color:var(--accent2)">${D.space.totalNewObjects||0}</span></div>
-        <div class="econ-row sig-box"${sigAttrs('militarySats')}><span class="elabel">Military Sats</span><span class="eval">${D.space.militarySats||0}</span></div>
+        <div class="econ-row sig-box"${sigAttrs('newObjects')}><span class="elabel">New Objects (30d)</span><span class="eval" style="color:var(--accent2)">${D.space.totalNewObjects??'--'}</span></div>
+        <div class="econ-row sig-box"${sigAttrs('militarySats')}><span class="elabel">Military Sats</span><span class="eval">${D.space.militarySats??'--'}</span></div>
         <div class="econ-row sig-box"${sigAttrs('starlink')}><span class="elabel">Starlink</span><span class="eval">${D.space.constellations?.starlink||0}</span></div>
         <div class="econ-row sig-box"${sigAttrs('oneweb')}><span class="elabel">OneWeb</span><span class="eval">${D.space.constellations?.oneweb||0}</span></div>
         ${D.space.iss ? `<div class="econ-row sig-box"${sigAttrs('iss')}><span class="elabel">ISS</span><span class="eval" style="color:var(--accent)">ALT ${((D.space.iss.apogee+D.space.iss.perigee)/2).toFixed(0)} km</span></div>` : ''}
@@ -2668,6 +2668,19 @@ function buildOsintPanel(panelClass='', maxHeight=260){
         <div class="ticker-track">${osintCards}${lowPerfMode ? '' : osintCards}</div>
       </div>
     </div>`;
+}
+
+// Explain where Space Watch data came from when it wasn't a fresh CelesTrak download
+function spaceProviderNote(){
+  const providers = Object.values(D.space?.providers || {});
+  const names = { 'space-track':'Space-Track', 'tle-api':'TLE API (counts only)' };
+  const fallbacks = [...new Set(providers.map(p => p.replace(' (cached)','')).filter(p => p !== 'celestrak'))].map(p => names[p] || p);
+  const parts = [];
+  if (fallbacks.length) parts.push(`${t('notes.spaceVia','CelesTrak unavailable — data via')} ${fallbacks.join(', ')}.`);
+  if (D.space?.stale) parts.push(t('notes.spaceStale','Some groups are from the cache (refreshes every 2h).'));
+  if (D.space && D.space.totalNewObjects == null) parts.push(t('notes.spaceNoLaunches','New objects need CelesTrak or a Space-Track account.'));
+  if (D.space && D.space.militarySats == null) parts.push(t('notes.spaceNoMilitary','Military count needs CelesTrak.'));
+  return parts.length ? `<div class="panel-note">${parts.join(' ')}</div>` : '';
 }
 
 // === SIGNAL TOOLTIPS ===

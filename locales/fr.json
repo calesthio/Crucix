@@ -380,10 +380,13 @@
   },
   "notes": {
     "fredDown": "Données FRED indisponibles — la plupart des jauges nécessitent FRED_API_KEY. Le VIX se rabat sur Yahoo.",
-    "spaceDown": "CelesTrak indisponible pour ce balayage — aucune donnée satellite.",
-    "spaceStale": "Données CelesTrak en cache (actualisées toutes les 2 h).",
+    "spaceDown": "Aucune donnée satellite pour ce balayage — CelesTrak et les sources de secours sont indisponibles.",
+    "spaceStale": "Certains groupes proviennent du cache (actualisé toutes les 2 h).",
     "firmsDown": "Aucun signal — ils proviennent des détections d'incendies NASA FIRMS, qui nécessitent FIRMS_MAP_KEY.",
-    "noSignals": "Aucun signal croisé pour ce balayage."
+    "noSignals": "Aucun signal croisé pour ce balayage.",
+    "spaceVia": "CelesTrak indisponible — données via",
+    "spaceNoMilitary": "Le décompte militaire nécessite CelesTrak.",
+    "spaceNoLaunches": "Les nouveaux objets nécessitent CelesTrak ou un compte Space-Track."
   },
   "tooltips": {
     "meaning": "Signification",

@@ -218,6 +218,7 @@ These three unlock the most valuable economic and satellite data. Each takes abo
 | `AISSTREAM_API_KEY` | Live vessel counts at maritime chokepoints (see [Live AIS](#live-ais-vessel-data)) | [aisstream.io](https://aisstream.io/) — free |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare Radar internet outages & traffic anomalies | [dash.cloudflare.com](https://dash.cloudflare.com/profile/api-tokens) — free, custom token with Account Analytics Read |
 | `ADSB_API_KEY` | Unfiltered flight tracking | [RapidAPI](https://rapidapi.com/adsbexchange/api/adsbexchange-com1) — ~$10/mo |
+| `SPACETRACK_USER` + `SPACETRACK_PASSWORD` | Fallback satellite data when CelesTrak is unavailable (see [Space data](#space-data)) | [space-track.org](https://www.space-track.org/auth/createAccount) — free account |
 | `OPENSKY_CLIENT_ID` + `OPENSKY_CLIENT_SECRET` | Higher OpenSky flight-tracking limits (4,000 credits/day vs 400 anonymous) | [opensky-network.org](https://opensky-network.org/) — free account, then Account → create API client |
 
 ### LLM Provider (optional, for AI-enhanced ideas)
@@ -286,6 +287,17 @@ Running `npm run sweep` without the server samples the stream for `AIS_SAMPLE_SE
 | `AIS_MAX_VESSELS` | `20000` | Hard cap on vessels held in memory |
 | `AIS_BBOX_DEG` | `2` | Half-width of each chokepoint box, in degrees |
 | `AIS_SAMPLE_SECONDS` | `20` | Sampling window for standalone `npm run sweep` (max 25) |
+
+### Space Data
+
+Space Watch tries each provider in turn, per satellite group, and caches whatever answers for 2 hours in `runs/cache/celestrak/`:
+
+1. **CelesTrak** (no key). After a failure it is skipped for 30 minutes.
+2. **Space-Track.org**, if `SPACETRACK_USER` and `SPACETRACK_PASSWORD` are set. This is the US government source CelesTrak copies from, so it covers everything except CelesTrak's curated military group.
+3. **tle.ivanstanojevic.me** (no key). This covers space stations plus Starlink and OneWeb counts. Its counts are name matches, so they can read higher than CelesTrak's.
+4. The **cached copy**, however old.
+
+Anything no provider can supply shows `--`, and the panel says which provider was used.
 
 ### Without Any Keys
 
@@ -527,7 +539,7 @@ This is normal — the first sweep takes 30–60 seconds to query all 29 sources
 
 Expected behavior. Sources that require API keys will return structured errors if the key isn't set. The rest of the sweep continues normally. Check the Source Integrity section in the dashboard (or the server logs) to see which sources failed and why. The 3 most impactful free keys to add are `FRED_API_KEY`, `FIRMS_MAP_KEY`, and `EIA_API_KEY`.
 
-**Space Watch is empty or says CelesTrak is unavailable.** CelesTrak firewalls IP addresses that re-download the same data too often. Crucix caches each CelesTrak group in `runs/cache/celestrak/` and refreshes it at most every 2 hours, falling back to the cached copy if a refresh fails. If your IP was blocked by an older version, the block usually lifts on its own after a while; `curl -I https://celestrak.org` from the host shows whether it can connect.
+**Space Watch shows `--` or says CelesTrak is unavailable.** CelesTrak firewalls IP addresses that re-download the same data too often. Crucix caches each group for 2 hours and falls back to other providers (see [Space Data](#space-data)); setting `SPACETRACK_USER` / `SPACETRACK_PASSWORD` fills in almost everything. If your IP was blocked by an older version, the block usually lifts on its own; `curl -I https://celestrak.org` from the host shows whether it can connect.
 
 **Risk Gauges show `--` or Cross-Source Signals is empty.** These need `FRED_API_KEY` and `FIRMS_MAP_KEY` respectively, and each panel shows a note when its source is missing. With Docker, keys must be in the `.env` next to `docker-compose.yml` (no quotes, no inline comments); check with `docker-compose exec crucix printenv FRED_API_KEY`.
 

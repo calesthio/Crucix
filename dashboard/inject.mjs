@@ -513,8 +513,8 @@ export async function synthesize(data) {
   const issPos = estimateSatPosition(spaceData.iss);
   const spaceStations = (spaceData.spaceStations || []).map(s => estimateSatPosition(s)).filter(Boolean);
   const space = {
-    totalNewObjects: spaceData.totalNewObjects || 0,
-    militarySats: spaceData.militarySatellites || 0,
+    totalNewObjects: spaceData.totalNewObjects ?? null,
+    militarySats: spaceData.militarySatellites ?? null,
     militaryByCountry: spaceData.militaryByCountry || {},
     constellations: spaceData.constellations || {},
     iss: spaceData.iss || null,
@@ -526,6 +526,8 @@ export async function synthesize(data) {
     })),
     launchByCountry: spaceData.launchByCountry || {},
     signals: spaceData.signals || [],
+    providers: spaceData.providers || {},
+    stale: Boolean(spaceData.stale),
   };
 
   // ACLED conflict events
