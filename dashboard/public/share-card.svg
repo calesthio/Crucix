@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="background" cx="68%" cy="45%" r="72%">
+      <stop offset="0" stop-color="#0a2928"/>
+      <stop offset="0.48" stop-color="#06151b"/>
+      <stop offset="1" stop-color="#020408"/>
+    </radialGradient>
+    <linearGradient id="accent" x1="0" x2="1">
+      <stop stop-color="#64f0c8"/>
+      <stop offset="1" stop-color="#44ccff"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="globe"><circle cx="905" cy="315" r="220"/></clipPath>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#background)"/>
+  <g opacity="0.1" stroke="#64f0c8">
+    <path d="M0 80H1200M0 160H1200M0 240H1200M0 320H1200M0 400H1200M0 480H1200M0 560H1200"/>
+    <path d="M80 0V630M160 0V630M240 0V630M320 0V630M400 0V630M480 0V630M560 0V630M640 0V630M720 0V630M800 0V630M880 0V630M960 0V630M1040 0V630M1120 0V630"/>
+  </g>
+
+  <g clip-path="url(#globe)" fill="none" stroke="#64f0c8">
+    <circle cx="905" cy="315" r="220" fill="#06181e" stroke-width="2"/>
+    <ellipse cx="905" cy="315" rx="220" ry="78" opacity="0.32"/>
+    <ellipse cx="905" cy="315" rx="220" ry="145" opacity="0.2"/>
+    <ellipse cx="905" cy="315" rx="78" ry="220" opacity="0.32"/>
+    <ellipse cx="905" cy="315" rx="145" ry="220" opacity="0.2"/>
+    <path d="M675 315H1135M905 90V540" opacity="0.2"/>
+    <path d="M700 395C765 285 846 260 907 309S1027 386 1118 245" stroke="#44ccff" stroke-width="3" opacity="0.75"/>
+    <path d="M690 245C772 365 869 397 952 336S1060 229 1130 300" stroke="#b388ff" stroke-width="3" stroke-dasharray="9 9" opacity="0.8"/>
+  </g>
+  <circle cx="905" cy="315" r="220" fill="none" stroke="#64f0c8" stroke-width="2" opacity="0.8" filter="url(#glow)"/>
+  <g fill="#ff5f63" filter="url(#glow)"><path d="M802 258l9 16h-18z"/><path d="M1015 364l8 14h-16z"/></g>
+  <g fill="#ffe082"><path d="M858 414l8 8-8 8-8-8z"/><path d="M996 221l7 7-7 7-7-7z"/></g>
+  <g fill="#64f0c8"><circle cx="741" cy="343" r="5"/><circle cx="944" cy="182" r="5"/><circle cx="1082" cy="322" r="5"/></g>
+
+  <g transform="translate(82 88)">
+    <rect width="76" height="76" rx="38" fill="none" stroke="#64f0c8" stroke-width="2" opacity="0.6"/>
+    <circle cx="38" cy="38" r="31" fill="none" stroke="#64f0c8" opacity="0.22"/>
+    <text x="38" y="46" fill="#64f0c8" text-anchor="middle" font-family="monospace" font-size="22" font-weight="700" letter-spacing="3">CX</text>
+  </g>
+
+  <text x="82" y="240" fill="#e8f4f0" font-family="sans-serif" font-size="82" font-weight="700" letter-spacing="7">CRUCIX</text>
+  <rect x="82" y="266" width="430" height="4" fill="url(#accent)"/>
+  <text x="82" y="323" fill="#64f0c8" font-family="monospace" font-size="23" font-weight="600" letter-spacing="4">GLOBAL INTELLIGENCE TERMINAL</text>
+  <text x="82" y="382" fill="#9bb7b0" font-family="sans-serif" font-size="24">31 public sources. One live operational picture.</text>
+
+  <g transform="translate(82 458)" font-family="monospace" font-size="18" letter-spacing="2">
+    <rect width="178" height="46" fill="#64f0c8" fill-opacity="0.08" stroke="#64f0c8" stroke-opacity="0.45"/>
+    <text x="89" y="30" fill="#64f0c8" text-anchor="middle">SELF-HOSTED</text>
+    <rect x="194" width="197" height="46" fill="#44ccff" fill-opacity="0.07" stroke="#44ccff" stroke-opacity="0.4"/>
+    <text x="292" y="30" fill="#81d4fa" text-anchor="middle">OPEN SOURCE</text>
+  </g>
+
+  <text x="82" y="566" fill="#6a8a82" font-family="monospace" font-size="18" letter-spacing="3">SEE THE SIGNAL. UNDERSTAND THE WORLD.</text>
+  <path d="M82 590H1118" stroke="#64f0c8" opacity="0.18"/>
+</svg>

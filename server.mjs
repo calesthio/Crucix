@@ -21,6 +21,7 @@ import { MARKUP, createCommandHandlers, registerCommandHandlers } from './lib/al
 import { aisCollector, aisDisabled } from './lib/maritime/ais-collector.mjs';
 import { MARKET_SYMBOLS, HISTORY_RANGES } from './apis/sources/yfinance.mjs';
 import { createHistoryCache } from './lib/markets/history.mjs';
+import { resolvePublicOrigin, socialPreviewMeta } from './lib/social-preview.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -84,14 +85,19 @@ app.get('/', (req, res) => {
   const page = currentData ? 'jarvis.html' : 'loading.html';
   let html = readFileSync(join(ROOT, 'dashboard/public', page), 'utf-8');
 
-  // Inject build info and locale data into the HTML
+  // Inject social preview, build info and locale data into the HTML
+  const forwardedProtocol = req.get('x-forwarded-proto')?.split(',')[0].trim();
+  const publicOrigin = resolvePublicOrigin(config.publicUrl, {
+    protocol: forwardedProtocol || req.protocol,
+    host: req.get('host'),
+  });
   const build = { version: VERSION, sources: SOURCE_COUNT };
   const scripts = [`<script>window.__CRUCIX_BUILD__ = ${JSON.stringify(build)};</script>`];
   if (currentData) {
     const locale = getLocale();
     scripts.push(`<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`);
   }
-  html = html.replace('</head>', `${scripts.join('\n')}\n</head>`);
+  html = html.replace('</head>', `${socialPreviewMeta(publicOrigin)}\n${scripts.join('\n')}\n</head>`);
 
   res.type('html').send(html);
 });
