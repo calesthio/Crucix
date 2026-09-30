@@ -2081,7 +2081,7 @@ function renderLower(){
         ? q.price.toLocaleString(undefined, {maximumFractionDigits: 2})
         : `$${q.price}`;
     const cardSig = {'^GSPC':'spx','^IXIC':'nasdaq','^DJI':'dow','^RUT':'russell','BTC-USD':'btc','ETH-USD':'eth'}[q.symbol];
-    return `<div class="mc sig-box" data-chart="sym:${escAttr(q.symbol)}" role="button" tabindex="0"${cardSig?` data-sig="${cardSig}"`:''}><div class="ml">${q.name||q.symbol}</div><span class="mv" style="color:${clr}">${price}</span><span class="ms" style="color:${clr}">${arrow} ${q.changePct>=0?'+':''}${q.changePct}%</span></div>`;
+    return `<div class="mc sig-box" data-chart="sym:${escAttr(q.symbol)}" role="button" tabindex="0"${cardSig?` data-sig="${cardSig}"`:''}><div class="ml">${q.name||q.symbol}</div><span class="mv" style="color:${isIndex?'var(--accent)':clr}">${price}</span><span class="ms" style="color:${clr}">${arrow} ${q.changePct>=0?'+':''}${q.changePct}%</span></div>`;
   };
 
   // VIX from Yahoo Finance live data (fallback to FRED)
