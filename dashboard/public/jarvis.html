@@ -126,6 +126,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .map-popup .pp-meta{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:6px}
 .map-popup .pp-close{position:absolute;top:6px;right:8px;background:none;border:none;color:var(--dim);font-size:14px;cursor:pointer}
 .sig-term{border-bottom:1px dotted rgba(100,240,200,0.45);cursor:help}
+[data-sig]{cursor:help}
+[data-sig][role="button"],.tk-card.clickable[data-sig]{cursor:pointer}
+.sig-box{transition:background 0.15s,box-shadow 0.15s}
+.sig-box:hover,.sig-box:focus-visible{background:rgba(68,204,255,0.05);box-shadow:inset 0 0 0 1px rgba(68,204,255,0.18);outline:none}
+body.tips-off [data-sig]:not([role="button"]){cursor:inherit}
+body.tips-off .sig-box:hover,body.tips-off .sig-box:focus-visible{background:none;box-shadow:none}
+.tips-pill{padding:5px 12px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;border:1px solid rgba(68,204,255,0.28);color:var(--accent2);background:rgba(68,204,255,0.07);cursor:pointer;transition:all 0.2s}
+.tips-pill:hover{border-color:rgba(68,204,255,0.5);background:rgba(68,204,255,0.12);color:#d9f7ff}
+.tips-pill .v{color:inherit;font-weight:600}
 .sig-term:focus-visible{outline:1px solid var(--accent);outline-offset:1px}
 body.tips-off .sig-term{border-bottom:none;cursor:inherit}
 .sig-tip{position:fixed;z-index:1300;width:min(320px,calc(100vw - 16px));padding:10px 12px;border:1px solid var(--border-bright);background:rgba(8,12,16,0.97);box-shadow:0 8px 28px rgba(0,0,0,0.5);pointer-events:none;display:none}
@@ -308,7 +317,7 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
   .top-center{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
   .map-region-bar{display:none}
   .top-right{gap:6px ; flex-wrap: wrap; justify-content: center;}
-  .region-btn,.meta-pill,.alert-badge{font-size:10px}
+  .region-btn,.meta-pill,.alert-badge,.tips-pill{font-size:10px}
   .grid{display:flex;flex-direction:column}
   #centerCol{order:1}
   #rightRail{order:2}
@@ -539,6 +548,654 @@ const signalGuideItems = [
     matters:'Useful for spotting what changed recently instead of re-reading the full dashboard from scratch.',
     notMeaning:'Not a full risk model. It is a directional change layer on top of the raw signals.',
     example:'A delta marked risk-off with several new and escalated items means the latest sweep materially worsened the signal mix.'
+  },
+  {
+    id:"regimeChip",
+    term:"Regime Label",
+    category:"Platform",
+    meaning:"A fixed headline label built into the dashboard layout. It is not recalculated from the sweep data.",
+    matters:"It states the default lens the dashboard was designed around: conflict-driven supply shocks alongside sticky inflation.",
+    notMeaning:"Not a live model output or forecast. Use the DELTA pill and Risk Gauges for what the data is doing now.",
+    example:"The chip reads the same whether VIX is 12 or 40."
+  },
+  {
+    id:"highAlert",
+    term:"High Alert Badge",
+    category:"Platform",
+    meaning:"A fixed status badge in the top bar. It does not change with the data.",
+    matters:"It marks the dashboard as a monitoring console; real alerting happens through the Telegram and Discord tiers.",
+    notMeaning:"Not a current alert level. Nothing in the sweep turns it on or off.",
+    example:"The badge shows HIGH ALERT even on a sweep with no changes at all."
+  },
+  {
+    id:"visualsMode",
+    term:"Visuals Mode",
+    category:"Platform",
+    meaning:"Switches between FULL (animated) and LITE (reduced effects) rendering. The choice is remembered in this browser.",
+    matters:"LITE keeps the dashboard responsive on slower machines and phones, and on mobile it also starts in flat map mode.",
+    notMeaning:"Not a data setting. Both modes show exactly the same sources and numbers.",
+    example:"In LITE the news ticker and OSINT stream stop scrolling and become plain scrollable lists."
+  },
+  {
+    id:"sweepDuration",
+    term:"Sweep Duration",
+    category:"Platform",
+    meaning:"How long the last sweep took to query every source in parallel.",
+    matters:"Each source gets 30 seconds, so a sweep close to 30s usually means at least one upstream API was slow or timed out.",
+    notMeaning:"Not how fresh the data is. See the timestamp pill for that.",
+    example:"SWEEP 30.0s means the slowest source hit its 30-second limit."
+  },
+  {
+    id:"sweepTime",
+    term:"Sweep Time",
+    category:"Platform",
+    meaning:"When the data on screen was collected, in your local time.",
+    matters:"Every panel reflects this moment; the dashboard updates itself when the next sweep finishes.",
+    notMeaning:"Not the time of the underlying events. Many feeds lag: FIRMS by a few hours, FRED and BLS by days or weeks.",
+    example:"SEP 30, 2026 11:05 AM with a 60-minute refresh means the next update arrives around 12:05."
+  },
+  {
+    id:"sourcesOk",
+    term:"Sources",
+    category:"Platform",
+    meaning:"Sources that responded in the last sweep, out of all sources queried.",
+    matters:"A failed source leaves gaps in panels, alerts and the delta, so a drop here explains missing data elsewhere.",
+    notMeaning:"OK only means the source answered. A source missing its API key still counts as OK but returns no data.",
+    example:"28/29 means one source failed outright, usually by timing out."
+  },
+  {
+    id:"deltaDirection",
+    term:"Delta Direction",
+    category:"Platform",
+    meaning:"The overall direction of this sweep versus the previous one, judged on five risk measures: VIX, HY spread, urgent OSINT posts, conflict events and thermal detections.",
+    matters:"RISK-OFF means at least two more of those rose past their thresholds than fell, a quick read on whether stress is building.",
+    notMeaning:"Not a market call. It counts threshold crossings, not how big the moves were or why they happened.",
+    example:"VIX, HY spread and urgent posts rising with nothing easing gives RISK-OFF; one up and one down gives MIXED."
+  },
+  {
+    id:"airTraffic",
+    term:"Air Traffic",
+    category:"Air",
+    meaning:"Aircraft seen by OpenSky in the monitored hotspot regions (\"theaters\"), from public ADS-B transponder broadcasts.",
+    matters:"Changes in volume or composition over a theater can reflect airspace closures, rerouting or unusual activity.",
+    notMeaning:"Not all flights. Only aircraft broadcasting ADS-B inside the hotspot boxes appear, and many military aircraft do not broadcast.",
+    example:"Middle East: 152 aircraft tracked is the count inside that one box at the snapshot time."
+  },
+  {
+    id:"thermalFire",
+    term:"Thermal / Fire",
+    category:"Thermal",
+    meaning:"NASA FIRMS satellite heat detections (VIIRS) in the monitored regions over the last two days.",
+    matters:"Clusters of strong heat can mark wildfires, industrial fires, or strikes and shelling in conflict zones.",
+    notMeaning:"Not proof of conflict. Most detections are agricultural burning, wildfires or gas flares.",
+    example:"A tight cluster of high-FRP night detections near a front line is worth checking against conflict reports."
+  },
+  {
+    id:"nuclearSite",
+    term:"Nuclear Site",
+    category:"Radiation",
+    meaning:"A monitored nuclear facility, with the average radiation reading from Safecast sensors near it.",
+    matters:"A sustained rise near a facility is one of the few signals that can indicate a radiological incident.",
+    notMeaning:"Not an official safety assessment. Citizen sensors vary and a single high reading can be a faulty device.",
+    example:"Zaporizhzhia NPP at 39.6 CPM is within the normal 10-80 range."
+  },
+  {
+    id:"conflict",
+    term:"Conflict Events",
+    category:"Conflict",
+    meaning:"Armed conflict events recorded by ACLED over the last 7 days: battles, explosions, violence against civilians and protests, with fatalities.",
+    matters:"The best structured view of where fighting is happening and whether it is intensifying.",
+    notMeaning:"Not real-time. ACLED codes events after verification, so the most recent days are usually undercounted.",
+    example:"1,200 events and 3,400 fatalities is the 7-day global total, not today's."
+  },
+  {
+    id:"worldNews",
+    term:"World News",
+    category:"News",
+    meaning:"Headlines from major RSS feeds that could be placed on the map by matching place names in the text.",
+    matters:"Puts mainstream coverage next to the sensor data, so you can see what is being reported where.",
+    notMeaning:"Not every story, and not precise locations. Stories are pinned to a region or country, not the exact site.",
+    example:"A headline mentioning \"Kharkiv\" is placed in Ukraine."
+  },
+  {
+    id:"osintFeed",
+    term:"OSINT Feed",
+    category:"OSINT",
+    meaning:"Posts from curated public Telegram channels covering conflict, security and finance. Map markers are urgent posts that could be geolocated.",
+    matters:"Telegram channels often report kinetic events before mainstream outlets.",
+    notMeaning:"Not verified reporting. Channels can be partisan, wrong or deliberately misleading.",
+    example:"340 posts, 12 urgent means 12 posts matched urgency keywords such as \"missile\" or \"breaking\"."
+  },
+  {
+    id:"satellites",
+    term:"Satellites",
+    category:"Space",
+    meaning:"Satellites in CelesTrak's military group, plus the number of objects catalogued in the last 30 days.",
+    matters:"A burst of new objects can mark a major launch, an anti-satellite test or a breakup event.",
+    notMeaning:"Not a full count of military satellites. CelesTrak's military group is a small public subset.",
+    example:"20 military, 450 new (30d) means 450 objects were added to the catalogue this month, including debris."
+  },
+  {
+    id:"spaceStation",
+    term:"Space Station",
+    category:"Space",
+    meaning:"The estimated position of a crewed space station, calculated from its published orbital elements.",
+    matters:"Useful context for orbital activity and a quick check that CelesTrak data is flowing.",
+    notMeaning:"Not a live tracking feed. The position is an estimate from orbital data that is hours old.",
+    example:"ISS over the Pacific at about 420 km altitude."
+  },
+  {
+    id:"weatherAlert",
+    term:"Weather Alert",
+    category:"Weather",
+    meaning:"Active US National Weather Service alerts, placed at the alert area.",
+    matters:"Severe weather can disrupt energy production, ports, refineries and supply chains.",
+    notMeaning:"Not a global weather feed. It only covers the United States.",
+    example:"A hurricane warning on the Gulf Coast matters for refining capacity and natural gas."
+  },
+  {
+    id:"epaRadnet",
+    term:"EPA RadNet",
+    category:"Radiation",
+    meaning:"Readings from the US EPA's RadNet radiation monitoring stations.",
+    matters:"An official government network that can confirm or rule out what citizen sensors show.",
+    notMeaning:"Not instant. RadNet results are published with a delay and only cover the United States.",
+    example:"Gross beta at a normal level for that station means nothing unusual was detected."
+  },
+  {
+    id:"gdeltEvent",
+    term:"GDELT Event",
+    category:"News",
+    meaning:"A location that GDELT's global news monitoring found in recent reports, with the number of reports mentioning it.",
+    matters:"Spikes in coverage of a place can flag a developing story before other sources catch up.",
+    notMeaning:"Not a confirmed event. GDELT is automated and counts mentions, including duplicates and commentary.",
+    example:"A city with 40 reports means 40 recent articles mentioned it, not that 40 incidents happened."
+  },
+  {
+    id:"sensorGrid",
+    term:"Sensor Grid",
+    category:"Platform",
+    meaning:"A summary of what each data layer picked up in the latest sweep, with its main count.",
+    matters:"A quick way to spot a layer that has gone quiet or suddenly jumped.",
+    notMeaning:"Not a risk ranking. The counts are in different units and are not comparable with each other.",
+    example:"Thermal Spikes 1,451 and Air Activity 412 measure completely different things."
+  },
+  {
+    id:"nuclearWatch",
+    term:"Nuclear Watch",
+    category:"Radiation",
+    meaning:"Average radiation readings from Safecast sensors near major nuclear facilities.",
+    matters:"An early indicator of a radiological incident, especially at plants in or near conflict zones.",
+    notMeaning:"Not an official safety verdict. It relies on citizen sensors that can be missing or faulty.",
+    example:"No data means no Safecast sensor near that site reported recently."
+  },
+  {
+    id:"nukeStatus",
+    term:"Site Status",
+    category:"Radiation",
+    meaning:"ALL SITES NORMAL unless any monitored site averages above 100 CPM, which triggers ANOMALY DETECTED.",
+    matters:"An anomaly is flagged as a critical change in the sweep delta and alerts.",
+    notMeaning:"Not confirmation of a release. One faulty or relocated sensor can trip it.",
+    example:"A site averaging 140 CPM flips this to ANOMALY DETECTED."
+  },
+  {
+    id:"riskGauges",
+    term:"Risk Gauges",
+    category:"Macro",
+    meaning:"Key US financial stress indicators, mostly from FRED (the St. Louis Fed database).",
+    matters:"Together they show whether markets and credit conditions are tightening.",
+    notMeaning:"Not a recession model. Each gauge is one input and they often disagree.",
+    example:"Rising VIX with widening HY spreads is a stronger stress signal than either alone."
+  },
+  {
+    id:"spaceWatch",
+    term:"Space Watch",
+    category:"Space",
+    meaning:"Satellite catalogue statistics from CelesTrak: new objects, military satellites, mega-constellations and the ISS.",
+    matters:"Tracks the pace of launches and the growth of strategic constellations.",
+    notMeaning:"Not real-time. CelesTrak data is cached for up to 2 hours to respect its download limits.",
+    example:"Starlink rising by hundreds in a month reflects routine launches, not a crisis."
+  },
+  {
+    id:"crossSourceSignals",
+    term:"Cross-Source Signals",
+    category:"Thermal",
+    meaning:"Notable patterns flagged in NASA FIRMS satellite fire data, such as unusual concentrations or night-time heat.",
+    matters:"Highlights thermal activity worth checking against conflict and news reports.",
+    notMeaning:"Not correlated intelligence across all sources. These signals come from FIRMS alone and need FIRMS_MAP_KEY.",
+    example:"High night detections in a conflict region is a prompt to check ACLED and Telegram for strikes."
+  },
+  {
+    id:"signalCore",
+    term:"Signal Core",
+    category:"Platform",
+    meaning:"Six headline counts from the latest sweep, gathered in one place.",
+    matters:"A compact snapshot of activity levels to compare sweep to sweep.",
+    notMeaning:"The bars are fixed decoration. They are not scaled to the numbers beside them.",
+    example:"Incident Tempo 14 is the count; its bar length means nothing."
+  },
+  {
+    id:"newsTicker",
+    term:"Live News Ticker",
+    category:"News",
+    meaning:"The latest headlines merged from RSS feeds, GDELT and Telegram, newest first. Click a card to open the article.",
+    matters:"One stream of what is being reported right now across mainstream and open-source outlets.",
+    notMeaning:"Not curated or verified. It shows what outlets published, not what is confirmed.",
+    example:"A Reuters headline and a Telegram post on the same event can sit side by side."
+  },
+  {
+    id:"osintStream",
+    term:"OSINT Stream",
+    category:"OSINT",
+    meaning:"Recent posts from curated Telegram channels, plus WHO outbreak notices, with urgent posts highlighted.",
+    matters:"The fastest-moving source on the dashboard for kinetic events.",
+    notMeaning:"Not verified. Treat posts as leads to confirm, not facts.",
+    example:"A post tagged MISSILE and DRONE matched both urgency keywords."
+  },
+  {
+    id:"macroMarkets",
+    term:"Macro + Markets",
+    category:"Markets",
+    meaning:"Live index, crypto, energy and metals prices from Yahoo Finance, with key US macro indicators. Click any card for a history chart.",
+    matters:"Shows how markets are reacting to the events on the rest of the dashboard.",
+    notMeaning:"Not trading data. Prices can be delayed and are for context only.",
+    example:"Oil up while indexes fall is a classic supply-shock pattern."
+  },
+  {
+    id:"tradeIdeas",
+    term:"Leverageable Ideas",
+    category:"Ideas",
+    meaning:"Trade ideas generated by the configured LLM from this sweep's data. Empty when no LLM is set up.",
+    matters:"A starting point for connecting the signals to markets.",
+    notMeaning:"Not financial advice. LLM output can be wrong or overconfident.",
+    example:"A LONG energy idea citing Strait of Hormuz tanker gaps and WTI strength."
+  },
+  {
+    id:"usdIndex",
+    term:"USD Index",
+    category:"Macro",
+    meaning:"The Federal Reserve's nominal broad US dollar index, measuring the dollar against a basket of trading-partner currencies.",
+    matters:"A rising dollar tightens global financial conditions and often rises in risk-off periods.",
+    notMeaning:"Not the DXY. This is the Fed's broader trade-weighted index, so its level differs from DXY.",
+    example:"A jump from 120 to 124 is a significant dollar rally."
+  },
+  {
+    id:"joblessClaims",
+    term:"Jobless Claims",
+    category:"Macro",
+    meaning:"Initial US unemployment insurance claims for the latest week.",
+    matters:"One of the fastest official reads on layoffs; a sustained rise often leads recessions.",
+    notMeaning:"Not the unemployment rate. Weekly claims are noisy and seasonal distortions are common.",
+    example:"230,000 is a normal level; a run above 300,000 would signal a weakening job market."
+  },
+  {
+    id:"mortgage30y",
+    term:"30Y Mortgage",
+    category:"Macro",
+    meaning:"The average 30-year fixed US mortgage rate from Freddie Mac's weekly survey.",
+    matters:"Shows how central bank policy and bond yields are feeding into household borrowing costs.",
+    notMeaning:"Not the rate any one borrower will get.",
+    example:"6.8% means a typical 30-year fixed loan cost about that this week."
+  },
+  {
+    id:"m2Supply",
+    term:"M2 Supply",
+    category:"Macro",
+    meaning:"The US M2 money supply: cash, checking and savings deposits and money market funds, in trillions of dollars.",
+    matters:"Its growth or contraction indicates how loose or tight overall liquidity is.",
+    notMeaning:"Not a short-term signal. It is published monthly with a lag and moves slowly.",
+    example:"$21.5T; year-over-year contraction has historically been rare."
+  },
+  {
+    id:"natDebt",
+    term:"National Debt",
+    category:"Macro",
+    meaning:"Total US public debt outstanding, from the Treasury's daily Debt to the Penny data.",
+    matters:"Context for fiscal pressure, debt ceiling fights and bond supply.",
+    notMeaning:"Not a stress signal on its own. It rises almost every day.",
+    example:"$40.10T is the total owed, including debt held by other government accounts."
+  },
+  {
+    id:"newObjects",
+    term:"New Objects (30d)",
+    category:"Space",
+    meaning:"Objects added to the space catalogue in the last 30 days: satellites, rocket bodies and debris.",
+    matters:"A sudden jump can reveal a large launch, a breakup or an anti-satellite test.",
+    notMeaning:"Not just satellites. Debris and spent rocket stages are included.",
+    example:"450 new objects in a month is typical in the Starlink era."
+  },
+  {
+    id:"militarySats",
+    term:"Military Sats",
+    category:"Space",
+    meaning:"Satellites in CelesTrak's public military group, broken down by country below.",
+    matters:"Shows which countries have openly catalogued military space assets.",
+    notMeaning:"Not a complete count. Many military and dual-use satellites are not in this group.",
+    example:"US 12, Russia 5 are the counts within this public subset."
+  },
+  {
+    id:"starlink",
+    term:"Starlink",
+    category:"Space",
+    meaning:"The number of Starlink satellites in CelesTrak's catalogue.",
+    matters:"Starlink has become strategic infrastructure, including battlefield communications in Ukraine.",
+    notMeaning:"Not the number actively serving users. It includes satellites still raising orbit or being retired.",
+    example:"Around 8,000 reflects SpaceX's constant launch cadence."
+  },
+  {
+    id:"oneweb",
+    term:"OneWeb",
+    category:"Space",
+    meaning:"The number of OneWeb (Eutelsat) broadband satellites in CelesTrak's catalogue.",
+    matters:"A competing low-orbit constellation used by governments and militaries.",
+    notMeaning:"Not a measure of coverage or service quality.",
+    example:"About 650 satellites make up the first-generation constellation."
+  },
+  {
+    id:"iss",
+    term:"ISS Altitude",
+    category:"Space",
+    meaning:"The International Space Station's approximate altitude, averaged from its highest and lowest orbit points.",
+    matters:"A sanity check on orbital data; unusual drops can reflect reboosts or debris avoidance.",
+    notMeaning:"Not a live measurement. It comes from published orbital elements.",
+    example:"ALT 418 km is typical; the station slowly decays and is periodically reboosted."
+  },
+  {
+    id:"spaceSignals",
+    term:"Space Signals",
+    category:"Space",
+    meaning:"Automatic notes generated from the space data, such as launch bursts or constellation changes.",
+    matters:"Highlights space activity that stands out from the usual background.",
+    notMeaning:"Not an intelligence assessment. These are simple rule-based flags.",
+    example:"A note about a surge of new objects from one country."
+  },
+  {
+    id:"incidentTempo",
+    term:"Incident Tempo",
+    category:"OSINT",
+    meaning:"The number of urgent Telegram posts in this sweep: posts matching keywords such as \"missile\", \"strike\" or \"breaking\".",
+    matters:"A rough gauge of how much kinetic activity is being reported right now.",
+    notMeaning:"Not a count of incidents. One event can produce many posts, and keywords can match unrelated text.",
+    example:"14 urgent posts could be 14 events or one big event reported 14 times."
+  },
+  {
+    id:"airTheaters",
+    term:"Air Theaters",
+    category:"Air",
+    meaning:"The number of monitored hotspot regions that returned OpenSky flight data.",
+    matters:"Fewer than expected means OpenSky rate-limited or failed for some regions.",
+    notMeaning:"Not a count of active conflict zones.",
+    example:"10 means every monitored region returned data this sweep."
+  },
+  {
+    id:"highConfThermal",
+    term:"Thermal Spikes",
+    category:"Thermal",
+    meaning:"High-confidence FIRMS fire detections across all monitored regions.",
+    matters:"Filters out the weakest detections, leaving the heat events most likely to be real.",
+    notMeaning:"Not the total detection count shown in the Sensor Grid, which includes lower-confidence detections.",
+    example:"80 high-confidence out of 1,451 total detections."
+  },
+  {
+    id:"sdrNodes",
+    term:"SDR Nodes",
+    category:"Signals",
+    meaning:"KiwiSDR radio receivers found in the monitored regions.",
+    matters:"More receivers means more ways to listen in on radio activity in those areas.",
+    notMeaning:"Not evidence of any radio activity. It only counts receivers.",
+    example:"725 nodes, most of them in Europe and North America."
+  },
+  {
+    id:"chokepointCount",
+    term:"Chokepoints",
+    category:"Maritime",
+    meaning:"The number of strategic maritime chokepoints being monitored.",
+    matters:"These straits and canals carry a large share of world trade and energy.",
+    notMeaning:"Not a count of disrupted routes. The number is fixed unless the monitoring list changes.",
+    example:"9 includes Hormuz, Bab el-Mandeb, Suez and Malacca."
+  },
+  {
+    id:"whoAlertCount",
+    term:"WHO Alerts",
+    category:"Health",
+    meaning:"WHO Disease Outbreak News items published in the last 30 days.",
+    matters:"Outbreaks can affect travel, trade and supply chains.",
+    notMeaning:"Not a measure of severity. Most notices are routine.",
+    example:"3 alerts might all be small, contained outbreaks."
+  },
+  {
+    id:"deltaCounts",
+    term:"Change Summary",
+    category:"Platform",
+    meaning:"How many tracked metrics changed past their thresholds since the last sweep, how many were critical, and how many signals were new, escalated or eased.",
+    matters:"Tells you at a glance whether this sweep is quiet or busy.",
+    notMeaning:"Not a severity score. Twelve small changes and one huge change can produce similar totals.",
+    example:"Changes 12, Critical 2 means two moves were large enough to flag as critical, such as a price moving over 10%."
+  },
+  {
+    id:"deltaNew",
+    term:"New Signal",
+    category:"Platform",
+    meaning:"A signal that was not present in the previous sweep, such as a new urgent OSINT post or a nuclear anomaly.",
+    matters:"New items are the most likely to be worth a closer look.",
+    notMeaning:"Not necessarily important. New just means it was not there last time.",
+    example:"NEW \"Nuclear anomaly detected\" appears when a site first exceeds 100 CPM."
+  },
+  {
+    id:"deltaEscalated",
+    term:"Escalated",
+    category:"Platform",
+    meaning:"A metric that rose past its threshold since the last sweep, with the old and new values and the change.",
+    matters:"Rising stress measures (VIX, HY spread, conflict events) drive the RISK-OFF direction.",
+    notMeaning:"Not always bad. A rising price can be good news depending on your position.",
+    example:"VIX 18→24 (+33%) coloured orange means a high-severity rise."
+  },
+  {
+    id:"deltaDeescalated",
+    term:"Eased",
+    category:"Platform",
+    meaning:"A metric that fell past its threshold since the last sweep.",
+    matters:"Falling stress measures drive the RISK-ON direction.",
+    notMeaning:"Not a resolution. One quieter sweep does not mean a situation is over.",
+    example:"Conflict events 1,300→1,150 (-12%) shows less reported activity this week."
+  },
+  {
+    id:"urgentFlag",
+    term:"Urgent Keyword",
+    category:"OSINT",
+    meaning:"A keyword that marked this post as urgent, such as MISSILE, STRIKE or BREAKING.",
+    matters:"Explains why the post was prioritised in the stream and the incident tempo.",
+    notMeaning:"Not a verified event type. The keyword just appears somewhere in the text.",
+    example:"A post saying \"no missile strike occurred\" would still be tagged MISSILE."
+  },
+  {
+    id:"osintViews",
+    term:"Post Views",
+    category:"OSINT",
+    meaning:"The number of times Telegram says this post has been viewed.",
+    matters:"High view counts show which reports are spreading fastest.",
+    notMeaning:"Not a measure of accuracy. Viral posts can be false.",
+    example:"27K views within an hour marks a post that is circulating widely."
+  },
+  {
+    id:"spx",
+    term:"S&P 500",
+    category:"Markets",
+    meaning:"The index of 500 large US companies, the main benchmark for US stocks.",
+    matters:"The broadest single read on how markets are pricing risk.",
+    notMeaning:"Not the whole economy. It is weighted towards a handful of very large tech firms.",
+    example:"A 2% drop on a day of escalation headlines is a notable risk-off move."
+  },
+  {
+    id:"nasdaq",
+    term:"Nasdaq Composite",
+    category:"Markets",
+    meaning:"The index of all stocks listed on the Nasdaq exchange, dominated by technology.",
+    matters:"Tech-heavy, so it is more sensitive to interest rates and growth expectations.",
+    notMeaning:"Not the same as the Nasdaq-100 (QQQ), which covers only the largest 100 companies.",
+    example:"Nasdaq falling more than the S&P usually points to a rates or growth scare."
+  },
+  {
+    id:"dow",
+    term:"Dow Jones",
+    category:"Markets",
+    meaning:"The Dow Jones Industrial Average: 30 large US companies, weighted by share price.",
+    matters:"The oldest and most widely quoted US market measure.",
+    notMeaning:"Not representative of the broad market. Only 30 stocks, weighted by price rather than size.",
+    example:"A 500-point fall sounds large but is a smaller percentage move than it once was."
+  },
+  {
+    id:"russell",
+    term:"Russell 2000",
+    category:"Markets",
+    meaning:"An index of 2,000 small US companies.",
+    matters:"Small caps are more exposed to the domestic economy and borrowing costs.",
+    notMeaning:"Not a large-company benchmark. It is more volatile than the S&P 500.",
+    example:"Russell underperforming the S&P often signals worries about credit or the US economy."
+  },
+  {
+    id:"btc",
+    term:"Bitcoin",
+    category:"Markets",
+    meaning:"The Bitcoin price in US dollars, trading around the clock.",
+    matters:"Trades 24/7, so it often moves first when news breaks over a weekend.",
+    notMeaning:"Not a reliable safe haven. It often falls with stocks in risk-off moves.",
+    example:"A sharp weekend drop can foreshadow Monday's market open."
+  },
+  {
+    id:"eth",
+    term:"Ethereum",
+    category:"Markets",
+    meaning:"The Ether price in US dollars.",
+    matters:"A second read on crypto risk appetite alongside Bitcoin.",
+    notMeaning:"Not independent of Bitcoin. The two usually move together.",
+    example:"ETH falling faster than BTC signals broader crypto risk-off."
+  },
+  {
+    id:"wti",
+    term:"WTI Crude",
+    category:"Markets",
+    meaning:"US benchmark crude oil, the front-month futures price in dollars per barrel.",
+    matters:"The most direct market read on energy supply risk from conflict or sanctions.",
+    notMeaning:"Not the price at the pump. Refining, taxes and distribution add time lags and costs.",
+    example:"WTI up 5% on a Strait of Hormuz headline is the market pricing supply risk."
+  },
+  {
+    id:"brent",
+    term:"Brent Crude",
+    category:"Markets",
+    meaning:"The international crude benchmark, the front-month futures price in dollars per barrel.",
+    matters:"Prices most of the world's oil, so it reacts strongly to Middle East and shipping risk.",
+    notMeaning:"Not interchangeable with WTI. The gap between the two moves with transport and supply conditions.",
+    example:"Brent widening its premium over WTI often signals disruption outside the US."
+  },
+  {
+    id:"natgas",
+    term:"Natural Gas",
+    category:"Markets",
+    meaning:"US Henry Hub natural gas futures, in dollars per million BTU.",
+    matters:"Sensitive to weather, LNG exports and supply disruptions.",
+    notMeaning:"Not the European gas price (TTF), which reacts far more to Russia and LNG shipping.",
+    example:"A spike in winter often reflects a cold snap rather than geopolitics."
+  },
+  {
+    id:"gold",
+    term:"Gold",
+    category:"Markets",
+    meaning:"The COMEX gold futures price, used here as the gold spot proxy, in dollars per ounce.",
+    matters:"The classic safe haven, bought in geopolitical stress and against inflation.",
+    notMeaning:"Not always a crisis signal. It also moves with interest rates and the dollar.",
+    example:"Gold rising while stocks fall is a textbook flight to safety."
+  },
+  {
+    id:"silver",
+    term:"Silver",
+    category:"Markets",
+    meaning:"The COMEX silver futures price, in dollars per ounce.",
+    matters:"Part safe haven and part industrial metal, so it reflects both fear and growth.",
+    notMeaning:"Not a pure safe haven. It can fall in a crisis when industrial demand fears dominate.",
+    example:"Silver lagging gold during stress points to growth concerns."
+  },
+  {
+    id:"fedFunds",
+    term:"Fed Funds Rate",
+    category:"Macro",
+    meaning:"The effective federal funds rate: the overnight rate US banks charge each other, set by Federal Reserve policy.",
+    matters:"The anchor for US borrowing costs, from mortgages to corporate debt.",
+    notMeaning:"Not a forecast. It shows current policy, not where rates are heading.",
+    example:"4.33% sits within the Fed's target range."
+  },
+  {
+    id:"cpiMom",
+    term:"CPI MoM",
+    category:"Macro",
+    meaning:"The month-over-month change in the US Consumer Price Index (all items, not seasonally adjusted), from BLS.",
+    matters:"The headline inflation measure behind Federal Reserve decisions.",
+    notMeaning:"Not annual inflation. A monthly figure is noisy and seasonal.",
+    example:"+0.32% in a month works out to about 3.9% if it held for a whole year."
+  },
+  {
+    id:"unemployment",
+    term:"Unemployment",
+    category:"Macro",
+    meaning:"The US unemployment rate (seasonally adjusted) from the BLS monthly jobs report, with the change from the prior month.",
+    matters:"A core health check on the economy; a rising rate often precedes recessions.",
+    notMeaning:"Not a real-time signal. It is published monthly and revised later.",
+    example:"4.1% with +0.2 vs prior is a noticeable one-month rise."
+  },
+  {
+    id:"wti5d",
+    term:"WTI 5-Day",
+    category:"Markets",
+    meaning:"WTI crude's daily closes over the last five trading days, scaled from lowest to highest.",
+    matters:"Shows the short-term oil trend at a glance.",
+    notMeaning:"Not absolute levels. Bars are scaled to the week's range, so small moves can look large.",
+    example:"Five rising bars means each close was higher than the one before."
+  },
+  {
+    id:"rangeChange",
+    term:"Range Change",
+    category:"Markets",
+    meaning:"The change from the first to the last price in the selected range, with the range's high and low below the chart.",
+    matters:"Puts today's move in context against the past day, week, month or year.",
+    notMeaning:"Not a prediction. It describes what already happened in that window.",
+    example:"+14.7% over 1Y with a low of 6,344 shows how far it has come from its low."
+  },
+  {
+    id:"ideasSource",
+    term:"Ideas Source",
+    category:"Ideas",
+    meaning:"Where the ideas came from: AI ENHANCED (the LLM produced them), LLM OFF (no LLM configured) or PENDING (the LLM call failed or has not run yet).",
+    matters:"Tells you whether the panel reflects the current sweep.",
+    notMeaning:"Not a quality rating of the ideas.",
+    example:"LLM OFF means LLM_PROVIDER is not set in .env."
+  },
+  {
+    id:"ideaType",
+    term:"Idea Type",
+    category:"Ideas",
+    meaning:"The stance of the idea: LONG (buy), SHORT (sell), HEDGE (protect), WATCH (monitor) or AVOID.",
+    matters:"Tells you at a glance what the idea suggests doing.",
+    notMeaning:"Not a recommendation to trade. It is generated by an LLM.",
+    example:"HEDGE on an airline stock alongside rising oil and conflict signals."
+  },
+  {
+    id:"ideaConfidence",
+    term:"Idea Confidence",
+    category:"Ideas",
+    meaning:"The LLM's own rating: HIGH (several confirming signals), MEDIUM (supported) or LOW (speculative).",
+    matters:"Separates ideas grounded in data from speculative ones.",
+    notMeaning:"Not a statistical probability. It is the model's self-assessment.",
+    example:"HIGH confidence should cite several independent data points."
+  },
+  {
+    id:"ideaHorizon",
+    term:"Idea Horizon",
+    category:"Ideas",
+    meaning:"The instrument and suggested time frame, from intraday to months.",
+    matters:"Matches the idea to how long the underlying signal is likely to matter.",
+    notMeaning:"Not a guaranteed holding period.",
+    example:"XLE with a horizon of Weeks."
   }
 ];
 const SIGNAL_GUIDE = Object.fromEntries(signalGuideItems.map(item => [item.id, item]));
@@ -547,6 +1204,11 @@ let tooltipsOn = (() => { try { return localStorage.getItem('crucix_tooltips') !
 // Wrap a signal term so hovering, focusing or tapping it explains what it means
 function sig(id, label){
   return SIGNAL_GUIDE[id] ? `<span class="sig-term" data-sig="${id}" tabindex="0">${label}</span>` : label;
+}
+
+// Attributes that make a whole row, card or header a tooltip target (pair with class "sig-box")
+function sigAttrs(id){
+  return SIGNAL_GUIDE[id] ? ` data-sig="${id}" tabindex="0"` : '';
 }
 const regionPOV = {
   world: { lat: 20, lng: 20, altitude: 1.8 },
@@ -625,17 +1287,17 @@ function renderTopbar(){
   document.getElementById('topbar').innerHTML=`
     <div class="top-left">
       <span class="brand">CRUCIX MONITOR</span>
-      <span class="regime-chip"><span class="blink"></span>WARTIME STAGFLATION RISK</span>
+      <span class="regime-chip"${sigAttrs('regimeChip')}><span class="blink"></span>WARTIME STAGFLATION RISK</span>
     </div>
     ${mobile ? `<div class="top-center">${getRegionControlsMarkup()}</div>` : ''}
     <div class="top-right">
-      <button class="meta-pill perf-pill" onclick="togglePerfMode()" title="Reduce visual effects and start mobile in flat mode">${t('dashboard.visuals','VISUALS')} <span class="v" id="perfStatus">${lowPerfMode?t('dashboard.visualsLite','LITE'):t('dashboard.visualsFull','FULL')}</span></button>
-      <span class="meta-pill">${t('dashboard.sweep','SWEEP')} <span class="v">${(D.meta.totalDurationMs/1000).toFixed(1)}s</span></span>
-      <span class="meta-pill">${d} <span class="v">${timeStr}</span></span>
-      <span class="meta-pill">${t('dashboard.sources','SOURCES')} <span class="v">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</span></span>
-      ${D.delta?.summary ? `<span class="meta-pill">${t('dashboard.delta','DELTA')} <span class="v">${D.delta.summary.direction==='risk-off'?'&#x25B2; '+t('dashboard.riskOff','RISK-OFF'):D.delta.summary.direction==='risk-on'?'&#x25BC; '+t('dashboard.riskOn','RISK-ON'):'&#x25C6; '+t('dashboard.mixed','MIXED')}</span></span>` : ''}
-      <button class="meta-pill tips-pill" type="button" onclick="toggleTooltips()" aria-pressed="${tooltipsOn}" title="${t('dashboard.tooltipsHint','Explain signal terms on hover or tap')}">${t('dashboard.tooltips','TOOLTIPS')} <span class="v" id="tipsStatus">${tooltipsOn?t('dashboard.on','ON'):t('dashboard.off','OFF')}</span></button>
-      <span class="alert-badge">${t('dashboard.highAlert','HIGH ALERT')}</span>
+      <button class="meta-pill perf-pill" onclick="togglePerfMode()" data-sig="visualsMode">${t('dashboard.visuals','VISUALS')} <span class="v" id="perfStatus">${lowPerfMode?t('dashboard.visualsLite','LITE'):t('dashboard.visualsFull','FULL')}</span></button>
+      <span class="meta-pill"${sigAttrs('sweepDuration')}>${t('dashboard.sweep','SWEEP')} <span class="v">${(D.meta.totalDurationMs/1000).toFixed(1)}s</span></span>
+      <span class="meta-pill"${sigAttrs('sweepTime')}>${d} <span class="v">${timeStr}</span></span>
+      <span class="meta-pill"${sigAttrs('sourcesOk')}>${t('dashboard.sources','SOURCES')} <span class="v">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</span></span>
+      ${D.delta?.summary ? `<span class="meta-pill"${sigAttrs('deltaDirection')}>${t('dashboard.delta','DELTA')} <span class="v">${D.delta.summary.direction==='risk-off'?'&#x25B2; '+t('dashboard.riskOff','RISK-OFF'):D.delta.summary.direction==='risk-on'?'&#x25BC; '+t('dashboard.riskOn','RISK-ON'):'&#x25C6; '+t('dashboard.mixed','MIXED')}</span></span>` : ''}
+      <button class="tips-pill" type="button" onclick="toggleTooltips()" aria-pressed="${tooltipsOn}" title="${t('dashboard.tooltipsHint','Explain signal terms on hover or tap')}">${t('dashboard.tooltips','TOOLTIPS')} <span class="v" id="tipsStatus">${tooltipsOn?t('dashboard.on','ON'):t('dashboard.off','OFF')}</span></button>
+      <span class="alert-badge"${sigAttrs('highAlert')}>${t('dashboard.highAlert','HIGH ALERT')}</span>
     </div>`;
   renderRegionControls();
 }
@@ -649,19 +1311,19 @@ function renderLeftRail(){
   const conflictEvents = D.acled?.totalEvents || 0;
   const conflictFatal = D.acled?.totalFatalities || 0;
   const layers=[
-    {name:t('layers.airActivity','Air Activity'),count:totalAir,dot:'air',sub:`${D.air.length} ${t('layers.theaters','theaters')}`},
-    {name:t('layers.thermalSpikes','Thermal Spikes'),count:totalThermal.toLocaleString(),dot:'thermal',sub:`${totalNight.toLocaleString()} ${sig('nightDetections',t('layers.nightDet','night det.'))}`},
-    {name:sig('sdrReceiver',t('layers.sdrCoverage','SDR Coverage')),count:D.sdr.total,dot:'sdr',sub:`${D.sdr.online} ${t('layers.online','online')}`},
-    {name:t('layers.maritimeWatch','Maritime Watch'),count:D.chokepoints.length,dot:'maritime',sub:sig('chokepoint',t('layers.chokepoints','chokepoints'))},
-    {name:t('layers.nuclearSites','Nuclear Sites'),count:D.nuke.length,dot:'nuke',sub:t('layers.monitors','monitors')},
-    {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'thermal',sub:`${conflictFatal.toLocaleString()} ${t('layers.fatalities','fatalities')}`},
-    {name:t('layers.healthWatch','Health Watch'),count:D.who.length,dot:'health',sub:sig('whoAlert',t('layers.whoAlerts','WHO alerts'))},
-    {name:t('layers.worldNews','World News'),count:newsCount,dot:'news',sub:t('layers.rssGeolocated','RSS geolocated')},
-    {name:t('layers.osintFeed','OSINT Feed'),count:D.tg.posts,dot:'incident',sub:`${D.tg.urgent.length} ${t('badges.urgent','urgent').toLowerCase()}`},
-    {name:t('layers.spaceActivity','Satellites'),count:D.space?.militarySats||0,dot:'space',sub:`${D.space?.totalNewObjects||0} ${t('space.newLast30d','new (30d)')}`}
+    {sig:'airTraffic',name:t('layers.airActivity','Air Activity'),count:totalAir,dot:'air',sub:`${D.air.length} ${t('layers.theaters','theaters')}`},
+    {sig:'thermalFire',name:t('layers.thermalSpikes','Thermal Spikes'),count:totalThermal.toLocaleString(),dot:'thermal',sub:`${totalNight.toLocaleString()} ${sig('nightDetections',t('layers.nightDet','night det.'))}`},
+    {sig:'sdrReceiver',name:t('layers.sdrCoverage','SDR Coverage'),count:D.sdr.total,dot:'sdr',sub:`${D.sdr.online} ${t('layers.online','online')}`},
+    {name:t('layers.maritimeWatch','Maritime Watch'),count:D.chokepoints.length,dot:'maritime',sub:t('layers.chokepoints','chokepoints'),sig:'chokepoint'},
+    {sig:'nuclearSite',name:t('layers.nuclearSites','Nuclear Sites'),count:D.nuke.length,dot:'nuke',sub:t('layers.monitors','monitors')},
+    {sig:'conflict',name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'thermal',sub:`${conflictFatal.toLocaleString()} ${t('layers.fatalities','fatalities')}`},
+    {name:t('layers.healthWatch','Health Watch'),count:D.who.length,dot:'health',sub:t('layers.whoAlerts','WHO alerts'),sig:'whoAlert'},
+    {sig:'worldNews',name:t('layers.worldNews','World News'),count:newsCount,dot:'news',sub:t('layers.rssGeolocated','RSS geolocated')},
+    {sig:'osintFeed',name:t('layers.osintFeed','OSINT Feed'),count:D.tg.posts,dot:'incident',sub:`${D.tg.urgent.length} ${t('badges.urgent','urgent').toLowerCase()}`},
+    {sig:'satellites',name:t('layers.spaceActivity','Satellites'),count:D.space?.militarySats||0,dot:'space',sub:`${D.space?.totalNewObjects||0} ${t('space.newLast30d','new (30d)')}`}
   ];
   const allNormal=D.nuke.every(s=>!s.anom);
-  const nukeHtml=D.nuke.map(s=>`<div class="site-row"><span>${s.site}</span><span class="site-val">${s.n>0?(s.cpm?.toFixed(1)||'--')+' '+sig('cpm','CPM'):'No data'}</span></div>`).join('');
+  const nukeHtml=D.nuke.map(s=>`<div class="site-row sig-box"${sigAttrs('cpm')}><span>${s.site}</span><span class="site-val">${s.n>0?(s.cpm?.toFixed(1)||'--')+' CPM':'No data'}</span></div>`).join('');
   const vixFred0=D.fred.find(f=>f.id==='VIXCLS');
   const vix=vixFred0 || (D.markets?.vix?.value!=null ? {value:D.markets.vix.value} : null);
   const hy=D.fred.find(f=>f.id==='BAMLH0A0HYM2');
@@ -672,36 +1334,36 @@ function renderLeftRail(){
 
   document.getElementById('leftRail').innerHTML=`
     <div class="g-panel">
-      <div class="sec-head"><h3>${t('panels.sensorGrid','Sensor Grid')}</h3><span class="badge">${t('badges.live','LIVE')}</span></div>
-      ${layers.map(l=>`<div class="layer-item"><div class="layer-left"><div class="ldot ${l.dot}"></div><div><div class="layer-name">${l.name}</div><div class="layer-sub">${l.sub}</div></div></div><div class="layer-count">${l.count}</div></div>`).join('')}
+      <div class="sec-head sig-box"${sigAttrs('sensorGrid')}><h3>${t('panels.sensorGrid','Sensor Grid')}</h3><span class="badge">${t('badges.live','LIVE')}</span></div>
+      ${layers.map(l=>`<div class="layer-item sig-box"${sigAttrs(l.sig)}><div class="layer-left"><div class="ldot ${l.dot}"></div><div><div class="layer-name">${l.name}</div><div class="layer-sub">${l.sub}</div></div></div><div class="layer-count">${l.count}</div></div>`).join('')}
     </div>
     <div class="g-panel">
-      <div class="sec-head"><h3>${t('panels.nuclearWatch','Nuclear Watch')}</h3><span class="badge">${t('badges.radiation','RADIATION')}</span></div>
-      <div class="nuke-ok">${allNormal?'&#9679; '+t('nuclear.allSitesNormal','ALL SITES NORMAL'):'&#9888; '+t('nuclear.anomalyDetected','ANOMALY DETECTED')}</div>
+      <div class="sec-head sig-box"${sigAttrs('nuclearWatch')}><h3>${t('panels.nuclearWatch','Nuclear Watch')}</h3><span class="badge">${t('badges.radiation','RADIATION')}</span></div>
+      <div class="nuke-ok sig-box"${sigAttrs('nukeStatus')}>${allNormal?'&#9679; '+t('nuclear.allSitesNormal','ALL SITES NORMAL'):'&#9888; '+t('nuclear.anomalyDetected','ANOMALY DETECTED')}</div>
       ${nukeHtml}
     </div>
     <div class="g-panel">
-      <div class="sec-head"><h3>${t('panels.riskGauges','Risk Gauges')}</h3><span class="badge">${t('badges.stress','STRESS')}</span></div>
-      <div class="econ-row"><span class="elabel">${sig('vix',t('metrics.vix','VIX'))} (Fear)</span><span class="eval" style="color:${vix?.value>20?'var(--warn)':'var(--accent)'}">${vix?.value||'--'}</span></div>
-      <div class="econ-row"><span class="elabel">${sig('hySpread',t('metrics.hySpread','HY Spread'))}</span><span class="eval">${hy?.value||'--'}</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.usdIndex','USD Index')}</span><span class="eval">${usd?.value?.toFixed(1)||'--'}</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.joblessClaims','Jobless Claims')}</span><span class="eval">${claims?.value?.toLocaleString()||'--'}</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.mortgage30y','30Y Mortgage')}</span><span class="eval">${mort?.value!=null?`${mort.value}%`:'--'}</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.m2Supply','M2 Supply')}</span><span class="eval">${m2?.value!=null?`$${(m2.value/1000).toFixed(1)}T`:'--'}</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.natDebt','Nat. Debt')}</span><span class="eval">${Number.isFinite(parseFloat(D.treasury?.totalDebt))?`$${(parseFloat(D.treasury.totalDebt)/1e12).toFixed(2)}T`:'--'}</span></div>
+      <div class="sec-head sig-box"${sigAttrs('riskGauges')}><h3>${t('panels.riskGauges','Risk Gauges')}</h3><span class="badge">${t('badges.stress','STRESS')}</span></div>
+      <div class="econ-row sig-box"${sigAttrs('vix')}><span class="elabel">${t('metrics.vix','VIX')} (Fear)</span><span class="eval" style="color:${vix?.value>20?'var(--warn)':'var(--accent)'}">${vix?.value||'--'}</span></div>
+      <div class="econ-row sig-box"${sigAttrs('hySpread')}><span class="elabel">${t('metrics.hySpread','HY Spread')}</span><span class="eval">${hy?.value||'--'}</span></div>
+      <div class="econ-row sig-box"${sigAttrs('usdIndex')}><span class="elabel">${t('metrics.usdIndex','USD Index')}</span><span class="eval">${usd?.value?.toFixed(1)||'--'}</span></div>
+      <div class="econ-row sig-box"${sigAttrs('joblessClaims')}><span class="elabel">${t('metrics.joblessClaims','Jobless Claims')}</span><span class="eval">${claims?.value?.toLocaleString()||'--'}</span></div>
+      <div class="econ-row sig-box"${sigAttrs('mortgage30y')}><span class="elabel">${t('metrics.mortgage30y','30Y Mortgage')}</span><span class="eval">${mort?.value!=null?`${mort.value}%`:'--'}</span></div>
+      <div class="econ-row sig-box"${sigAttrs('m2Supply')}><span class="elabel">${t('metrics.m2Supply','M2 Supply')}</span><span class="eval">${m2?.value!=null?`$${(m2.value/1000).toFixed(1)}T`:'--'}</span></div>
+      <div class="econ-row sig-box"${sigAttrs('natDebt')}><span class="elabel">${t('metrics.natDebt','Nat. Debt')}</span><span class="eval">${Number.isFinite(parseFloat(D.treasury?.totalDebt))?`$${(parseFloat(D.treasury.totalDebt)/1e12).toFixed(2)}T`:'--'}</span></div>
       ${sourceDown('FRED') ? `<div class="panel-note">${t('notes.fredDown','FRED data unavailable — most gauges need FRED_API_KEY. VIX falls back to Yahoo.')}</div>` : ''}
     </div>
     <div class="g-panel">
-      <div class="sec-head"><h3>${t('panels.spaceWatch','Space Watch')}</h3><span class="badge">${t('badges.orbital','CELESTRAK')}</span></div>
+      <div class="sec-head sig-box"${sigAttrs('spaceWatch')}><h3>${t('panels.spaceWatch','Space Watch')}</h3><span class="badge">${t('badges.orbital','CELESTRAK')}</span></div>
       ${sourceDown('Space') ? `<div class="panel-note">${t('notes.spaceDown','CelesTrak unavailable this sweep — no satellite data.')}</div>` : D.space?.stale ? `<div class="panel-note">${t('notes.spaceStale','Showing cached CelesTrak data (refreshes every 2h).')}</div>` : ''}
       ${D.space && !sourceDown('Space') ? `
-        <div class="econ-row"><span class="elabel">New Objects (30d)</span><span class="eval" style="color:var(--accent2)">${D.space.totalNewObjects||0}</span></div>
-        <div class="econ-row"><span class="elabel">Military Sats</span><span class="eval">${D.space.militarySats||0}</span></div>
-        <div class="econ-row"><span class="elabel">Starlink</span><span class="eval">${D.space.constellations?.starlink||0}</span></div>
-        <div class="econ-row"><span class="elabel">OneWeb</span><span class="eval">${D.space.constellations?.oneweb||0}</span></div>
-        ${D.space.iss ? `<div class="econ-row"><span class="elabel">ISS</span><span class="eval" style="color:var(--accent)">ALT ${((D.space.iss.apogee+D.space.iss.perigee)/2).toFixed(0)} km</span></div>` : ''}
-        ${Object.entries(D.space.militaryByCountry||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([c,n])=>`<div class="econ-row"><span class="elabel" style="padding-left:8px">${c}</span><span class="eval" style="font-size:10px">${n} mil sats</span></div>`).join('')}
-        ${(D.space.signals||[]).length ? `<div style="margin-top:6px;padding:6px 8px;border:1px solid rgba(68,204,255,0.2);background:rgba(68,204,255,0.04);font-family:var(--mono);font-size:9px;color:var(--accent2);line-height:1.5">${D.space.signals.slice(0,2).join('<br>')}</div>` : ''}
+        <div class="econ-row sig-box"${sigAttrs('newObjects')}><span class="elabel">New Objects (30d)</span><span class="eval" style="color:var(--accent2)">${D.space.totalNewObjects||0}</span></div>
+        <div class="econ-row sig-box"${sigAttrs('militarySats')}><span class="elabel">Military Sats</span><span class="eval">${D.space.militarySats||0}</span></div>
+        <div class="econ-row sig-box"${sigAttrs('starlink')}><span class="elabel">Starlink</span><span class="eval">${D.space.constellations?.starlink||0}</span></div>
+        <div class="econ-row sig-box"${sigAttrs('oneweb')}><span class="elabel">OneWeb</span><span class="eval">${D.space.constellations?.oneweb||0}</span></div>
+        ${D.space.iss ? `<div class="econ-row sig-box"${sigAttrs('iss')}><span class="elabel">ISS</span><span class="eval" style="color:var(--accent)">ALT ${((D.space.iss.apogee+D.space.iss.perigee)/2).toFixed(0)} km</span></div>` : ''}
+        ${Object.entries(D.space.militaryByCountry||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([c,n])=>`<div class="econ-row sig-box"${sigAttrs('militarySats')}><span class="elabel" style="padding-left:8px">${c}</span><span class="eval" style="font-size:10px">${n} mil sats</span></div>`).join('')}
+        ${(D.space.signals||[]).length ? `<div class="sig-box"${sigAttrs('spaceSignals')} style="margin-top:6px;padding:6px 8px;border:1px solid rgba(68,204,255,0.2);background:rgba(68,204,255,0.04);font-family:var(--mono);font-size:9px;color:var(--accent2);line-height:1.5">${D.space.signals.slice(0,2).join('<br>')}</div>` : ''}
       ` : '<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO SPACE DATA</div>'}
     </div>`;
 }
@@ -722,9 +1384,9 @@ function bindMapLifecycleEvents(){
 
 function renderMapLegend(){
   document.getElementById('mapLegend').innerHTML=
-    [{c:'#64f0c8',l:t('map.airTraffic','Air Traffic')},{c:'#ff5f63',l:t('map.thermalFire','Thermal/Fire')},{c:'rgba(255,120,80,0.8)',l:t('map.conflict','Conflict')},{c:'#44ccff',l:t('map.sdrReceiver','SDR Receiver'),s:'sdrReceiver'},
-     {c:'#ffe082',l:t('map.nuclearSite','Nuclear Site')},{c:'#b388ff',l:t('map.chokepoint','Chokepoint'),s:'chokepoint'},{c:'#ffb84c',l:t('map.osintEvent','OSINT Event')},{c:'#69f0ae',l:t('map.healthAlert','Health Alert')},{c:'#81d4fa',l:t('map.worldNews','World News')},{c:'#ff9800',l:t('map.weatherAlert','Weather Alert')},{c:'#cddc39',l:t('map.epaRadNet','EPA RadNet')},{c:'#ffffff',l:t('map.spaceStation','Space Station')},{c:'#6495ed',l:t('map.gdeltEvent','GDELT Event')}]
-    .map(x=>`<div class="leg-item"><div class="leg-dot" style="background:${x.c}"></div>${x.s?sig(x.s,x.l):x.l}</div>`).join('');
+    [{c:'#64f0c8',l:t('map.airTraffic','Air Traffic'),s:'airTraffic'},{c:'#ff5f63',l:t('map.thermalFire','Thermal/Fire'),s:'thermalFire'},{c:'rgba(255,120,80,0.8)',l:t('map.conflict','Conflict'),s:'conflict'},{c:'#44ccff',l:t('map.sdrReceiver','SDR Receiver'),s:'sdrReceiver'},
+     {c:'#ffe082',l:t('map.nuclearSite','Nuclear Site'),s:'nuclearSite'},{c:'#b388ff',l:t('map.chokepoint','Chokepoint'),s:'chokepoint'},{c:'#ffb84c',l:t('map.osintEvent','OSINT Event'),s:'osintFeed'},{c:'#69f0ae',l:t('map.healthAlert','Health Alert'),s:'whoAlert'},{c:'#81d4fa',l:t('map.worldNews','World News'),s:'worldNews'},{c:'#ff9800',l:t('map.weatherAlert','Weather Alert'),s:'weatherAlert'},{c:'#cddc39',l:t('map.epaRadNet','EPA RadNet'),s:'epaRadnet'},{c:'#ffffff',l:t('map.spaceStation','Space Station'),s:'spaceStation'},{c:'#6495ed',l:t('map.gdeltEvent','GDELT Event'),s:'gdeltEvent'}]
+    .map(x=>`<div class="leg-item sig-box"${sigAttrs(x.s)}><div class="leg-dot" style="background:${x.c}"></div>${x.l}</div>`).join('');
 }
 
 function initMap(){
@@ -1132,7 +1794,19 @@ function showPopup(event,head,text,meta,lat,lng,alt){
   popup.querySelector('.pp-head').textContent=head||'';
   popup.querySelector('.pp-text').innerHTML=text||'';
   popup.querySelector('.pp-meta').textContent=meta||'';
+  const popupSig = popupSigFor(meta);
+  if (popupSig) { popup.dataset.sig = popupSig; popup.tabIndex = 0; } else { delete popup.dataset.sig; popup.removeAttribute('tabindex'); }
   popup.classList.add('show');
+}
+// Which tooltip explains a popup, keyed off the meta label each marker type passes
+const POPUP_SIGS = [
+  [/^EPA/, 'epaRadnet'], [/^Air Activity/, 'airTraffic'], [/FIRMS/, 'thermalFire'], [/^Maritime/, 'chokepoint'],
+  [/^Radiation/, 'nuclearSite'], [/KiwiSDR/, 'sdrReceiver'], [/^WHO/, 'whoAlert'], [/^NOAA/, 'weatherAlert'],
+  [/^Space Station/, 'spaceStation'], [/^GDELT|reports$/, 'gdeltEvent'], [/^ACLED/, 'conflict'], [/views$/, 'osintFeed'],
+];
+function popupSigFor(meta){
+  const m = String(meta || '');
+  return (POPUP_SIGS.find(([re]) => re.test(m)) || [null, m ? 'worldNews' : null])[1];
 }
 function closePopup(){document.getElementById('mapPopup').classList.remove('show')}
 
@@ -1406,7 +2080,8 @@ function renderLower(){
       : isIndex
         ? q.price.toLocaleString(undefined, {maximumFractionDigits: 2})
         : `$${q.price}`;
-    return `<div class="mc" data-chart="sym:${escAttr(q.symbol)}" role="button" tabindex="0"><div class="ml">${q.name||q.symbol}</div><span class="mv" style="color:${clr}">${price}</span><span class="ms" style="color:${clr}">${arrow} ${q.changePct>=0?'+':''}${q.changePct}%</span></div>`;
+    const cardSig = {'^GSPC':'spx','^IXIC':'nasdaq','^DJI':'dow','^RUT':'russell','BTC-USD':'btc','ETH-USD':'eth'}[q.symbol];
+    return `<div class="mc sig-box" data-chart="sym:${escAttr(q.symbol)}" role="button" tabindex="0"${cardSig?` data-sig="${cardSig}"`:''}><div class="ml">${q.name||q.symbol}</div><span class="mv" style="color:${clr}">${price}</span><span class="ms" style="color:${clr}">${arrow} ${q.changePct>=0?'+':''}${q.changePct}%</span></div>`;
   };
 
   // VIX from Yahoo Finance live data (fallback to FRED)
@@ -1418,16 +2093,16 @@ function renderLower(){
   const dayMove = (pct) => pct != null ? `${pct>=0?'+':''}${pct}% today` : '';
 
   const metrics=[
-    {k:'sym:CL=F',l:'WTI Crude',v:`$${D.energy.wti}`,s:'$/bbl',p:70},
-    {k:'sym:BZ=F',l:'Brent',v:`$${D.energy.brent}`,s:'$/bbl',p:75},
-    {k:'sym:NG=F',l:'Nat Gas',v:`$${D.energy.natgas||'--'}`,s:'$/MMBtu',p:30},
-    {k:'sym:GC=F',l:'Gold',v:fmtMarketPrice(metals.gold),s:dayMove(metals.goldChangePct)||'COMEX proxy',p:58},
-    {k:'sym:SI=F',l:'Silver',v:fmtMarketPrice(metals.silver),s:dayMove(metals.silverChangePct)||'COMEX proxy',p:54},
+    {k:'sym:CL=F',g:'wti',l:'WTI Crude',v:`$${D.energy.wti}`,s:'$/bbl',p:70},
+    {k:'sym:BZ=F',g:'brent',l:'Brent',v:`$${D.energy.brent}`,s:'$/bbl',p:75},
+    {k:'sym:NG=F',g:'natgas',l:'Nat Gas',v:`$${D.energy.natgas||'--'}`,s:'$/MMBtu',p:30},
+    {k:'sym:GC=F',g:'gold',l:'Gold',v:fmtMarketPrice(metals.gold),s:dayMove(metals.goldChangePct)||'COMEX proxy',p:58},
+    {k:'sym:SI=F',g:'silver',l:'Silver',v:fmtMarketPrice(metals.silver),s:dayMove(metals.silverChangePct)||'COMEX proxy',p:54},
     {k:'sym:^VIX',g:'vix',l:'VIX',v:vixVal?vixVal.toFixed(1):'--',s:vixChg||'volatility index',p:vixVal?Math.min(vixVal*2.5,100):30},
-    {k:'ser:DFF',l:'Fed Funds',v:ff?`${ff.value}%`:'--',s:ff?.date||'',p:36},
+    {k:'ser:DFF',g:'fedFunds',l:'Fed Funds',v:ff?`${ff.value}%`:'--',s:ff?.date||'',p:36},
     {k:'ser:gscpi',g:'gscpi',l:'GSCPI',v:gscpi?gscpi.value.toFixed(2):'--',s:gscpi?.interpretation||'',p:49},
-    {k:'ser:cpi',l:'CPI MoM',v:cpi?`+${cpi.momChangePct?.toFixed(2)}%`:'--',s:cpi?.date||'',p:37},
-    {k:'ser:ue',l:'Unemployment',v:ue?`${ue.value}%`:'--',s:ue?`${ue.momChange>0?'+':''}${ue.momChange} vs prior`:'',p:44},
+    {k:'ser:cpi',g:'cpiMom',l:'CPI MoM',v:cpi?`+${cpi.momChangePct?.toFixed(2)}%`:'--',s:cpi?.date||'',p:37},
+    {k:'ser:ue',g:'unemployment',l:'Unemployment',v:ue?`${ue.value}%`:'--',s:ue?`${ue.momChange>0?'+':''}${ue.momChange} vs prior`:'',p:44},
   ];
 
   // Attach sparklines from FRED recent data
@@ -1479,10 +2154,10 @@ function renderLower(){
   const hasIdeas = D.ideas && D.ideas.length > 0;
   const ideasHtml = hasIdeas ? (D.ideas||[]).map(idea=>`
     <div class="idea-card">
-      <span class="idea-type ${(idea.type||'').toLowerCase()}">${(idea.type||'').toUpperCase()}</span>
+      <span class="idea-type ${(idea.type||'').toLowerCase()}"${sigAttrs('ideaType')}>${(idea.type||'').toUpperCase()}</span>
       ${idea.ticker ? `<span class="idea-horizon">${idea.ticker}</span>` : ''}
-      ${idea.horizon ? `<span class="idea-horizon">${idea.horizon}</span>` : ''}
-      <span class="idea-conf">${idea.confidence} confidence</span>
+      ${idea.horizon ? `<span class="idea-horizon"${sigAttrs('ideaHorizon')}>${idea.horizon}</span>` : ''}
+      <span class="idea-conf"${sigAttrs('ideaConfidence')}>${idea.confidence} confidence</span>
       <div class="idea-title">${idea.title}</div>
       <div class="idea-text">${idea.text||idea.rationale||''}</div>
       ${idea.risk ? `<div class="idea-text" style="color:var(--warn);margin-top:3px">Risk: ${idea.risk}</div>` : ''}
@@ -1494,14 +2169,14 @@ function renderLower(){
 
 
   const tickerPanel = `<div class="g-panel lp-ticker" style="display:flex;flex-direction:column">
-      <div class="sec-head"><h3>${t('panels.newsTicker','Live News Ticker')}</h3><div class="sec-head-right">${feedControls('news')}<span class="badge">${feed.length} ${t('badges.items','ITEMS')}</span></div></div>
+      <div class="sec-head sig-box"${sigAttrs('newsTicker')}><h3>${t('panels.newsTicker','Live News Ticker')}</h3><div class="sec-head-right">${feedControls('news')}<span class="badge">${feed.length} ${t('badges.items','ITEMS')}</span></div></div>
       <div class="ticker-wrap" data-feed="news" style="--ticker-duration:${tickerDuration}s">
         <div class="ticker-track">${tickerCards}${lowPerfMode ? '' : tickerCards}</div>
       </div>
     </div>`;
   const osintPanel = mobile ? buildOsintPanel('lp-osint', 240) : '';
   const macroPanel = `<div class="g-panel lp-macro${macroFocus?' mkt-focused':''}">
-      <div class="sec-head"><h3>${t('panels.macroMarkets','Macro + Markets')}</h3><span class="badge">${mkt.timestamp?t('badges.live','LIVE'):t('badges.delayed','DELAYED')}</span></div>
+      <div class="sec-head sig-box"${sigAttrs('macroMarkets')}><h3>${t('panels.macroMarkets','Macro + Markets')}</h3><span class="badge">${mkt.timestamp?t('badges.live','LIVE'):t('badges.delayed','DELAYED')}</span></div>
       <div class="mkt-cards">
       ${hasMarkets?`<div style="margin-bottom:8px">
         <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">INDEXES</div>
@@ -1515,10 +2190,10 @@ function renderLower(){
         <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">ENERGY + METALS + MACRO</div>
         <div class="metrics-row">${metrics.map(m=>{
           const sparkSvg = m.spark ? mkSparkSvg(m.spark, m.sparkUp) : '';
-          return `<div class="mc" data-chart="${escAttr(m.k)}" role="button" tabindex="0"><div class="ml">${m.g?sig(m.g,m.l):m.l}</div><span class="mv">${m.v}${sparkSvg}</span><span class="ms">${m.s}</span><div class="mbar"><span style="width:${m.p}%"></span></div></div>`;
+          return `<div class="mc sig-box" data-chart="${escAttr(m.k)}" role="button" tabindex="0"${m.g?` data-sig="${m.g}"`:''}><div class="ml">${m.l}</div><span class="mv">${m.v}${sparkSvg}</span><span class="ms">${m.s}</span><div class="mbar"><span style="width:${m.p}%"></span></div></div>`;
         }).join('')}</div>
       </div>
-      <div style="margin-top:6px">
+      <div class="sig-box"${sigAttrs('wti5d')} style="margin-top:6px">
         <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:4px">WTI 5-DAY</div>
         <div class="spark">${sparkHtml}</div>
       </div>
@@ -1526,7 +2201,7 @@ function renderLower(){
       <div class="mkt-detail" id="mktDetail"></div>
     </div>`;
   const ideasPanel = `<div class="g-panel lp-ideas">
-      <div class="sec-head"><h3>${t('panels.tradeIdeas','Leverageable Ideas')}</h3>${D.ideasSource==='llm'?'<span class="ideas-src llm">'+t('ideas.aiEnhanced','AI ENHANCED')+'</span>':D.ideasSource==='disabled'?'<span class="ideas-src static">'+t('ideas.llmOff','LLM OFF')+'</span>':'<span class="ideas-src static">'+t('ideas.pending','PENDING')+'</span>'}</div>
+      <div class="sec-head sig-box"${sigAttrs('tradeIdeas')}><h3>${t('panels.tradeIdeas','Leverageable Ideas')}</h3>${D.ideasSource==='llm'?'<span class="ideas-src llm"'+sigAttrs('ideasSource')+'>'+t('ideas.aiEnhanced','AI ENHANCED')+'</span>':D.ideasSource==='disabled'?'<span class="ideas-src static"'+sigAttrs('ideasSource')+'>'+t('ideas.llmOff','LLM OFF')+'</span>':'<span class="ideas-src static"'+sigAttrs('ideasSource')+'>'+t('ideas.pending','PENDING')+'</span>'}</div>
       ${ideasHtml}
       <div class="disclosure">FOR INFORMATIONAL PURPOSES ONLY. This is not financial advice, a recommendation to buy or sell any security, or a solicitation of any kind. All signal-based observations are derived from publicly available OSINT data and should not be relied upon for investment decisions. Consult a licensed financial advisor before making any investment. Past performance does not guarantee future results.</div>
     </div>`;
@@ -1540,17 +2215,17 @@ function renderRight(){
   const mobile = isMobileLayout();
   // CROSS-SOURCE SIGNALS — moved from lower grid to right rail
   const signals=D.tSignals.length
-    ? D.tSignals.slice(0,6).map((s,i)=>`<div class="signal-row"><strong>Signal ${i+1}</strong><p>${s}</p></div>`).join('')
+    ? D.tSignals.slice(0,6).map((s,i)=>`<div class="signal-row sig-box"${sigAttrs('crossSourceSignals')}><strong>Signal ${i+1}</strong><p>${s}</p></div>`).join('')
     : `<div class="panel-note">${sourceDown('FIRMS') ? t('notes.firmsDown','No signals — these are built from NASA FIRMS fire detections, which need FIRMS_MAP_KEY.') : t('notes.noSignals','No cross-source signals this sweep.')}</div>`;
 
   // OSINT TICKER — Telegram + WHO as flowing cards
   const signalMetrics=[
-    {l:'Incident Tempo',v:D.tg.urgent.length,p:70},
-    {l:'Air Theaters',v:D.air.length,p:60},
-    {l:'Thermal Spikes',v:D.thermal.reduce((s,t)=>s+t.hc,0),p:80},
-    {l:'SDR Nodes',v:D.sdr.total,p:92},
-    {l:'Chokepoints',v:D.chokepoints.length,p:50},
-    {l:'WHO Alerts',v:D.who.length,p:40}
+    {s:'incidentTempo',l:'Incident Tempo',v:D.tg.urgent.length,p:70},
+    {s:'airTheaters',l:'Air Theaters',v:D.air.length,p:60},
+    {s:'highConfThermal',l:'Thermal Spikes',v:D.thermal.reduce((s,t)=>s+t.hc,0),p:80},
+    {s:'sdrNodes',l:'SDR Nodes',v:D.sdr.total,p:92},
+    {s:'chokepointCount',l:'Chokepoints',v:D.chokepoints.length,p:50},
+    {s:'whoAlertCount',l:'WHO Alerts',v:D.who.length,p:40}
   ];
 
   // DELTA PANEL — what changed since last sweep
@@ -1564,32 +2239,32 @@ function renderRight(){
   const newSigs = (delta.signals?.new || []).slice(0,4);
   const deltaRows = [];
   for(const s of newSigs){
-    deltaRows.push(`<div class="delta-row new"><span class="delta-badge new">NEW</span><span class="delta-label">${s.reason||s.label||s.key}</span></div>`);
+    deltaRows.push(`<div class="delta-row new sig-box"${sigAttrs('deltaNew')}><span class="delta-badge new">NEW</span><span class="delta-label">${s.reason||s.label||s.key}</span></div>`);
   }
   for(const s of escalated){
     const sev = s.severity==='critical'?'style="color:var(--warn);font-weight:600"':s.severity==='high'?'style="color:#ffab40"':'';
     const val = s.pctChange!==undefined?`${s.pctChange>0?'+':''}${s.pctChange}%`:`${s.change>0?'+':''}${s.change}`;
-    deltaRows.push(`<div class="delta-row"><span class="delta-badge up">&#9650;</span><span class="delta-label" ${sev}>${s.label}</span><span class="delta-val">${s.from}→${s.to} (${val})</span></div>`);
+    deltaRows.push(`<div class="delta-row sig-box"${sigAttrs('deltaEscalated')}><span class="delta-badge up">&#9650;</span><span class="delta-label" ${sev}>${s.label}</span><span class="delta-val">${s.from}→${s.to} (${val})</span></div>`);
   }
   for(const s of deescalated){
     const val = s.pctChange!==undefined?`${s.pctChange}%`:`${s.change}`;
-    deltaRows.push(`<div class="delta-row"><span class="delta-badge down">&#9660;</span><span class="delta-label">${s.label||s.key}</span><span class="delta-val">${s.from}→${s.to} (${val})</span></div>`);
+    deltaRows.push(`<div class="delta-row sig-box"${sigAttrs('deltaDeescalated')}><span class="delta-badge down">&#9660;</span><span class="delta-label">${s.label||s.key}</span><span class="delta-val">${s.from}→${s.to} (${val})</span></div>`);
   }
   const deltaHtml = hasDelta ? deltaRows.join('') : `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${t('delta.noChanges','No changes since last sweep')}</div>`;
 
   document.getElementById('rightRail').innerHTML=`
     <div class="g-panel right-signals">
-      <div class="sec-head"><h3>${t('panels.crossSourceSignals','Cross-Source Signals')}</h3><span class="badge">${t('badges.worldview','WORLDVIEW')}</span></div>
+      <div class="sec-head sig-box"${sigAttrs('crossSourceSignals')}><h3>${t('panels.crossSourceSignals','Cross-Source Signals')}</h3><span class="badge">${t('badges.worldview','WORLDVIEW')}</span></div>
       ${signals}
     </div>
     ${mobile ? '' : buildOsintPanel('right-osint', 260)}
     <div class="g-panel right-core">
-      <div class="sec-head"><h3>${t('panels.signalCore','Signal Core')}</h3><span class="badge">${t('badges.hotMetrics','HOT METRICS')}</span></div>
-      ${signalMetrics.map(s=>`<div class="sm"><span class="sml">${s.l}</span><div class="smb"><span style="width:${s.p}%"></span></div><span class="smv">${s.v}</span></div>`).join('')}
+      <div class="sec-head sig-box"${sigAttrs('signalCore')}><h3>${t('panels.signalCore','Signal Core')}</h3><span class="badge">${t('badges.hotMetrics','HOT METRICS')}</span></div>
+      ${signalMetrics.map(s=>`<div class="sm sig-box"${sigAttrs(s.s)}><span class="sml">${s.l}</span><div class="smb"><span style="width:${s.p}%"></span></div><span class="smv">${s.v}</span></div>`).join('')}
     </div>
     <div class="g-panel right-delta">
-      <div class="sec-head"><h3>${sig('sweepDelta',t('panels.sweepDelta','Sweep Delta'))}</h3><span class="badge ${dirClass}">${dirEmoji} ${ds.direction?t('delta.'+ds.direction,ds.direction.toUpperCase()):t('delta.baseline','BASELINE')}</span></div>
-      ${hasDelta?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;font-family:var(--mono);font-size:10px">
+      <div class="sec-head sig-box"${sigAttrs('sweepDelta')}><h3>${t('panels.sweepDelta','Sweep Delta')}</h3><span class="badge ${dirClass}"${sigAttrs('deltaDirection')}>${dirEmoji} ${ds.direction?t('delta.'+ds.direction,ds.direction.toUpperCase()):t('delta.baseline','BASELINE')}</span></div>
+      ${hasDelta?`<div class="sig-box"${sigAttrs('deltaCounts')} style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;font-family:var(--mono);font-size:10px">
         <span style="color:var(--dim)">${t('delta.changes','Changes')}: <span style="color:var(--accent)">${ds.totalChanges}</span></span>
         <span style="color:var(--dim)">${t('delta.critical','Critical')}: <span style="color:${ds.criticalChanges>0?'var(--warn)':'var(--dim)'}">${ds.criticalChanges||0}</span></span>
         ${ds.signalBreakdown?`<span style="color:var(--dim)">${t('delta.new','New')}: <span style="color:#4dd0e1">${ds.signalBreakdown.new}</span> &#8593;${ds.signalBreakdown.escalated} &#8595;${ds.signalBreakdown.deescalated}</span>`:''}
@@ -1751,7 +2426,7 @@ function renderMarketDetail(){
   detail.innerHTML = `
     <button type="button" class="mkt-back">&larr; ${escAttr(t('markets.back','All markets'))}</button>
     <div class="mkt-title"><span class="mkt-name">${escAttr(info.name)}</span>${info.symbol ? `<span class="mkt-sym">${escAttr(info.symbol)}</span>` : ''}${info.note ? `<span class="mkt-note">${escAttr(info.note)}</span>` : ''}</div>
-    <div class="mkt-stats"><span class="mkt-price">${escAttr(info.value)}</span>${day}<span class="mkt-range-chg" id="mktRangeChg"></span></div>
+    <div class="mkt-stats sig-box"${sigAttrs('rangeChange')}><span class="mkt-price">${escAttr(info.value)}</span>${day}<span class="mkt-range-chg" id="mktRangeChg"></span></div>
     ${ranges}
     <div class="mkt-chart" id="mktChart" data-loading="${escAttr(t('markets.loading','LOADING…'))}"></div>
     <div class="mkt-hl" id="mktHL"></div>`;
@@ -1982,13 +2657,13 @@ function buildOsintPanel(panelClass='', maxHeight=260){
     const isU=p.urgentFlags&&p.urgentFlags.length>0;
     const views=p.views?p.views>=1000?`${(p.views/1000).toFixed(0)}K`:p.views:'';
     const age=p.date?getAge(p.date):'';
-    const flags=(p.urgentFlags||[]).map(f=>`<span class="tk-src tg" style="margin-right:2px">${f}</span>`).join('');
+    const flags=(p.urgentFlags||[]).map(f=>`<span class="tk-src tg"${sigAttrs('urgentFlag')} style="margin-right:2px">${f}</span>`).join('');
     const srcCls=p.isWho?'style="color:#69f0ae;border-color:rgba(105,240,174,0.4)"':'class="tk-src tg"';
-    return `<div class="tk-card ${isU?'urgent':''}"><span ${srcCls}>${(p.channel||'OSINT').toUpperCase().substring(0,14)}</span>${views?`<span class="tk-src other">${views}</span>`:''}<span class="tk-time">${age}</span>${flags}<div class="tk-head">${cleanText((p.text||'').substring(0,160))}</div></div>`;
+    return `<div class="tk-card ${isU?'urgent':''}"><span ${srcCls}>${(p.channel||'OSINT').toUpperCase().substring(0,14)}</span>${views?`<span class="tk-src other"${sigAttrs('osintViews')}>${views}</span>`:''}<span class="tk-time">${age}</span>${flags}<div class="tk-head">${cleanText((p.text||'').substring(0,160))}</div></div>`;
   }).join('');
   const osintDuration=Math.max(25,osintItems.length*3);
   return `<div class="g-panel ${panelClass}" style="display:flex;flex-direction:column">
-      <div class="sec-head"><h3>${t('panels.osintStream','OSINT Stream')}</h3><div class="sec-head-right">${feedControls('osint')}<span class="badge">${D.tg.urgent.length} ${t('badges.urgent','URGENT')}</span></div></div>
+      <div class="sec-head sig-box"${sigAttrs('osintStream')}><h3>${t('panels.osintStream','OSINT Stream')}</h3><div class="sec-head-right">${feedControls('osint')}<span class="badge">${D.tg.urgent.length} ${t('badges.urgent','URGENT')}</span></div></div>
       <div class="ticker-wrap" data-feed="osint" style="--ticker-duration:${osintDuration}s;max-height:${maxHeight}px">
         <div class="ticker-track">${osintCards}${lowPerfMode ? '' : osintCards}</div>
       </div>
@@ -2080,7 +2755,7 @@ document.addEventListener('keydown', () => { focusFromPointer = false; }, true);
 
 document.addEventListener('pointerover', e => {
   if (e.pointerType === 'touch') return;
-  const anchor = e.target.closest?.('.sig-term');
+  const anchor = e.target.closest?.('[data-sig]');
   if (!anchor || anchor === sigTipAnchor) return;
   clearTimeout(sigTipTimer);
   sigTipTimer = setTimeout(() => showSigTip(anchor), 250);
@@ -2088,7 +2763,7 @@ document.addEventListener('pointerover', e => {
 
 document.addEventListener('pointerout', e => {
   if (e.pointerType === 'touch') return;
-  const anchor = e.target.closest?.('.sig-term');
+  const anchor = e.target.closest?.('[data-sig]');
   if (!anchor || anchor.contains(e.relatedTarget)) return;
   clearTimeout(sigTipTimer);
   if (sigTipAnchor === anchor) hideSigTip();
@@ -2096,21 +2771,24 @@ document.addEventListener('pointerout', e => {
 
 // Keyboard focus shows the tooltip; pointer focus is handled by hover/tap instead
 document.addEventListener('focusin', e => {
-  const anchor = e.target.closest?.('.sig-term');
+  const anchor = e.target.closest?.('[data-sig]');
   if (anchor && !focusFromPointer) showSigTip(anchor);
 });
 document.addEventListener('focusout', e => {
-  if (e.target.closest?.('.sig-term') && sigTipAnchor === e.target) hideSigTip();
+  if (e.target.matches?.('[data-sig]') && sigTipAnchor === e.target) hideSigTip();
 });
 
 // Touch: tap a term to toggle its tooltip, tap anywhere else to close it
 document.addEventListener('click', e => {
   if (lastPointerType !== 'touch') return;
-  const anchor = e.target.closest('.sig-term');
+  const anchor = e.target.closest('[data-sig]');
   if (anchor && tooltipsOn) {
+    // Clickable boxes (market cards, article cards): first tap explains, second tap acts
+    const actionable = anchor.matches('[role="button"],.tk-card.clickable,.mkt-range button');
+    if (sigTipAnchor === anchor) { hideSigTip(); if (actionable) return; }
+    else showSigTip(anchor);
     e.preventDefault();
     e.stopPropagation();
-    if (sigTipAnchor === anchor) hideSigTip(); else showSigTip(anchor);
   } else if (sigTipAnchor && !e.target.closest('#sigTip')) {
     hideSigTip();
   }

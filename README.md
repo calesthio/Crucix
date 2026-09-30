@@ -124,7 +124,7 @@ A self-contained Jarvis-style HUD with:
 - **Cross-source signals** — notable patterns in NASA FIRMS satellite fire detections (requires `FIRMS_MAP_KEY`; the panel says so when the key is missing)
 - **Nuclear watch** — real-time radiation readings from Safecast + EPA RadNet
 - **Space watch** — CelesTrak satellite tracking: recent launches, ISS, military constellations, Starlink/OneWeb counts
-- **Signal tooltips** — hover, focus or tap any dotted-underlined term (FRP, CPM, HY Spread, Chokepoint…) for what it means, why it matters and what it does *not* prove. Toggle with **TOOLTIPS ON/OFF** in the top bar
+- **Tooltips everywhere** — hover, focus or tap any panel row, card, header, legend entry or map popup to see what that number means, why it matters and what it does *not* prove. Toggle with **TOOLTIPS ON/OFF** in the top bar
 - **Leverageable ideas** — AI-generated trade ideas (with LLM) or signal-correlated ideas (without)
 
 ### Performance Modes
