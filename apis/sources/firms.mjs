@@ -106,7 +106,7 @@ export async function briefing() {
       source: 'NASA FIRMS',
       timestamp: new Date().toISOString(),
       status: 'no_key',
-      message: 'Set FIRMS_MAP_KEY for satellite fire/strike detection. Free at https://firms.modaps.eosdis.nasa.gov/api/area/',
+      error: 'No FIRMS_MAP_KEY. Get one free at https://firms.modaps.eosdis.nasa.gov/api/area/',
     };
   }
 

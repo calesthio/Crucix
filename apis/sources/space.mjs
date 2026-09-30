@@ -2,9 +2,21 @@
 // No API key required. Uses CelesTrak for public TLE data and launch info.
 // Tracks: Recent launches, ISS position, satellite decay alerts, space debris.
 
+import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs';
+import { join } from 'path';
+import { fileURLToPath } from 'url';
 import { safeFetch } from '../utils/fetch.mjs';
 
 const CELESTRAK_BASE = 'https://celestrak.org';
+
+// CelesTrak asks clients not to re-download a group within 2 hours and firewalls
+// IPs that do. Each group is cached on disk and refreshed at most every 2 hours;
+// when a refresh fails, the stale copy is used rather than hammering it again.
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const FETCH_TIMEOUT_MS = 12000; // six groups in parallel must fit the 30s source budget
+const DEFAULT_CACHE_DIR = fileURLToPath(new URL('../../runs/cache/celestrak', import.meta.url));
+const cacheDir = () => process.env.CELESTRAK_CACHE_DIR || DEFAULT_CACHE_DIR;
+let staleGroups = new Set();
 
 // Satellite categories for monitoring
 const SAT_CATEGORIES = {
@@ -16,12 +28,41 @@ const SAT_CATEGORIES = {
   oneweb: '/NORAD/elements/gp.php?GROUP=oneweb&FORMAT=json',
 };
 
-// Get TLE data for a category
-async function getTLEs(category) {
+function readCache(category) {
+  try { return JSON.parse(readFileSync(join(cacheDir(), `${category}.json`), 'utf8')); } catch { return null; }
+}
+
+function writeCache(category, data) {
+  try {
+    mkdirSync(cacheDir(), { recursive: true });
+    const file = join(cacheDir(), `${category}.json`);
+    writeFileSync(`${file}.tmp`, JSON.stringify({ fetchedAt: Date.now(), data }));
+    renameSync(`${file}.tmp`, file);
+  } catch (e) {
+    console.error(`[Space] Could not cache ${category}:`, e.message);
+  }
+}
+
+// Get TLE data for a category (cached, see CACHE_TTL_MS)
+export async function getTLEs(category) {
   const path = SAT_CATEGORIES[category];
   if (!path) return { error: 'Invalid category' };
-  const data = await safeFetch(`${CELESTRAK_BASE}${path}`, { timeout: 20000 });
-  return data;
+
+  const cached = readCache(category);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.data;
+
+  const data = await safeFetch(`${CELESTRAK_BASE}${path}`, { timeout: FETCH_TIMEOUT_MS, retries: 0 });
+  if (Array.isArray(data)) {
+    writeCache(category, data);
+    return data;
+  }
+  if (cached) {
+    staleGroups.add(category);
+    return cached.data;
+  }
+  // CelesTrak answers refused/duplicate downloads with a plain-text notice, not JSON
+  if (data?.rawText) return { error: `CelesTrak: ${data.rawText.trim().slice(0, 160)}` };
+  return { error: data?.error || 'Unexpected CelesTrak response' };
 }
 
 // Get recent launches (from last 30 days TLEs)
@@ -138,6 +179,7 @@ function generateSignals(data) {
 
 // Briefing export
 export async function briefing() {
+  staleGroups = new Set();
   try {
     const [launches, stations, military, constellations] = await Promise.all([
       getRecentLaunches(),
@@ -173,6 +215,7 @@ export async function briefing() {
       militaryByCountry: military.byCountry || {},
       constellations: constellations || {},
       signals,
+      ...(staleGroups.size ? { stale: true, staleGroups: [...staleGroups] } : {}),
     };
   } catch (e) {
     return {
