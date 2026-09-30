@@ -59,10 +59,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 <script>
 const SWEEP_ESTIMATE_S = 50; // estimated sweep duration in seconds
 
+const BUILD = window.__CRUCIX_BUILD__ || {};
 const lines = [
-  'CRUCIX INTELLIGENCE ENGINE v2.0.0',
+  `CRUCIX INTELLIGENCE ENGINE${BUILD.version ? ' v' + BUILD.version : ''}`,
   'INITIATING FIRST SWEEP...',
-  '├── CONNECTING 25 OSINT SOURCES',
+  `├── CONNECTING ${BUILD.sources || ''} OSINT SOURCES`.replace('  ', ' '),
   '├── GDELT · OPENSKY · FIRMS · MARITIME · SAFECAST',
   '├── FRED · BLS · EIA · TREASURY · GSCPI',
   '└── TELEGRAM · WHO · OFAC · ACLED · REDDIT · BLUESKY',

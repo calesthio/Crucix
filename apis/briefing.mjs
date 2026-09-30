@@ -5,6 +5,7 @@
 
 import './utils/env.mjs'; // Load API keys from .env
 import { pathToFileURL } from 'node:url';
+import { VERSION } from '../lib/version.mjs';
 
 // === Tier 1: Core OSINT & Geopolitical ===
 import { briefing as gdelt } from './sources/gdelt.mjs';
@@ -122,7 +123,7 @@ export async function fullBriefing() {
 
   const output = {
     crucix: {
-      version: '2.0.0',
+      version: VERSION,
       timestamp: new Date().toISOString(),
       totalDurationMs: totalMs,
       sourcesQueried: sources.length,

@@ -10,6 +10,7 @@ import { exec } from 'child_process';
 import config from './crucix.config.mjs';
 import { getLocale, currentLanguage, getSupportedLocales } from './lib/i18n.mjs';
 import { fullBriefing, SOURCE_COUNT } from './apis/briefing.mjs';
+import { VERSION } from './lib/version.mjs';
 import { synthesize, generateIdeas } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider } from './lib/llm/index.mjs';
@@ -80,19 +81,19 @@ app.use(express.static(join(ROOT, 'dashboard/public')));
 
 // Serve loading page until first sweep completes, then the dashboard with injected locale
 app.get('/', (req, res) => {
-  if (!currentData) {
-    res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
-  } else {
-    const htmlPath = join(ROOT, 'dashboard/public/jarvis.html');
-    let html = readFileSync(htmlPath, 'utf-8');
-    
-    // Inject locale data into the HTML
+  const page = currentData ? 'jarvis.html' : 'loading.html';
+  let html = readFileSync(join(ROOT, 'dashboard/public', page), 'utf-8');
+
+  // Inject build info and locale data into the HTML
+  const build = { version: VERSION, sources: SOURCE_COUNT };
+  const scripts = [`<script>window.__CRUCIX_BUILD__ = ${JSON.stringify(build)};</script>`];
+  if (currentData) {
     const locale = getLocale();
-    const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
-    html = html.replace('</head>', `${localeScript}\n</head>`);
-    
-    res.type('html').send(html);
+    scripts.push(`<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`);
   }
+  html = html.replace('</head>', `${scripts.join('\n')}\n</head>`);
+
+  res.type('html').send(html);
 });
 
 // API: current data
@@ -105,6 +106,7 @@ app.get('/api/data', (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
+    version: VERSION,
     uptime: Math.floor((Date.now() - startTime) / 1000),
     lastSweep: lastSweepTime,
     nextSweep: lastSweepTime
@@ -279,7 +281,7 @@ async function start() {
 
   console.log(`
   ╔══════════════════════════════════════════════╗
-  ║           CRUCIX INTELLIGENCE ENGINE         ║
+  ║${centerBanner(`CRUCIX INTELLIGENCE ENGINE v${VERSION}`)}║
   ║${centerBanner(`Local Palantir · ${SOURCE_COUNT} Sources`)}║
   ╠══════════════════════════════════════════════╣
   ║  Dashboard:  http://localhost:${port}${' '.repeat(14 - String(port).length)}║

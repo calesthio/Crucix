@@ -26,7 +26,7 @@
     "guideBtn": "What Signals Mean"
   },
   "boot": {
-    "initializing": "INITIALIZING CRUCIX ENGINE v2.1.0",
+    "initializing": "INITIALIZING CRUCIX ENGINE v{version}",
     "connecting": "CONNECTING {count} OSINT SOURCES...",
     "sourceGroup1": "OPENSKY · FIRMS · KIWISDR · MARITIME",
     "sourceGroup2": "FRED · BLS · EIA · TREASURY · GSCPI",

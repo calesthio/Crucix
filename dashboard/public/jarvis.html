@@ -1922,7 +1922,7 @@ function safeExternalUrl(raw){try{const u=new URL(raw,location.href);return u.pr
 function runBoot(){
   const acledStatus = D.acled?.totalEvents > 0 ? `<span class="ok">${D.acled.totalEvents} EVENTS</span>` : '<span style="color:var(--warn)">DEGRADED</span>';
   const lines=[
-    {text:t('boot.initializing','INITIALIZING CRUCIX ENGINE v2.1.0'),delay:0},
+    {text:t('boot.initializing','INITIALIZING CRUCIX ENGINE v{version}').replace('{version}',window.__CRUCIX_BUILD__?.version||D.meta?.version||''),delay:0},
     {text:t('boot.connecting','CONNECTING {count} OSINT SOURCES...').replace('{count}',D.meta.sourcesQueried),delay:400},
     {text:'&#9500;&#9472; '+t('boot.sourceGroup1','OPENSKY · FIRMS · KIWISDR · MARITIME'),delay:700},
     {text:'&#9500;&#9472; '+t('boot.sourceGroup2','FRED · BLS · EIA · TREASURY · GSCPI'),delay:900},

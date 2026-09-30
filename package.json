@@ -1,6 +1,6 @@
 {
   "name": "crucix",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "description": "Local intelligence engine - 29 OSINT sources, live dashboard, public demo at crucix.live, auto-refresh, optional LLM layer.",
   "type": "module",
   "scripts": {
@@ -31,7 +31,9 @@
     "express": "^5.1.0"
   },
   "optionalDependencies": {
-    "discord.js": "^14.25.1"  },
+    "discord.js": "^14.25.1"
+  },
   "overrides": {
-    "undici": "^7.24.4"  }
+    "undici": "^7.24.4"
+  }
 }
