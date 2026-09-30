@@ -170,12 +170,7 @@ This requires `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env`. The bot pol
 
 Crucix also supports Discord as a full-featured bot with slash commands and rich embed alerts. It mirrors the Telegram bot's capabilities with Discord-native formatting.
 
-| Command | What It Does |
-|---------|-------------|
-| `/status` | System health, last sweep time, source status, LLM status |
-| `/sweep` | Trigger a manual sweep cycle |
-| `/brief` | Compact text summary of the latest intelligence |
-| `/portfolio` | Portfolio status (if Alpaca connected) |
+It supports the same commands as the Telegram bot (`/status`, `/sweep`, `/brief`, `/portfolio`, `/alerts`, `/mute`, `/unmute`, `/help`) as slash commands. Both bots share one command definition in `lib/alerts/commands.mjs`, so a command added there is available on every platform.
 
 Alerts are delivered as rich embeds with color-coded sidebars: red for FLASH, yellow for PRIORITY, blue for ROUTINE. Each embed includes signal details, confidence scores, and cross-domain correlations.
 

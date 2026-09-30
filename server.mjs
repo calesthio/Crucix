@@ -16,6 +16,7 @@ import { createLLMProvider } from './lib/llm/index.mjs';
 import { generateLLMIdeas } from './lib/llm/ideas.mjs';
 import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
+import { MARKUP, createCommandHandlers, registerCommandHandlers } from './lib/alerts/commands.mjs';
 import { aisCollector, aisDisabled } from './lib/maritime/ais-collector.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -45,189 +46,27 @@ const telegramAlerter = new TelegramAlerter(config.telegram);
 const discordAlerter = new DiscordAlerter(config.discord || {});
 
 if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
+
+// Bot commands are defined once in lib/alerts/commands.mjs and registered on every platform
+const commandContext = {
+  getState: () => ({ currentData, lastSweepTime, sweepInProgress, sseClientCount: sseClients.size }),
+  llmProvider,
+  memory,
+  config,
+  startTime,
+  runSweep: () => runSweepCycle(),
+};
+
 if (telegramAlerter.isConfigured) {
   console.log('[Crucix] Telegram alerts enabled');
-
-  // ─── Two-Way Bot Commands ───────────────────────────────────────────────
-
-  telegramAlerter.onCommand('/status', async () => {
-    const uptime = Math.floor((Date.now() - startTime) / 1000);
-    const h = Math.floor(uptime / 3600);
-    const m = Math.floor((uptime % 3600) / 60);
-    const sourcesOk = currentData?.meta?.sourcesOk || 0;
-    const sourcesTotal = currentData?.meta?.sourcesQueried || 0;
-    const sourcesFailed = currentData?.meta?.sourcesFailed || 0;
-    const llmStatus = llmProvider?.isConfigured ? `✅ ${llmProvider.name}` : '❌ Disabled';
-    const nextSweep = lastSweepTime
-      ? new Date(new Date(lastSweepTime).getTime() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()
-      : 'pending';
-
-    return [
-      `🖥️ *CRUCIX STATUS*`,
-      ``,
-      `Uptime: ${h}h ${m}m`,
-      `Last sweep: ${lastSweepTime ? new Date(lastSweepTime).toLocaleTimeString() + ' UTC' : 'never'}`,
-      `Next sweep: ${nextSweep} UTC`,
-      `Sweep in progress: ${sweepInProgress ? '🔄 Yes' : '⏸️ No'}`,
-      `Sources: ${sourcesOk}/${sourcesTotal} OK${sourcesFailed > 0 ? ` (${sourcesFailed} failed)` : ''}`,
-      `LLM: ${llmStatus}`,
-      `SSE clients: ${sseClients.size}`,
-      `Dashboard: ${config.publicUrl || `http://localhost:${config.port}`}`,
-    ].join('\n');
-  });
-
-  telegramAlerter.onCommand('/sweep', async () => {
-    if (sweepInProgress) return '🔄 Sweep already in progress. Please wait.';
-    // Fire and forget — don't block the bot response
-    runSweepCycle().catch(err => console.error('[Crucix] Manual sweep failed:', err.message));
-    return '🚀 Manual sweep triggered. You\'ll receive alerts if anything significant is detected.';
-  });
-
-  telegramAlerter.onCommand('/brief', async () => {
-    if (!currentData) return '⏳ No data yet — waiting for first sweep to complete.';
-
-    const tg = currentData.tg || {};
-    const energy = currentData.energy || {};
-    const metals = currentData.metals || {};
-    const delta = memory.getLastDelta();
-    const ideas = (currentData.ideas || []).slice(0, 3);
-
-    const sections = [
-      `📋 *CRUCIX BRIEF*`,
-      `_${new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC_`,
-      ``,
-    ];
-
-    // Delta direction
-    if (delta?.summary) {
-      const dirEmoji = { 'risk-off': '📉', 'risk-on': '📈', 'mixed': '↔️' }[delta.summary.direction] || '↔️';
-      sections.push(`${dirEmoji} Direction: *${delta.summary.direction.toUpperCase()}* | ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical`);
-      sections.push('');
-    }
-
-    // Key metrics
-    const vix = currentData.fred?.find(f => f.id === 'VIXCLS');
-    const hy = currentData.fred?.find(f => f.id === 'BAMLH0A0HYM2');
-    if (vix || energy.wti || metals.gold || metals.silver) {
-      sections.push(`📊 VIX: ${vix?.value || '--'} | WTI: $${energy.wti || '--'} | Brent: $${energy.brent || '--'}`);
-      sections.push(`   Gold: $${metals.gold || '--'} | Silver: $${metals.silver || '--'}${hy ? ` | HY Spread: ${hy.value}` : ''}`);
-      sections.push(`   NatGas: $${energy.natgas || '--'}`);
-      sections.push('');
-    }
-
-    // OSINT
-    if (tg.urgent?.length > 0) {
-      sections.push(`📡 OSINT: ${tg.urgent.length} urgent signals, ${tg.posts || 0} total posts`);
-      // Top 2 urgent
-      for (const p of tg.urgent.slice(0, 2)) {
-        sections.push(`  • ${(p.text || '').substring(0, 80)}`);
-      }
-      sections.push('');
-    }
-
-    // Top ideas
-    if (ideas.length > 0) {
-      sections.push(`💡 *Top Ideas:*`);
-      for (const idea of ideas) {
-        sections.push(`  ${idea.type === 'long' ? '📈' : idea.type === 'hedge' ? '🛡️' : '👁️'} ${idea.title}`);
-      }
-    }
-
-    return sections.join('\n');
-  });
-
-  telegramAlerter.onCommand('/portfolio', async () => {
-    return '📊 Portfolio integration requires Alpaca MCP connection.\nUse the Crucix dashboard or Claude agent for portfolio queries.';
-  });
-
-  // Start polling for bot commands
+  registerCommandHandlers(telegramAlerter, createCommandHandlers(commandContext, MARKUP.telegram), '/');
   telegramAlerter.startPolling(config.telegram.botPollingInterval);
 }
 
-// === Discord Bot ===
 if (discordAlerter.isConfigured) {
   console.log('[Crucix] Discord bot enabled');
-
-  // Reuse the same command handlers as Telegram (DRY)
-  discordAlerter.onCommand('status', async () => {
-    const uptime = Math.floor((Date.now() - startTime) / 1000);
-    const h = Math.floor(uptime / 3600);
-    const m = Math.floor((uptime % 3600) / 60);
-    const sourcesOk = currentData?.meta?.sourcesOk || 0;
-    const sourcesTotal = currentData?.meta?.sourcesQueried || 0;
-    const sourcesFailed = currentData?.meta?.sourcesFailed || 0;
-    const llmStatus = llmProvider?.isConfigured ? `✅ ${llmProvider.name}` : '❌ Disabled';
-    const nextSweep = lastSweepTime
-      ? new Date(new Date(lastSweepTime).getTime() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()
-      : 'pending';
-
-    return [
-      `**🖥️ CRUCIX STATUS**\n`,
-      `Uptime: ${h}h ${m}m`,
-      `Last sweep: ${lastSweepTime ? new Date(lastSweepTime).toLocaleTimeString() + ' UTC' : 'never'}`,
-      `Next sweep: ${nextSweep} UTC`,
-      `Sweep in progress: ${sweepInProgress ? '🔄 Yes' : '⏸️ No'}`,
-      `Sources: ${sourcesOk}/${sourcesTotal} OK${sourcesFailed > 0 ? ` (${sourcesFailed} failed)` : ''}`,
-      `LLM: ${llmStatus}`,
-      `SSE clients: ${sseClients.size}`,
-      `Dashboard: ${config.publicUrl || `http://localhost:${config.port}`}`,
-    ].join('\n');
-  });
-
-  discordAlerter.onCommand('sweep', async () => {
-    if (sweepInProgress) return '🔄 Sweep already in progress. Please wait.';
-    runSweepCycle().catch(err => console.error('[Crucix] Manual sweep failed:', err.message));
-    return '🚀 Manual sweep triggered. You\'ll receive alerts if anything significant is detected.';
-  });
-
-  discordAlerter.onCommand('brief', async () => {
-    if (!currentData) return '⏳ No data yet — waiting for first sweep to complete.';
-
-    const tg = currentData.tg || {};
-    const energy = currentData.energy || {};
-    const metals = currentData.metals || {};
-    const delta = memory.getLastDelta();
-    const ideas = (currentData.ideas || []).slice(0, 3);
-
-    const sections = [`**📋 CRUCIX BRIEF**\n_${new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC_\n`];
-
-    if (delta?.summary) {
-      const dirEmoji = { 'risk-off': '📉', 'risk-on': '📈', 'mixed': '↔️' }[delta.summary.direction] || '↔️';
-      sections.push(`${dirEmoji} Direction: **${delta.summary.direction.toUpperCase()}** | ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical\n`);
-    }
-
-    const vix = currentData.fred?.find(f => f.id === 'VIXCLS');
-    const hy = currentData.fred?.find(f => f.id === 'BAMLH0A0HYM2');
-    if (vix || energy.wti || metals.gold || metals.silver) {
-      sections.push(`📊 VIX: ${vix?.value || '--'} | WTI: $${energy.wti || '--'} | Brent: $${energy.brent || '--'}`);
-      sections.push(`   Gold: $${metals.gold || '--'} | Silver: $${metals.silver || '--'}${hy ? ` | HY Spread: ${hy.value}` : ''}`);
-      sections.push(`   NatGas: $${energy.natgas || '--'}`);
-      sections.push('');
-    }
-
-    if (tg.urgent?.length > 0) {
-      sections.push(`📡 OSINT: ${tg.urgent.length} urgent signals, ${tg.posts || 0} total posts`);
-      for (const p of tg.urgent.slice(0, 2)) {
-        sections.push(`  • ${(p.text || '').substring(0, 80)}`);
-      }
-      sections.push('');
-    }
-
-    if (ideas.length > 0) {
-      sections.push(`**💡 Top Ideas:**`);
-      for (const idea of ideas) {
-        sections.push(`  ${idea.type === 'long' ? '📈' : idea.type === 'hedge' ? '🛡️' : '👁️'} ${idea.title}`);
-      }
-    }
-
-    return sections.join('\n');
-  });
-
-  discordAlerter.onCommand('portfolio', async () => {
-    return '📊 Portfolio integration requires Alpaca MCP connection.\nUse the Crucix dashboard or Claude agent for portfolio queries.';
-  });
-
-  // Start the Discord bot (non-blocking — connection happens async)
+  registerCommandHandlers(discordAlerter, createCommandHandlers(commandContext, MARKUP.discord));
+  // Non-blocking — connection happens async
   discordAlerter.start().catch(err => {
     console.error('[Crucix] Discord bot startup failed (non-fatal):', err.message);
   });
