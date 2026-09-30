@@ -30,23 +30,80 @@ const SYMBOLS = {
   '^VIX': 'VIX',
 };
 
+// Every symbol the dashboard shows — also the allowlist for on-demand history
+export const MARKET_SYMBOLS = Object.keys(SYMBOLS);
+
+// History ranges offered by the dashboard chart → Yahoo range/interval
+export const HISTORY_RANGES = {
+  '1d':  { range: '1d',  interval: '5m' },
+  '5d':  { range: '5d',  interval: '30m' },
+  '1mo': { range: '1mo', interval: '1d' },
+  '6mo': { range: '6mo', interval: '1d' },
+  '1y':  { range: '1y',  interval: '1d' },
+};
+
+async function fetchChart(symbol, range, interval) {
+  const url = `${BASE}/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false`;
+  const data = await safeFetch(url, {
+    timeout: 8000,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    },
+  });
+  if (data?.error) throw new Error(data.error);
+  return data?.chart?.result?.[0] || null;
+}
+
+// Chart result → [{ t: epochMs, close }], skipping gaps
+export function parseChartPoints(result) {
+  const closes = result?.indicators?.quote?.[0]?.close || [];
+  const timestamps = result?.timestamp || [];
+  const points = [];
+  for (let i = 0; i < timestamps.length; i++) {
+    if (closes[i] != null) points.push({ t: timestamps[i] * 1000, close: Math.round(closes[i] * 100) / 100 });
+  }
+  return points;
+}
+
+/**
+ * On-demand price history for one dashboard symbol.
+ * @param {string} symbol - must be in MARKET_SYMBOLS
+ * @param {string} rangeKey - must be a HISTORY_RANGES key
+ */
+export async function fetchHistory(symbol, rangeKey) {
+  if (!MARKET_SYMBOLS.includes(symbol)) throw new Error(`Unknown symbol: ${symbol}`);
+  const spec = HISTORY_RANGES[rangeKey];
+  if (!spec) throw new Error(`Unknown range: ${rangeKey}`);
+
+  const result = await fetchChart(symbol, spec.range, spec.interval);
+  if (!result) throw new Error(`No chart data for ${symbol}`);
+
+  const points = parseChartPoints(result);
+  const closes = points.map(p => p.close);
+  const first = closes[0] ?? null;
+  const last = closes[closes.length - 1] ?? null;
+  return {
+    symbol,
+    name: SYMBOLS[symbol],
+    range: rangeKey,
+    currency: result.meta?.currency || 'USD',
+    points,
+    first,
+    last,
+    high: closes.length ? Math.max(...closes) : null,
+    low: closes.length ? Math.min(...closes) : null,
+    changePct: first ? Math.round(((last - first) / first) * 10000) / 100 : null,
+  };
+}
+
 async function fetchQuote(symbol) {
   try {
-    const url = `${BASE}/${encodeURIComponent(symbol)}?range=5d&interval=1d&includePrePost=false`;
-    const data = await safeFetch(url, {
-      timeout: 8000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-    });
-
-    const result = data?.chart?.result?.[0];
+    const result = await fetchChart(symbol, '5d', '1d');
     if (!result) return null;
 
     const meta = result.meta || {};
     const quotes = result.indicators?.quote?.[0] || {};
     const closes = quotes.close || [];
-    const timestamps = result.timestamp || [];
 
     // Get current price and previous close
     const price = meta.regularMarketPrice ?? closes[closes.length - 1];
@@ -55,15 +112,10 @@ async function fetchQuote(symbol) {
     const changePct = prevClose ? (change / prevClose) * 100 : 0;
 
     // Build 5-day history
-    const history = [];
-    for (let i = 0; i < timestamps.length; i++) {
-      if (closes[i] != null) {
-        history.push({
-          date: new Date(timestamps[i] * 1000).toISOString().split('T')[0],
-          close: Math.round(closes[i] * 100) / 100,
-        });
-      }
-    }
+    const history = parseChartPoints(result).map(p => ({
+      date: new Date(p.t).toISOString().split('T')[0],
+      close: p.close,
+    }));
 
     return {
       symbol,

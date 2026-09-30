@@ -18,6 +18,8 @@ import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
 import { MARKUP, createCommandHandlers, registerCommandHandlers } from './lib/alerts/commands.mjs';
 import { aisCollector, aisDisabled } from './lib/maritime/ais-collector.mjs';
+import { MARKET_SYMBOLS, HISTORY_RANGES } from './apis/sources/yfinance.mjs';
+import { createHistoryCache } from './lib/markets/history.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -122,6 +124,23 @@ app.get('/api/health', (req, res) => {
       return { state, vessels, messages, lastMessageAt, lastError };
     })(),
   });
+});
+
+// API: on-demand price history for the dashboard's expanded market charts.
+// Only symbols the dashboard already shows are allowed, so this can't be used as an open proxy.
+const historyCache = createHistoryCache();
+app.get('/api/history', async (req, res) => {
+  const symbol = String(req.query.symbol || '');
+  const range = String(req.query.range || '');
+  if (!MARKET_SYMBOLS.includes(symbol) || !Object.hasOwn(HISTORY_RANGES, range)) {
+    return res.status(400).json({ error: 'Unknown symbol or range' });
+  }
+  try {
+    res.json(await historyCache.get(symbol, range));
+  } catch (err) {
+    console.error(`[Crucix] History ${symbol} ${range} failed:`, err.message);
+    res.status(502).json({ error: 'History unavailable' });
+  }
 });
 
 // API: available locales

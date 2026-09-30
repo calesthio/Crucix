@@ -169,6 +169,32 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .mc .mbar{height:3px;margin-top:8px;background:rgba(255,255,255,0.06);border-radius:1px;overflow:hidden}
 .mc .mbar span{display:block;height:100%;border-radius:1px;background:linear-gradient(90deg,rgba(68,204,255,0.4),var(--accent))}
 .spark{display:flex;align-items:flex-end;gap:2px;height:24px;margin-top:6px}
+.mc[data-chart]{cursor:pointer;transition:border-color 0.2s,background 0.2s}
+.mc[data-chart]:hover,.mc[data-chart]:focus-visible{border-color:var(--border-bright);background:rgba(100,240,200,0.04);outline:none}
+.lp-macro.mkt-focused .mkt-cards{display:none}
+.lp-macro:not(.mkt-focused) .mkt-detail{display:none}
+.mkt-detail{display:flex;flex-direction:column}
+.mkt-back{align-self:flex-start;font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--dim);background:none;border:1px solid var(--border);padding:3px 8px;cursor:pointer;margin-bottom:10px}
+.mkt-back:hover,.mkt-back:focus-visible{color:var(--accent);border-color:var(--accent);outline:none}
+.mkt-title{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.mkt-name{font-family:var(--mono);font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text)}
+.mkt-sym,.mkt-note{font-family:var(--mono);font-size:9px;color:var(--dim)}
+.mkt-stats{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:6px 0 8px;font-family:var(--mono)}
+.mkt-price{font-size:22px;font-weight:600;color:var(--text)}
+.mkt-day,.mkt-range-chg{font-size:10px}
+.mkt-range{display:flex;gap:3px;margin-bottom:8px}
+.mkt-range button{font-family:var(--mono);font-size:9px;padding:3px 8px;border:1px solid var(--border);background:rgba(0,0,0,0.3);color:var(--dim);cursor:pointer}
+.mkt-range button:hover:not(:disabled){color:var(--accent);border-color:var(--accent)}
+.mkt-range button.active{color:#03140d;background:var(--accent);border-color:var(--accent)}
+.mkt-range button:disabled{opacity:0.3;cursor:default}
+.mkt-chart{position:relative;height:280px}
+.mkt-chart svg{display:block;touch-action:pan-y}
+.mkt-chart.loading::after{content:attr(data-loading);position:absolute;top:4px;right:6px;font-family:var(--mono);font-size:9px;color:var(--dim)}
+.mkt-axis text{font-family:var(--mono);font-size:9px;fill:var(--dim)}
+.mkt-axis path,.mkt-axis line{stroke:rgba(255,255,255,0.08)}
+.mkt-tip{position:absolute;pointer-events:none;font-family:var(--mono);font-size:10px;color:var(--text);background:rgba(8,12,16,0.92);border:1px solid var(--border-bright);padding:3px 6px;white-space:nowrap;transform:translate(-50%,-120%);display:none}
+.mkt-empty{display:flex;align-items:center;justify-content:center;height:100%;min-height:160px;font-family:var(--mono);font-size:10px;color:var(--dim);text-align:center}
+.mkt-hl{display:flex;gap:14px;font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:6px;min-height:12px}
 .spark-bar{width:6px;background:linear-gradient(to top,rgba(100,240,200,0.3),var(--accent));border-radius:1px 1px 0 0;transition:height 0.3s}
 .signal-row{padding:8px 10px;border-left:2px solid rgba(100,240,200,0.2);margin-bottom:4px;background:rgba(255,255,255,0.02)}
 .signal-row strong{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:2px}
@@ -298,6 +324,7 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
   .leg-item{font-size:8px}
   .lower .lp-ticker,.lower .lp-osint,.lower .lp-macro,.lower .lp-ideas{flex:1 1 100%;max-width:none}
   .metrics-row{grid-template-columns:repeat(2,1fr)}
+  .mkt-chart{height:200px}
   .src-grid{grid-template-columns:repeat(2,1fr)}
   .glossary-panel{top:auto;right:0;left:0;bottom:0;width:100%;max-height:min(72vh,720px);border-left:none;border-right:none;border-bottom:none}
 }
@@ -1373,7 +1400,7 @@ function renderLower(){
       : isIndex
         ? q.price.toLocaleString(undefined, {maximumFractionDigits: 2})
         : `$${q.price}`;
-    return `<div class="mc"><div class="ml">${q.name||q.symbol}</div><span class="mv" style="color:${clr}">${price}</span><span class="ms" style="color:${clr}">${arrow} ${q.changePct>=0?'+':''}${q.changePct}%</span></div>`;
+    return `<div class="mc" data-chart="sym:${escAttr(q.symbol)}" role="button" tabindex="0"><div class="ml">${q.name||q.symbol}</div><span class="mv" style="color:${clr}">${price}</span><span class="ms" style="color:${clr}">${arrow} ${q.changePct>=0?'+':''}${q.changePct}%</span></div>`;
   };
 
   // VIX from Yahoo Finance live data (fallback to FRED)
@@ -1385,16 +1412,16 @@ function renderLower(){
   const dayMove = (pct) => pct != null ? `${pct>=0?'+':''}${pct}% today` : '';
 
   const metrics=[
-    {l:'WTI Crude',v:`$${D.energy.wti}`,s:'$/bbl',p:70},
-    {l:'Brent',v:`$${D.energy.brent}`,s:'$/bbl',p:75},
-    {l:'Nat Gas',v:`$${D.energy.natgas||'--'}`,s:'$/MMBtu',p:30},
-    {l:'Gold',v:fmtMarketPrice(metals.gold),s:dayMove(metals.goldChangePct)||'COMEX proxy',p:58},
-    {l:'Silver',v:fmtMarketPrice(metals.silver),s:dayMove(metals.silverChangePct)||'COMEX proxy',p:54},
-    {l:'VIX',v:vixVal?vixVal.toFixed(1):'--',s:vixChg||'volatility index',p:vixVal?Math.min(vixVal*2.5,100):30},
-    {l:'Fed Funds',v:ff?`${ff.value}%`:'--',s:ff?.date||'',p:36},
-    {l:'GSCPI',v:gscpi?gscpi.value.toFixed(2):'--',s:gscpi?.interpretation||'',p:49},
-    {l:'CPI MoM',v:cpi?`+${cpi.momChangePct?.toFixed(2)}%`:'--',s:cpi?.date||'',p:37},
-    {l:'Unemployment',v:ue?`${ue.value}%`:'--',s:ue?`${ue.momChange>0?'+':''}${ue.momChange} vs prior`:'',p:44},
+    {k:'sym:CL=F',l:'WTI Crude',v:`$${D.energy.wti}`,s:'$/bbl',p:70},
+    {k:'sym:BZ=F',l:'Brent',v:`$${D.energy.brent}`,s:'$/bbl',p:75},
+    {k:'sym:NG=F',l:'Nat Gas',v:`$${D.energy.natgas||'--'}`,s:'$/MMBtu',p:30},
+    {k:'sym:GC=F',l:'Gold',v:fmtMarketPrice(metals.gold),s:dayMove(metals.goldChangePct)||'COMEX proxy',p:58},
+    {k:'sym:SI=F',l:'Silver',v:fmtMarketPrice(metals.silver),s:dayMove(metals.silverChangePct)||'COMEX proxy',p:54},
+    {k:'sym:^VIX',l:'VIX',v:vixVal?vixVal.toFixed(1):'--',s:vixChg||'volatility index',p:vixVal?Math.min(vixVal*2.5,100):30},
+    {k:'ser:DFF',l:'Fed Funds',v:ff?`${ff.value}%`:'--',s:ff?.date||'',p:36},
+    {k:'ser:gscpi',l:'GSCPI',v:gscpi?gscpi.value.toFixed(2):'--',s:gscpi?.interpretation||'',p:49},
+    {k:'ser:cpi',l:'CPI MoM',v:cpi?`+${cpi.momChangePct?.toFixed(2)}%`:'--',s:cpi?.date||'',p:37},
+    {k:'ser:ue',l:'Unemployment',v:ue?`${ue.value}%`:'--',s:ue?`${ue.momChange>0?'+':''}${ue.momChange} vs prior`:'',p:44},
   ];
 
   // Attach sparklines from FRED recent data
@@ -1467,8 +1494,9 @@ function renderLower(){
       </div>
     </div>`;
   const osintPanel = mobile ? buildOsintPanel('lp-osint', 240) : '';
-  const macroPanel = `<div class="g-panel lp-macro">
+  const macroPanel = `<div class="g-panel lp-macro${macroFocus?' mkt-focused':''}">
       <div class="sec-head"><h3>${t('panels.macroMarkets','Macro + Markets')}</h3><span class="badge">${mkt.timestamp?t('badges.live','LIVE'):t('badges.delayed','DELAYED')}</span></div>
+      <div class="mkt-cards">
       ${hasMarkets?`<div style="margin-bottom:8px">
         <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">INDEXES</div>
         <div class="metrics-row">${indexCards}</div>
@@ -1481,13 +1509,15 @@ function renderLower(){
         <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">ENERGY + METALS + MACRO</div>
         <div class="metrics-row">${metrics.map(m=>{
           const sparkSvg = m.spark ? mkSparkSvg(m.spark, m.sparkUp) : '';
-          return `<div class="mc"><div class="ml">${m.l}</div><span class="mv">${m.v}${sparkSvg}</span><span class="ms">${m.s}</span><div class="mbar"><span style="width:${m.p}%"></span></div></div>`;
+          return `<div class="mc" data-chart="${escAttr(m.k)}" role="button" tabindex="0"><div class="ml">${m.l}</div><span class="mv">${m.v}${sparkSvg}</span><span class="ms">${m.s}</span><div class="mbar"><span style="width:${m.p}%"></span></div></div>`;
         }).join('')}</div>
       </div>
       <div style="margin-top:6px">
         <div style="font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:4px">WTI 5-DAY</div>
         <div class="spark">${sparkHtml}</div>
       </div>
+      </div>
+      <div class="mkt-detail" id="mktDetail"></div>
     </div>`;
   const ideasPanel = `<div class="g-panel lp-ideas">
       <div class="sec-head"><h3>${t('panels.tradeIdeas','Leverageable Ideas')}</h3>${D.ideasSource==='llm'?'<span class="ideas-src llm">'+t('ideas.aiEnhanced','AI ENHANCED')+'</span>':D.ideasSource==='disabled'?'<span class="ideas-src static">'+t('ideas.llmOff','LLM OFF')+'</span>':'<span class="ideas-src static">'+t('ideas.pending','PENDING')+'</span>'}</div>
@@ -1496,6 +1526,7 @@ function renderLower(){
     </div>`;
   document.getElementById('lowerGrid').innerHTML=`${tickerPanel}${osintPanel}${macroPanel}${ideasPanel}`;
   applyAllFeedStates();
+  if(macroFocus) renderMarketDetail();
 }
 
 // === RIGHT RAIL ===
@@ -1627,6 +1658,259 @@ document.addEventListener('click', e => {
   else if (btn.dataset.act === 'faster' && idx < FEED_RATES.length - 1) state.rate = FEED_RATES[idx + 1];
   saveFeedState();
   applyFeedState(feedId);
+});
+
+// === MARKET CHARTS (expanded view inside Macro + Markets) ===
+const MKT_RANGES = [['1d','1D'],['5d','5D'],['1mo','1M'],['6mo','6M'],['1y','1Y']];
+const MKT_DEFAULT_RANGE = '5d';
+const canFetchHistory = location.protocol !== 'file:';
+const mktHistoryCache = new Map();   // `${symbol}|${range}` → /api/history payload
+const mktHistoryPending = new Set();
+const mktHistoryFailed = new Set();
+let macroFocus = null;               // { key: 'sym:^GSPC' | 'ser:DFF', range }
+
+function escAttr(v){ return String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function findMarketQuote(sym){
+  const m = D.markets || {};
+  for (const group of ['indexes','crypto','commodities','rates']) {
+    const q = (m[group] || []).find(x => x.symbol === sym);
+    if (q) return q;
+  }
+  if (sym === '^VIX' && m.vix) return { symbol:'^VIX', name:'VIX', price:m.vix.value, changePct:m.vix.changePct, history:m.vix.history };
+  return null;
+}
+
+function fmtMarketNum(v){
+  if (v == null || !Number.isFinite(v)) return '--';
+  return v.toLocaleString(undefined, { maximumFractionDigits: Math.abs(v) >= 1000 ? 0 : 2 });
+}
+
+// FRED/BLS-backed cards: whatever observations the sweep already holds (FRED `recent` is newest-first)
+const MACRO_SERIES = {
+  DFF: () => { const f = D.fred.find(x => x.id === 'DFF'); return { name:'Fed Funds Rate', value:f ? `${f.value}%` : '--', note:f?.date || '', points:(f?.recent || []).slice().reverse().map(v => ({ t:null, close:v })) }; },
+  gscpi: () => ({ name:'GSCPI', value:D.gscpi ? D.gscpi.value.toFixed(2) : '--', note:[D.gscpi?.date, D.gscpi?.interpretation].filter(Boolean).join(' · '), points:[] }),
+  cpi: () => { const c = D.bls.find(b => b.id === 'CUUR0000SA0'); return { name:'CPI MoM', value:c?.momChangePct != null ? `+${c.momChangePct.toFixed(2)}%` : '--', note:c?.date || '', points:[] }; },
+  ue: () => { const u = D.bls.find(b => b.id === 'LNS14000000'); return { name:'Unemployment Rate', value:u ? `${u.value}%` : '--', note:u?.date || '', points:[] }; },
+};
+
+function describeMarketKey(key){
+  const kind = key.slice(0, 3), id = key.slice(4);
+  if (kind === 'ser') return MACRO_SERIES[id]?.() || null;
+  const q = findMarketQuote(id);
+  if (!q) return null;
+  const plain = id.startsWith('^');
+  const hist = (D.markets?.history?.[id] || q.history || []).map(h => ({ t:Date.parse(h.date), close:h.close })).filter(p => Number.isFinite(p.t));
+  return {
+    symbol: id,
+    name: q.name || id,
+    value: q.price != null ? `${plain ? '' : '$'}${fmtMarketNum(q.price)}` : '--',
+    dayChangePct: q.changePct,
+    points: hist,
+  };
+}
+
+function openMarketChart(key){
+  macroFocus = { key, range: MKT_DEFAULT_RANGE };
+  document.querySelector('.lp-macro')?.classList.add('mkt-focused');
+  renderMarketDetail();
+  document.querySelector('#mktDetail .mkt-back')?.focus({ preventScroll: true });
+  if (!lowPerfMode && typeof gsap !== 'undefined') gsap.from('#mktDetail', { opacity:0, y:6, duration:0.25, ease:'power1.out' });
+}
+
+function closeMarketChart(){
+  const key = macroFocus?.key;
+  macroFocus = null;
+  document.querySelector('.lp-macro')?.classList.remove('mkt-focused');
+  const detail = document.getElementById('mktDetail');
+  if (detail) detail.innerHTML = '';
+  if (key) document.querySelector(`.lp-macro .mc[data-chart="${CSS.escape(key)}"]`)?.focus({ preventScroll: true });
+}
+
+function renderMarketDetail(){
+  const detail = document.getElementById('mktDetail');
+  if (!detail || !macroFocus) return;
+  const info = describeMarketKey(macroFocus.key);
+  if (!info) { closeMarketChart(); return; }
+
+  const day = info.dayChangePct != null
+    ? `<span class="mkt-day" style="color:${info.dayChangePct >= 0 ? 'var(--accent)' : 'var(--warn)'}">${info.dayChangePct >= 0 ? '&#9650; +' : '&#9660; '}${info.dayChangePct}% ${escAttr(t('markets.today','today'))}</span>` : '';
+  const ranges = info.symbol ? `<div class="mkt-range" role="group" aria-label="${escAttr(t('markets.range','Range'))}">${MKT_RANGES.map(([r, label]) => {
+    const offline = !canFetchHistory && r !== MKT_DEFAULT_RANGE;
+    return `<button type="button" data-range="${r}" class="${r === macroFocus.range ? 'active' : ''}"${offline ? ` disabled title="${escAttr(t('markets.needsServer','Live history needs the server'))}"` : ''}>${label}</button>`;
+  }).join('')}</div>` : '';
+
+  detail.innerHTML = `
+    <button type="button" class="mkt-back">&larr; ${escAttr(t('markets.back','All markets'))}</button>
+    <div class="mkt-title"><span class="mkt-name">${escAttr(info.name)}</span>${info.symbol ? `<span class="mkt-sym">${escAttr(info.symbol)}</span>` : ''}${info.note ? `<span class="mkt-note">${escAttr(info.note)}</span>` : ''}</div>
+    <div class="mkt-stats"><span class="mkt-price">${escAttr(info.value)}</span>${day}<span class="mkt-range-chg" id="mktRangeChg"></span></div>
+    ${ranges}
+    <div class="mkt-chart" id="mktChart" data-loading="${escAttr(t('markets.loading','LOADING…'))}"></div>
+    <div class="mkt-hl" id="mktHL"></div>`;
+  drawFocusedChart();
+}
+
+function drawFocusedChart(){
+  const el = document.getElementById('mktChart');
+  if (!el || !macroFocus) return;
+  const info = describeMarketKey(macroFocus.key);
+  if (!info) return;
+  const { range } = macroFocus;
+  let points = info.points;
+  let live = null;
+
+  if (info.symbol) {
+    const cacheKey = `${info.symbol}|${range}`;
+    live = mktHistoryCache.get(cacheKey) || null;
+    if (live) points = live.points;
+    else if (canFetchHistory && !mktHistoryFailed.has(cacheKey)) loadMarketHistory(info.symbol, range);
+    el.classList.toggle('loading', !live && mktHistoryPending.has(cacheKey));
+  }
+
+  const intraday = !!live && (range === '1d' || range === '5d');
+  const first = points[0]?.close, last = points[points.length - 1]?.close;
+  const up = points.length > 1 ? last >= first : (info.dayChangePct ?? 0) >= 0;
+  drawMarketChart(el, points, { up, range: intraday ? range : 'daily' });
+
+  const chg = document.getElementById('mktRangeChg');
+  const hl = document.getElementById('mktHL');
+  if (points.length > 1 && first) {
+    const pct = ((last - first) / first) * 100;
+    const label = info.symbol ? MKT_RANGES.find(r => r[0] === range)?.[1] : `${points.length} ${t('markets.obs','obs')}`;
+    chg.style.color = pct >= 0 ? 'var(--accent)' : 'var(--warn)';
+    chg.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% (${last - first >= 0 ? '+' : ''}${fmtMarketNum(last - first)}) ${t('markets.over','over')} ${label}`;
+    const closes = points.map(p => p.close);
+    hl.textContent = `${t('markets.high','High')} ${fmtMarketNum(Math.max(...closes))}   ${t('markets.low','Low')} ${fmtMarketNum(Math.min(...closes))}`;
+  } else {
+    chg.textContent = '';
+    hl.textContent = '';
+  }
+  if (info.symbol && mktHistoryFailed.has(`${info.symbol}|${range}`)) hl.textContent = t('markets.unavailable','Live history unavailable — showing latest sweep');
+}
+
+async function loadMarketHistory(symbol, range){
+  const cacheKey = `${symbol}|${range}`;
+  if (mktHistoryPending.has(cacheKey)) return;
+  mktHistoryPending.add(cacheKey);
+  try {
+    const res = await fetch(`/api/history?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(range)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    mktHistoryCache.set(cacheKey, await res.json());
+  } catch (err) {
+    mktHistoryFailed.add(cacheKey);
+    setTimeout(() => mktHistoryFailed.delete(cacheKey), 60000); // allow a retry later
+  } finally {
+    mktHistoryPending.delete(cacheKey);
+  }
+  if (macroFocus?.key === `sym:${symbol}` && macroFocus.range === range) drawFocusedChart();
+}
+
+function drawMarketChart(el, points, { up, range }){
+  el.querySelector('svg')?.remove();
+  el.querySelector('.mkt-tip')?.remove();
+  el.querySelector('.mkt-empty')?.remove();
+  if (points.length < 2 || typeof d3 === 'undefined') {
+    const empty = document.createElement('div');
+    empty.className = 'mkt-empty';
+    empty.textContent = t('markets.noHistory','Not enough history yet');
+    el.appendChild(empty);
+    return;
+  }
+
+  const W = Math.max(el.clientWidth, 200), H = Math.max(el.clientHeight, 160);
+  const m = { t:10, r:12, b:22, l:52 };
+  const hasTime = points.every(p => p.t != null);
+  // Intraday ranges plot in trading time (by point index) so overnight/weekend closes don't draw long diagonals
+  const byIndex = !hasTime || range === '1d' || range === '5d';
+  const xs = (byIndex ? d3.scaleLinear().domain([0, points.length - 1]) : d3.scaleTime().domain(d3.extent(points, p => p.t))).range([m.l, W - m.r]);
+  const xOf = (p, i) => byIndex ? xs(i) : xs(p.t);
+  const [lo, hi] = d3.extent(points, p => p.close);
+  const pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.01 || 1;
+  const ys = d3.scaleLinear().domain([lo - pad, hi + pad]).range([H - m.b, m.t]);
+  const color = up ? 'var(--accent)' : 'var(--warn)';
+
+  const svg = d3.select(el).append('svg').attr('width', W).attr('height', H).attr('viewBox', `0 0 ${W} ${H}`);
+  const grad = svg.append('defs').append('linearGradient').attr('id', 'mktGrad').attr('x1', 0).attr('x2', 0).attr('y1', 0).attr('y2', 1);
+  grad.append('stop').attr('offset', '0%').style('stop-color', color).style('stop-opacity', 0.28);
+  grad.append('stop').attr('offset', '100%').style('stop-color', color).style('stop-opacity', 0);
+
+  const maxTicks = Math.max(2, Math.floor(W / 110));
+  let xAxis = null;
+  if (hasTime && !byIndex) {
+    xAxis = d3.axisBottom(xs).ticks(maxTicks).tickFormat(range === 'daily' && points.length > 150 ? d3.timeFormat("%b '%y") : d3.timeFormat('%d %b'));
+  } else if (hasTime) {
+    const dayKey = i => new Date(points[i].t).toDateString();
+    let idx = range === '5d'
+      ? points.map((_, i) => i).filter(i => i === 0 || dayKey(i) !== dayKey(i - 1))
+      : points.map((_, i) => i).filter(i => i % Math.ceil(points.length / maxTicks) === 0);
+    if (idx.length > maxTicks) idx = idx.filter((_, k) => k % Math.ceil(idx.length / maxTicks) === 0);
+    const fmt = d3.timeFormat(range === '5d' ? '%a %d' : '%H:%M');
+    xAxis = d3.axisBottom(xs).tickValues(idx).tickFormat(i => fmt(new Date(points[i].t)));
+  }
+  if (xAxis) {
+    svg.append('g').attr('class', 'mkt-axis').attr('transform', `translate(0,${H - m.b})`).call(xAxis.tickSizeOuter(0));
+  }
+  svg.append('g').attr('class', 'mkt-axis').attr('transform', `translate(${m.l},0)`)
+    .call(d3.axisLeft(ys).ticks(4).tickFormat(fmtMarketNum).tickSize(-(W - m.l - m.r)))
+    .call(g => g.select('.domain').remove())
+    .call(g => g.selectAll('.tick line').attr('stroke-dasharray', '2,3'));
+
+  svg.append('path').datum(points).attr('fill', 'url(#mktGrad)')
+    .attr('d', d3.area().x(xOf).y0(H - m.b).y1(p => ys(p.close)));
+  svg.append('path').datum(points).attr('fill', 'none').style('stroke', color).attr('stroke-width', 1.5)
+    .attr('d', d3.line().x(xOf).y(p => ys(p.close)));
+
+  // Hover / touch crosshair
+  const focus = svg.append('g').style('display', 'none');
+  focus.append('line').attr('y1', m.t).attr('y2', H - m.b).style('stroke', 'var(--border-bright)').attr('stroke-dasharray', '3,3');
+  focus.append('circle').attr('r', 3.5).style('fill', color);
+  const tip = document.createElement('div');
+  tip.className = 'mkt-tip';
+  el.appendChild(tip);
+  const fmtTip = range === '1d' || range === '5d' ? d3.timeFormat('%a %d %b %H:%M') : d3.timeFormat('%a %d %b %Y');
+  const bisect = d3.bisector(p => p.t).center;
+
+  svg.append('rect').attr('x', m.l).attr('y', m.t).attr('width', W - m.l - m.r).attr('height', H - m.t - m.b)
+    .attr('fill', 'transparent')
+    .on('pointermove', e => {
+      const [mx] = d3.pointer(e);
+      const i = byIndex ? Math.max(0, Math.min(points.length - 1, Math.round(xs.invert(mx)))) : bisect(points, xs.invert(mx));
+      const p = points[i];
+      const x = xOf(p, i), y = ys(p.close);
+      focus.style('display', null);
+      focus.select('line').attr('x1', x).attr('x2', x);
+      focus.select('circle').attr('cx', x).attr('cy', y);
+      tip.textContent = `${fmtMarketNum(p.close)} · ${hasTime ? fmtTip(new Date(p.t)) : `${t('markets.obs','obs')} ${i + 1}/${points.length}`}`;
+      tip.style.left = `${Math.min(Math.max(x, 60), W - 60)}px`;
+      tip.style.top = `${y}px`;
+      tip.style.display = 'block';
+    })
+    .on('pointerleave', () => { focus.style('display', 'none'); tip.style.display = 'none'; });
+}
+
+document.addEventListener('click', e => {
+  const card = e.target.closest('.lp-macro .mc[data-chart]');
+  if (card) { openMarketChart(card.dataset.chart); return; }
+  if (e.target.closest('.mkt-back')) { closeMarketChart(); return; }
+  const rangeBtn = e.target.closest('.mkt-range button');
+  if (rangeBtn && !rangeBtn.disabled && macroFocus) {
+    macroFocus.range = rangeBtn.dataset.range;
+    document.querySelectorAll('.mkt-range button').forEach(b => b.classList.toggle('active', b === rangeBtn));
+    drawFocusedChart();
+  }
+});
+
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('.lp-macro .mc[data-chart]')) {
+    e.preventDefault();
+    openMarketChart(e.target.dataset.chart);
+  }
+});
+
+let mktResizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(mktResizeTimer);
+  mktResizeTimer = setTimeout(() => { if (macroFocus) drawFocusedChart(); }, 150);
 });
 
 // === HELPERS ===
@@ -1834,7 +2118,11 @@ function init(){
     }
   });
   document.addEventListener('keydown',e=>{
-    if(e.key === 'Escape') closeGlossary();
+    if(e.key === 'Escape'){
+      const glossaryOpen = document.getElementById('glossaryOverlay')?.classList.contains('show');
+      if(macroFocus && !glossaryOpen) closeMarketChart();
+      else closeGlossary();
+    }
   });
   syncResponsiveLayout(true);
 }

@@ -361,5 +361,18 @@
     "faster": "Faster",
     "pause": "Pause",
     "resume": "Resume"
+  },
+  "markets": {
+    "back": "All markets",
+    "range": "Range",
+    "today": "today",
+    "over": "over",
+    "high": "High",
+    "low": "Low",
+    "obs": "obs",
+    "loading": "LOADING…",
+    "noHistory": "Not enough history yet",
+    "needsServer": "Live history needs the server",
+    "unavailable": "Live history unavailable — showing latest sweep"
   }
 }

@@ -569,7 +569,7 @@ export async function synthesize(data) {
     })),
     rates: (yfData.rates || []).map(q => ({
       symbol: q.symbol, name: q.name, price: q.price,
-      change: q.change, changePct: q.changePct
+      change: q.change, changePct: q.changePct, history: q.history || []
     })),
     commodities: (yfData.commodities || []).map(q => ({
       symbol: q.symbol, name: q.name, price: q.price,
@@ -577,13 +577,16 @@ export async function synthesize(data) {
     })),
     crypto: (yfData.crypto || []).map(q => ({
       symbol: q.symbol, name: q.name, price: q.price,
-      change: q.change, changePct: q.changePct
+      change: q.change, changePct: q.changePct, history: q.history || []
     })),
     vix: yfQuotes['^VIX'] ? {
       value: yfQuotes['^VIX'].price,
       change: yfQuotes['^VIX'].change,
       changePct: yfQuotes['^VIX'].changePct,
+      history: yfQuotes['^VIX'].history || [],
     } : null,
+    // 5-day history for every Yahoo symbol, keyed by symbol (energy/metals cards chart from here)
+    history: Object.fromEntries(Object.values(yfQuotes).filter(q => q?.history?.length).map(q => [q.symbol, q.history])),
     timestamp: yfData.summary?.timestamp || null,
   };
 

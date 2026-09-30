@@ -115,7 +115,7 @@ A self-contained Jarvis-style HUD with:
 - **9 marker types** across both views: fire detections, air traffic, radiation sites, maritime chokepoints, SDR receivers, OSINT events, health alerts, geolocated news, conflict events
 - **Animated 3D flight corridor arcs** between air traffic hotspots and global hubs
 - **Region filters** (World, Americas, Europe, Middle East, Asia Pacific, Africa) — rotates the globe or zooms the flat map
-- **Live market data** — indexes, crypto, energy, commodities via Yahoo Finance (no API key needed)
+- **Live market data** — indexes, crypto, energy, commodities via Yahoo Finance (no API key needed). Click any card in Macro + Markets to expand it into a chart with 1D / 5D / 1M / 6M / 1Y history, hover values, and the change, high and low over the range
 - **Risk gauges** — VIX, high-yield spread, supply chain pressure index
 - **OSINT feed** — English-language posts from 17 Telegram intelligence channels (expandable)
 - **News ticker** — merged RSS + GDELT headlines + Telegram posts, auto-scrolling
@@ -468,6 +468,7 @@ When running `npm run dev`:
 |----------|-------------|
 | `GET /` | Jarvis HUD dashboard |
 | `GET /api/data` | Current synthesized intelligence data (JSON) |
+| `GET /api/history?symbol=^GSPC&range=1mo` | Price history for one dashboard market symbol (`range`: `1d`, `5d`, `1mo`, `6mo`, `1y`). Only the symbols the dashboard shows are allowed; responses are cached for 2–10 minutes |
 | `GET /api/health` | Server status, uptime, source count, LLM status, AIS stream state |
 | `GET /events` | SSE stream for live push updates |
 

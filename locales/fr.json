@@ -361,5 +361,18 @@
     "faster": "Accélérer",
     "pause": "Pause",
     "resume": "Reprendre"
+  },
+  "markets": {
+    "back": "Tous les marchés",
+    "range": "Période",
+    "today": "aujourd'hui",
+    "over": "sur",
+    "high": "Haut",
+    "low": "Bas",
+    "obs": "obs.",
+    "loading": "CHARGEMENT…",
+    "noHistory": "Historique insuffisant",
+    "needsServer": "L'historique en direct nécessite le serveur",
+    "unavailable": "Historique en direct indisponible — dernier balayage affiché"
   }
 }
