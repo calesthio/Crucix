@@ -35,7 +35,7 @@
     "sourceGroup2": "FRED · BLS · EIA · TREASURY · GSCPI",
     "sourceGroup3": "TELEGRAM · SAFECAST · EPA · OMS · OFAC",
     "sourceGroup4": "GDELT · NOAA · BREVETS · BLUESKY · REDDIT",
-    "sourceGroup5": "USGS · BCE · CVE · COPERNICUS · CELESTRAK",
+    "sourceGroup5": "CELESTRAK · SPACE-TRACK · TLE API · YFINANCE · CISA KEV · CLOUDFLARE RADAR",
     "sweepComplete": "SCAN TERMINÉ — {ok}/{total} SOURCES",
     "ok": "OK",
     "acledLayer": "COUCHE CONFLIT ACLED",
@@ -111,7 +111,14 @@
     "weatherAlert": "Alerte Météo",
     "epaRadNet": "EPA RadNet",
     "spaceStation": "Station Spatiale",
-    "gdeltEvent": "Événement GDELT"
+    "gdeltEvent": "Événement GDELT",
+    "toggleIssOrbit": "Afficher ou masquer l’orbite de l’ISS",
+    "issOrbitUnavailable": "Orbite de l’ISS indisponible",
+    "currentPosition": "Position actuelle",
+    "altitude": "Altitude",
+    "orbitPeriod": "Période orbitale",
+    "issPreviousOrbit": "Orbite précédente de l’ISS",
+    "issNextOrbit": "Prochaine orbite de l’ISS"
   },
   "ideas": {
     "confidence": "Confiance",
@@ -252,7 +259,9 @@
     "healthy": "Saine",
     "degraded": "Dégradée",
     "unconfigured": "Non configurée",
-    "failed": "En échec"
+    "failed": "En échec",
+    "close": "Fermer",
+    "noData": "Aucune donnée disponible sur l’état des sources."
   },
   "space": {
     "noActivity": "ACTIVITÉ NORMALE",

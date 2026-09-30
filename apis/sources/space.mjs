@@ -28,6 +28,7 @@ const cacheDir = () => process.env.CELESTRAK_CACHE_DIR || DEFAULT_CACHE_DIR;
 
 let staleGroups = new Set();
 let groupProviders = {};
+let providerObservations = {};
 let celestrakDownUntil = 0;
 let spaceTrackSession = null; // Promise<cookie|null>, shared by the parallel group fetches
 
@@ -63,6 +64,30 @@ const SAT_CATEGORIES = {
 
 // An array of records, or { count } for providers that only report totals
 const usable = data => Array.isArray(data) || Number.isFinite(data?.count);
+
+function observeProvider(provider, { ok = false, error = null, cached = false, stale = false } = {}) {
+  const state = providerObservations[provider] ||= { attempts: 0, successes: 0, errors: [], cached: false, stale: false };
+  if (!cached) state.attempts++;
+  if (ok) state.successes++;
+  if (error) state.errors.push(error);
+  state.cached ||= cached;
+  state.stale ||= stale;
+}
+
+function buildProviderHealth() {
+  const definitions = [['CelesTrak', 'celestrak'], ['Space-Track', 'space-track'], ['TLE API', 'tle-api']];
+  return Object.fromEntries(definitions.map(([name, provider]) => {
+    const state = providerObservations[provider];
+    if (state?.stale) return [name, { status: 'partial', stale: true, message: 'Using stale cached orbital data' }];
+    if (state?.successes && state.errors.length) return [name, { status: 'partial', message: `Partial coverage: ${state.errors.at(-1)}` }];
+    if (state?.successes) return [name, { status: 'active', message: state.cached ? 'Serving fresh cached orbital data' : 'Used this sweep' }];
+    if (provider === 'space-track' && (!process.env.SPACETRACK_USER || !process.env.SPACETRACK_PASSWORD)) {
+      return [name, { status: 'no_credentials', message: 'Optional fallback not configured' }];
+    }
+    if (state?.attempts) return [name, { status: 'error', error: state.errors.at(-1) || 'Provider unavailable' }];
+    return [name, { status: 'standby', message: 'Fallback available; not needed this sweep' }];
+  }));
+}
 
 function readCache(category) {
   try { return JSON.parse(readFileSync(join(cacheDir(), `${category}.json`), 'utf8')); } catch { return null; }
@@ -140,7 +165,10 @@ function recordFromTle({ satelliteId, name, date, line2 }) {
     NORAD_CAT_ID: satelliteId,
     EPOCH: date,
     INCLINATION: parseFloat(line2.slice(8, 16)),
+    RA_OF_ASC_NODE: parseFloat(line2.slice(17, 25)),
     ECCENTRICITY: parseFloat(`0.${line2.slice(26, 33).trim()}`),
+    ARG_OF_PERICENTER: parseFloat(line2.slice(34, 42)),
+    MEAN_ANOMALY: parseFloat(line2.slice(43, 51)),
     MEAN_MOTION: parseFloat(line2.slice(52, 63)),
   };
 }
@@ -167,6 +195,7 @@ export async function getTLEs(category) {
   const cached = readCache(category);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS && usable(cached.data)) {
     groupProviders[category] = cached.provider || 'celestrak';
+    observeProvider(cached.provider || 'celestrak', { ok: true, cached: true });
     return cached.data;
   }
 
@@ -178,16 +207,19 @@ export async function getTLEs(category) {
   ]) {
     const data = await fetchGroup();
     if (usable(data)) {
+      observeProvider(provider, { ok: true });
       writeCache(category, data, provider);
       groupProviders[category] = provider;
       return data;
     }
+    observeProvider(provider, { error: data?.error || 'Provider unavailable' });
     errors.push(data?.error);
   }
 
   if (cached && usable(cached.data)) {
     staleGroups.add(category);
     groupProviders[category] = `${cached.provider || 'celestrak'} (cached)`;
+    observeProvider(cached.provider || 'celestrak', { ok: true, cached: true, stale: true });
     return cached.data;
   }
   return { error: errors.find(e => e && !/not configured|No keyless|skipped/.test(e)) || errors[0] || 'No satellite data available' };
@@ -258,6 +290,11 @@ async function getStationData() {
     inclination: sat.INCLINATION,
     period: sat.PERIOD,
     epoch: sat.EPOCH,
+    raan: num(sat.RA_OF_ASC_NODE),
+    eccentricity: num(sat.ECCENTRICITY),
+    argPerigee: num(sat.ARG_OF_PERICENTER),
+    meanAnomaly: num(sat.MEAN_ANOMALY),
+    meanMotion: num(sat.MEAN_MOTION),
   })).filter(s => s.name);
 
   const iss = stations.find(s => s.name.includes('ISS') || s.noradId === 25544);
@@ -324,6 +361,7 @@ function generateSignals(data) {
 export async function briefing() {
   staleGroups = new Set();
   groupProviders = {};
+  providerObservations = {};
   try {
     const [launches, stations, military, constellations] = await Promise.all([
       getRecentLaunches(),
@@ -340,6 +378,7 @@ export async function briefing() {
         timestamp: new Date().toISOString(),
         status: 'error',
         error: launches.error || stations.error || military.error || 'Failed to fetch space data',
+        providerHealth: buildProviderHealth(),
       };
     }
 
@@ -360,6 +399,7 @@ export async function briefing() {
       constellations: constellations || {},
       signals,
       providers: groupProviders,
+      providerHealth: buildProviderHealth(),
       ...(staleGroups.size ? { stale: true, staleGroups: [...staleGroups] } : {}),
     };
   } catch (e) {
@@ -368,6 +408,7 @@ export async function briefing() {
       timestamp: new Date().toISOString(),
       status: 'error',
       error: e.message,
+      providerHealth: buildProviderHealth(),
     };
   }
 }

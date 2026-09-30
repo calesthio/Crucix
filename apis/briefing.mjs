@@ -107,7 +107,8 @@ const SOURCES = [
   ['Cloudflare-Radar', cloudflareRadar],
 ];
 
-export const SOURCE_COUNT = SOURCES.length;
+// Space is one adapter backed by three independently reported upstream providers.
+export const SOURCE_COUNT = SOURCES.length + 2;
 
 export async function fullBriefing() {
   console.error(`[Crucix] Starting intelligence sweep — ${SOURCE_COUNT} sources...`);
@@ -141,7 +142,7 @@ export async function fullBriefing() {
   };
 
   Object.assign(output.crucix, summarizeSourceHealth(output).counts);
-  console.error(`[Crucix] Sweep complete in ${totalMs}ms — ${output.crucix.sourcesOk}/${sources.length} healthy, ${output.crucix.sourcesDegraded} degraded, ${output.crucix.sourcesUnconfigured} unconfigured, ${output.crucix.sourcesFailed} failed`);
+  console.error(`[Crucix] Sweep complete in ${totalMs}ms — ${output.crucix.sourcesOk}/${output.crucix.sourcesQueried} healthy, ${output.crucix.sourcesDegraded} degraded, ${output.crucix.sourcesUnconfigured} unconfigured, ${output.crucix.sourcesFailed} failed`);
   return output;
 }
 

@@ -15,6 +15,7 @@ import { generateLLMIdeas } from '../lib/llm/ideas.mjs';
 import { summarizeSourceHealth } from '../lib/source-health.mjs';
 import { summarizeCyber } from '../lib/cyber.mjs';
 import { getLocale } from '../lib/i18n.mjs';
+import { buildOrbitTrack } from '../lib/orbit.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -514,6 +515,7 @@ export async function synthesize(data) {
     return { lat: +lat.toFixed(2), lon: +lon.toFixed(2), name: sat.name };
   }
   const issPos = estimateSatPosition(spaceData.iss);
+  const issOrbit = buildOrbitTrack(spaceData.iss);
   const spaceStations = (spaceData.spaceStations || []).map(s => estimateSatPosition(s)).filter(Boolean);
   const space = {
     totalNewObjects: spaceData.totalNewObjects ?? null,
@@ -522,6 +524,7 @@ export async function synthesize(data) {
     constellations: spaceData.constellations || {},
     iss: spaceData.iss || null,
     issPosition: issPos,
+    issOrbit,
     stationPositions: spaceStations.slice(0, 5),
     recentLaunches: (spaceData.recentLaunches || []).slice(0, 10).map(l => ({
       name: l.name, country: l.country, epoch: l.epoch,

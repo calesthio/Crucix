@@ -119,7 +119,10 @@ describe('Space provider fallback', () => {
     const stations = await getTLEs('stations');
     assert.equal(stations[0].OBJECT_NAME, 'ISS (ZARYA)');
     assert.equal(stations[0].INCLINATION, 51.6314);
+    assert.equal(stations[0].RA_OF_ASC_NODE, 140.6663);
     assert.equal(stations[0].ECCENTRICITY, 0.0007036);
+    assert.equal(stations[0].ARG_OF_PERICENTER, 204.8576);
+    assert.equal(stations[0].MEAN_ANOMALY, 155.2074);
     assert.deepEqual(await getTLEs('starlink'), { count: 7000 });
   });
 
@@ -153,6 +156,11 @@ describe('Space briefing', () => {
     assert.equal(result.constellations.starlink, 7000);
     assert.equal(result.militarySatellites, null);
     assert.equal(result.providers.stations, 'tle-api');
+    assert.equal(result.iss.raan, 140.6663);
+    assert.equal(result.iss.meanAnomaly, 155.2074);
+    assert.equal(result.providerHealth.CelesTrak.status, 'error');
+    assert.equal(result.providerHealth['Space-Track'].status, 'no_credentials');
+    assert.equal(result.providerHealth['TLE API'].status, 'partial');
   });
 
   it('marks the briefing stale when a group came from stale cache', async () => {

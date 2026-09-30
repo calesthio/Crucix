@@ -25,3 +25,22 @@ test('health includes timed-out sources and counts each state separately', () =>
   assert.equal(result.health.find(source => source.n === 'Timeout').status, 'failed');
   assert.equal(result.health.find(source => source.n === 'Partial').detail, 'HTTP 406');
 });
+
+test('health reports each orbital provider separately', () => {
+  const result = summarizeSourceHealth({
+    sources: {
+      Space: {
+        providerHealth: {
+          CelesTrak: { status: 'error', error: 'HTTP 403' },
+          'Space-Track': { status: 'no_credentials', message: 'Optional fallback not configured' },
+          'TLE API': { status: 'active', message: 'Used this sweep' },
+        },
+      },
+    },
+    timing: { Space: { status: 'ok', ms: 20 } },
+  });
+  assert.deepEqual(result.health.map(source => [source.n, source.status]), [
+    ['CelesTrak', 'failed'], ['Space-Track', 'unconfigured'], ['TLE API', 'healthy'],
+  ]);
+  assert.deepEqual(result.counts, { sourcesQueried: 3, sourcesOk: 1, sourcesDegraded: 0, sourcesUnconfigured: 1, sourcesFailed: 1 });
+});

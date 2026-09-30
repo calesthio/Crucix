@@ -35,7 +35,7 @@
     "sourceGroup2": "FRED · BLS · EIA · TREASURY · GSCPI",
     "sourceGroup3": "TELEGRAM · SAFECAST · EPA · WHO · OFAC",
     "sourceGroup4": "GDELT · NOAA · PATENTS · BLUESKY · REDDIT",
-    "sourceGroup5": "USGS · ECB · CVE · COPERNICUS · CELESTRAK",
+    "sourceGroup5": "CELESTRAK · SPACE-TRACK · TLE API · YFINANCE · CISA KEV · CLOUDFLARE RADAR",
     "sweepComplete": "SWEEP COMPLETE — {ok}/{total} SOURCES",
     "ok": "OK",
     "acledLayer": "ACLED CONFLICT LAYER",
@@ -111,7 +111,14 @@
     "weatherAlert": "Weather Alert",
     "epaRadNet": "EPA RadNet",
     "spaceStation": "Space Station",
-    "gdeltEvent": "GDELT Event"
+    "gdeltEvent": "GDELT Event",
+    "toggleIssOrbit": "Toggle ISS orbit",
+    "issOrbitUnavailable": "ISS orbit unavailable",
+    "currentPosition": "Current position",
+    "altitude": "Altitude",
+    "orbitPeriod": "Orbit period",
+    "issPreviousOrbit": "ISS Previous Orbit",
+    "issNextOrbit": "ISS Next Orbit"
   },
   "ideas": {
     "confidence": "Confidence",
@@ -252,7 +259,9 @@
     "healthy": "Healthy",
     "degraded": "Degraded",
     "unconfigured": "Unconfigured",
-    "failed": "Failed"
+    "failed": "Failed",
+    "close": "Close",
+    "noData": "No source health data available."
   },
   "space": {
     "noActivity": "NORMAL ACTIVITY",
