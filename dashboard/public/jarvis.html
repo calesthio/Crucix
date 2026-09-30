@@ -217,6 +217,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .ticker-track{display:flex;flex-direction:column;animation:tickerScroll var(--ticker-duration,30s) linear infinite;will-change:transform;contain:layout style}
 .ticker-wrap:hover .ticker-track{animation-play-state:paused}
 @keyframes tickerScroll{0%{transform:translateY(0)}100%{transform:translateY(-50%)}}
+.ticker-wrap.paused .ticker-track{animation-play-state:paused}
+.sec-head-right{display:flex;align-items:center;gap:8px}
+.feed-ctrl{display:inline-flex;align-items:center;gap:3px}
+.feed-ctrl button{width:18px;height:18px;padding:0;border:1px solid var(--border);background:rgba(0,0,0,0.3);color:var(--dim);font-family:var(--mono);font-size:10px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color 0.2s,border-color 0.2s}
+.feed-ctrl button:hover:not(:disabled){color:var(--accent);border-color:var(--accent)}
+.feed-ctrl button[aria-pressed="true"]{color:#03140d;background:var(--accent);border-color:var(--accent)}
+.feed-ctrl button:disabled{opacity:0.3;cursor:default}
+.feed-rate{font-family:var(--mono);font-size:9px;color:var(--dim);min-width:30px;text-align:right}
 .tk-card{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.03);cursor:default;transition:background 0.2s}
 .tk-card.clickable{cursor:pointer}
 .tk-card .tk-link{display:none;margin-left:auto;font-size:10px;color:var(--dim);transition:color 0.2s}
@@ -264,6 +272,7 @@ body.low-perf .topbar,body.low-perf .g-panel,body.low-perf .map-popup,body.low-p
 body.low-perf .logo-ring::before,body.low-perf .logo-ring::after,body.low-perf .regime-chip .blink,body.low-perf .conflict-ring,body.low-perf .corridor-flow{animation:none!important}
 body.low-perf .ticker-wrap{overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(100,240,200,0.2) transparent}
 body.low-perf .ticker-track{animation:none!important;display:block!important}
+body.low-perf .feed-ctrl{display:none}
 body.low-perf .ticker-wrap::before,body.low-perf .ticker-wrap::after{display:none}
 body.low-perf .ticker-wrap::-webkit-scrollbar{width:4px}
 body.low-perf .ticker-wrap::-webkit-scrollbar-track{background:transparent}
@@ -1452,8 +1461,8 @@ function renderLower(){
 
 
   const tickerPanel = `<div class="g-panel lp-ticker" style="display:flex;flex-direction:column">
-      <div class="sec-head"><h3>${t('panels.newsTicker','Live News Ticker')}</h3><span class="badge">${feed.length} ${t('badges.items','ITEMS')}</span></div>
-      <div class="ticker-wrap" style="--ticker-duration:${tickerDuration}s">
+      <div class="sec-head"><h3>${t('panels.newsTicker','Live News Ticker')}</h3><div class="sec-head-right">${feedControls('news')}<span class="badge">${feed.length} ${t('badges.items','ITEMS')}</span></div></div>
+      <div class="ticker-wrap" data-feed="news" style="--ticker-duration:${tickerDuration}s">
         <div class="ticker-track">${tickerCards}${lowPerfMode ? '' : tickerCards}</div>
       </div>
     </div>`;
@@ -1486,6 +1495,7 @@ function renderLower(){
       <div class="disclosure">FOR INFORMATIONAL PURPOSES ONLY. This is not financial advice, a recommendation to buy or sell any security, or a solicitation of any kind. All signal-based observations are derived from publicly available OSINT data and should not be relied upon for investment decisions. Consult a licensed financial advisor before making any investment. Past performance does not guarantee future results.</div>
     </div>`;
   document.getElementById('lowerGrid').innerHTML=`${tickerPanel}${osintPanel}${macroPanel}${ideasPanel}`;
+  applyAllFeedStates();
 }
 
 // === RIGHT RAIL ===
@@ -1547,7 +1557,77 @@ function renderRight(){
       </div>`:''}
       <div class="delta-list">${deltaHtml}</div>
     </div>`;
+  applyAllFeedStates();
 }
+
+// === FEED CONTROLS (speed / pause for scrolling feeds in FULL mode) ===
+const FEED_RATES = [0.25, 0.5, 0.75, 1, 1.5, 2, 3];
+const FEED_IDS = ['news', 'osint'];
+const feedState = loadFeedState();
+
+function loadFeedState(){
+  const state = {};
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('crucix_feed_state') || '{}') || {}; } catch {}
+  for (const id of FEED_IDS) {
+    const s = saved[id] || {};
+    state[id] = { rate: FEED_RATES.includes(s.rate) ? s.rate : 1, paused: s.paused === true };
+  }
+  return state;
+}
+
+function saveFeedState(){
+  try { localStorage.setItem('crucix_feed_state', JSON.stringify(feedState)); } catch {}
+}
+
+function feedControls(feedId){
+  return `<div class="feed-ctrl" data-feed="${feedId}">
+    <button type="button" data-act="slower" title="${t('feed.slower','Slower')}" aria-label="${t('feed.slower','Slower')}">&minus;</button>
+    <button type="button" data-act="toggle" title="${t('feed.pause','Pause')}" aria-label="${t('feed.pause','Pause')}" aria-pressed="false">&#10074;&#10074;</button>
+    <button type="button" data-act="faster" title="${t('feed.faster','Faster')}" aria-label="${t('feed.faster','Faster')}">+</button>
+    <span class="feed-rate">1x</span>
+  </div>`;
+}
+
+function applyFeedState(feedId){
+  const state = feedState[feedId];
+  const idx = FEED_RATES.indexOf(state.rate);
+  // updatePlaybackRate keeps the current position, so speed changes don't make the track jump
+  document.querySelectorAll(`.ticker-wrap[data-feed="${feedId}"]`).forEach(wrap => {
+    wrap.classList.toggle('paused', state.paused);
+    const track = wrap.querySelector('.ticker-track');
+    if (track && track.getAnimations) track.getAnimations().forEach(a => a.updatePlaybackRate(state.rate));
+  });
+  document.querySelectorAll(`.feed-ctrl[data-feed="${feedId}"]`).forEach(ctrl => {
+    const toggle = ctrl.querySelector('[data-act="toggle"]');
+    const label = state.paused ? t('feed.resume','Resume') : t('feed.pause','Pause');
+    toggle.setAttribute('aria-pressed', String(state.paused));
+    toggle.title = label;
+    toggle.setAttribute('aria-label', label);
+    toggle.innerHTML = state.paused ? '&#9654;' : '&#10074;&#10074;';
+    ctrl.querySelector('[data-act="slower"]').disabled = idx <= 0;
+    ctrl.querySelector('[data-act="faster"]').disabled = idx >= FEED_RATES.length - 1;
+    ctrl.querySelector('.feed-rate').textContent = `${state.rate}x`;
+  });
+}
+
+function applyAllFeedStates(){
+  FEED_IDS.forEach(applyFeedState);
+}
+
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.feed-ctrl button');
+  if (!btn) return;
+  const feedId = btn.closest('.feed-ctrl').dataset.feed;
+  const state = feedState[feedId];
+  if (!state) return;
+  const idx = FEED_RATES.indexOf(state.rate);
+  if (btn.dataset.act === 'toggle') state.paused = !state.paused;
+  else if (btn.dataset.act === 'slower' && idx > 0) state.rate = FEED_RATES[idx - 1];
+  else if (btn.dataset.act === 'faster' && idx < FEED_RATES.length - 1) state.rate = FEED_RATES[idx + 1];
+  saveFeedState();
+  applyFeedState(feedId);
+});
 
 // === HELPERS ===
 function getAge(d){const ms=Date.now()-new Date(d).getTime();const h=Math.floor(ms/3600000);if(h<1)return 'just now';if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago'}
@@ -1616,8 +1696,8 @@ function buildOsintPanel(panelClass='', maxHeight=260){
   }).join('');
   const osintDuration=Math.max(25,osintItems.length*3);
   return `<div class="g-panel ${panelClass}" style="display:flex;flex-direction:column">
-      <div class="sec-head"><h3>${t('panels.osintStream','OSINT Stream')}</h3><span class="badge">${D.tg.urgent.length} ${t('badges.urgent','URGENT')}</span></div>
-      <div class="ticker-wrap" style="--ticker-duration:${osintDuration}s;max-height:${maxHeight}px">
+      <div class="sec-head"><h3>${t('panels.osintStream','OSINT Stream')}</h3><div class="sec-head-right">${feedControls('osint')}<span class="badge">${D.tg.urgent.length} ${t('badges.urgent','URGENT')}</span></div></div>
+      <div class="ticker-wrap" data-feed="osint" style="--ticker-duration:${osintDuration}s;max-height:${maxHeight}px">
         <div class="ticker-track">${osintCards}${lowPerfMode ? '' : osintCards}</div>
       </div>
     </div>`;

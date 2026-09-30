@@ -355,5 +355,11 @@
     "errors": {
       "noDataYet": "Pas encore de données — premier scan en cours"
     }
+  },
+  "feed": {
+    "slower": "Ralentir",
+    "faster": "Accélérer",
+    "pause": "Pause",
+    "resume": "Reprendre"
   }
 }

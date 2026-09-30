@@ -119,6 +119,7 @@ A self-contained Jarvis-style HUD with:
 - **Risk gauges** — VIX, high-yield spread, supply chain pressure index
 - **OSINT feed** — English-language posts from 17 Telegram intelligence channels (expandable)
 - **News ticker** — merged RSS + GDELT headlines + Telegram posts, auto-scrolling
+- **Feed controls** — slow down, speed up (0.25x–3x) or pause the News Ticker and OSINT Stream from their panel headers; settings are remembered per feed
 - **Sweep delta** — live panel showing what changed since last sweep (new signals, escalations, de-escalations with severity)
 - **Cross-source signals** — correlated intelligence across satellite, economic, conflict, and social domains
 - **Nuclear watch** — real-time radiation readings from Safecast + EPA RadNet
@@ -134,6 +135,7 @@ When you switch to **VISUALS LITE**, the dashboard:
 - Stops non-essential animations like the logo ring blink, conflict rings, and corridor flow effects
 - Disables globe auto-rotation and turns off animated flight-arc dashes
 - Converts the horizontal news ticker and OSINT stream into static, scrollable lists instead of continuously animated marquees
+- Hides the feed speed/pause controls, since the feeds no longer scroll
 
 Mobile-specific behavior:
 - On mobile, `VISUALS LITE` also forces the dashboard into **flat map mode** if you are currently on the globe

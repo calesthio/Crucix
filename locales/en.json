@@ -355,5 +355,11 @@
     "errors": {
       "noDataYet": "No data yet — first sweep in progress"
     }
+  },
+  "feed": {
+    "slower": "Slower",
+    "faster": "Faster",
+    "pause": "Pause",
+    "resume": "Resume"
   }
 }
