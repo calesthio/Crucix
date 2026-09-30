@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import config from './crucix.config.mjs';
 import { getLocale, currentLanguage, getSupportedLocales } from './lib/i18n.mjs';
-import { fullBriefing } from './apis/briefing.mjs';
+import { fullBriefing, SOURCE_COUNT } from './apis/briefing.mjs';
 import { synthesize, generateIdeas } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider } from './lib/llm/index.mjs';
@@ -249,13 +249,19 @@ async function runSweepCycle() {
 }
 
 // === Startup ===
+const BANNER_WIDTH = 46;
+function centerBanner(text) {
+  const left = Math.ceil((BANNER_WIDTH - text.length) / 2);
+  return ' '.repeat(left) + text.padEnd(BANNER_WIDTH - left);
+}
+
 async function start() {
   const port = config.port;
 
   console.log(`
   ╔══════════════════════════════════════════════╗
   ║           CRUCIX INTELLIGENCE ENGINE         ║
-  ║          Local Palantir · 26 Sources         ║
+  ║${centerBanner(`Local Palantir · ${SOURCE_COUNT} Sources`)}║
   ╠══════════════════════════════════════════════╣
   ║  Dashboard:  http://localhost:${port}${' '.repeat(14 - String(port).length)}║
   ║  Health:     http://localhost:${port}/api/health${' '.repeat(4 - String(port).length)}║

@@ -66,52 +66,52 @@ export async function runSource(name, fn, ...args) {
   }
 }
 
+// Source registry — [display name, fn]. Keys are read from process.env at sweep time.
+const SOURCES = [
+  // Tier 1: Core OSINT & Geopolitical
+  ['GDELT', gdelt],
+  ['OpenSky', opensky],
+  ['FIRMS', firms],
+  ['Maritime', ships],
+  ['Safecast', safecast],
+  ['ACLED', acled],
+  ['ReliefWeb', reliefweb],
+  ['WHO', who],
+  ['OFAC', ofac],
+  ['OpenSanctions', opensanctions],
+  ['ADS-B', adsb],
+  // Tier 2: Economic & Financial
+  ['FRED', () => fred(process.env.FRED_API_KEY)],
+  ['Treasury', treasury],
+  ['BLS', () => bls(process.env.BLS_API_KEY)],
+  ['EIA', () => eia(process.env.EIA_API_KEY)],
+  ['GSCPI', gscpi],
+  ['USAspending', usaspending],
+  ['Comtrade', comtrade],
+  // Tier 3: Weather, Environment, Technology, Social
+  ['NOAA', noaa],
+  ['EPA', epa],
+  ['Patents', patents],
+  ['Bluesky', bluesky],
+  ['Reddit', reddit],
+  ['Telegram', telegram],
+  ['KiwiSDR', kiwisdr],
+  // Tier 4: Space & Satellites
+  ['Space', space],
+  // Tier 5: Live Market Data
+  ['YFinance', yfinance],
+  // Tier 6: Cyber & Infrastructure
+  ['CISA-KEV', cisaKev],
+  ['Cloudflare-Radar', cloudflareRadar],
+];
+
+export const SOURCE_COUNT = SOURCES.length;
+
 export async function fullBriefing() {
-  console.error('[Crucix] Starting intelligence sweep — 29 sources...');
+  console.error(`[Crucix] Starting intelligence sweep — ${SOURCE_COUNT} sources...`);
   const start = Date.now();
 
-  const allPromises = [
-    // Tier 1: Core OSINT & Geopolitical
-    runSource('GDELT', gdelt),
-    runSource('OpenSky', opensky),
-    runSource('FIRMS', firms),
-    runSource('Maritime', ships),
-    runSource('Safecast', safecast),
-    runSource('ACLED', acled),
-    runSource('ReliefWeb', reliefweb),
-    runSource('WHO', who),
-    runSource('OFAC', ofac),
-    runSource('OpenSanctions', opensanctions),
-    runSource('ADS-B', adsb),
-
-    // Tier 2: Economic & Financial
-    runSource('FRED', fred, process.env.FRED_API_KEY),
-    runSource('Treasury', treasury),
-    runSource('BLS', bls, process.env.BLS_API_KEY),
-    runSource('EIA', eia, process.env.EIA_API_KEY),
-    runSource('GSCPI', gscpi),
-    runSource('USAspending', usaspending),
-    runSource('Comtrade', comtrade),
-
-    // Tier 3: Weather, Environment, Technology, Social
-    runSource('NOAA', noaa),
-    runSource('EPA', epa),
-    runSource('Patents', patents),
-    runSource('Bluesky', bluesky),
-    runSource('Reddit', reddit),
-    runSource('Telegram', telegram),
-    runSource('KiwiSDR', kiwisdr),
-
-    // Tier 4: Space & Satellites
-    runSource('Space', space),
-
-    // Tier 5: Live Market Data
-    runSource('YFinance', yfinance),
-
-    // Tier 6: Cyber & Infrastructure
-    runSource('CISA-KEV', cisaKev),
-    runSource('Cloudflare-Radar', cloudflareRadar),
-  ];
+  const allPromises = SOURCES.map(([name, fn]) => runSource(name, fn));
 
   // Each runSource has its own 30s timeout, so allSettled will resolve
   // within ~30s even if APIs hang. Global timeout is a safety net.

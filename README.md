@@ -2,7 +2,7 @@
 
 # Crucix
 
-**Your own intelligence terminal. 27 sources. One command. Zero cloud.**
+**Your own intelligence terminal. 29 sources. One command. Zero cloud.**
 
 ## [Visit The Live Site: crucix.live](https://www.crucix.live/)
 
@@ -12,7 +12,7 @@
 [![Node.js 22+](https://img.shields.io/badge/node-22%2B-brightgreen)](#quick-start)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
 [![Dependencies](https://img.shields.io/badge/dependencies-1%20(express)-orange)](#architecture)
-[![Sources](https://img.shields.io/badge/OSINT%20sources-27-cyan)](#data-sources-27)
+[![Sources](https://img.shields.io/badge/OSINT%20sources-29-cyan)](#data-sources-29)
 [![Docker](https://img.shields.io/badge/docker-ready-blue?logo=docker)](#docker)
 
 **Enter The Signal Network**
@@ -40,7 +40,7 @@
 > **Live website:** [https://www.crucix.live/](https://www.crucix.live/)
 > Explore the public demo first, then clone the repo to run Crucix locally.
 
-Crucix pulls satellite fire detection, flight tracking, radiation monitoring, satellite constellation tracking, economic indicators, live market prices, conflict data, sanctions lists, and social sentiment from 27 open-source intelligence feeds — in parallel, every 15 minutes — and renders everything on a single self-contained Jarvis-style dashboard.
+Crucix pulls satellite fire detection, flight tracking, radiation monitoring, satellite constellation tracking, economic indicators, live market prices, conflict data, sanctions lists, and social sentiment from 29 open-source intelligence feeds — in parallel, every 15 minutes — and renders everything on a single self-contained Jarvis-style dashboard.
 
 Hook it up to an LLM and it becomes a **two-way intelligence assistant** — pushing multi-tier alerts to Telegram and Discord when something meaningful changes, responding to commands like `/brief` and `/sweep` from your phone, and generating actionable trade ideas grounded in real cross-domain data. Your own analyst that watches the world while you sleep.
 
@@ -90,7 +90,7 @@ npm run dev
 > ```
 > This bypasses npm's script runner, which can swallow errors on some systems (particularly PowerShell on Windows). You can also run `node diag.mjs` to diagnose the exact issue — it checks your Node version, tests each module import individually, and verifies port availability. See [Troubleshooting](#troubleshooting) for more.
 
-The dashboard opens automatically at `http://localhost:3117` and immediately begins its first intelligence sweep. This initial sweep queries all 27 sources in parallel and typically takes 30–60 seconds — the dashboard will appear empty until the sweep completes and pushes the first data update. After that, it auto-refreshes every 15 minutes via SSE (Server-Sent Events). No manual page refresh needed.
+The dashboard opens automatically at `http://localhost:3117` and immediately begins its first intelligence sweep. This initial sweep queries all 29 sources in parallel and typically takes 30–60 seconds — the dashboard will appear empty until the sweep completes and pushes the first data update. After that, it auto-refreshes every 15 minutes via SSE (Server-Sent Events). No manual page refresh needed.
 
 **Requirements:** Node.js 22+ (uses native `fetch`, top-level `await`, ESM)
 
@@ -143,7 +143,7 @@ The preference is saved in browser local storage, so the UI will remember your l
 
 ### Auto-Refresh
 The server runs a sweep cycle every 15 minutes (configurable). Each cycle:
-1. Queries all 27 sources in parallel (~30s)
+1. Queries all 29 sources in parallel (~30s)
 2. Synthesizes raw data into dashboard format
 3. Computes delta from previous run (what changed, escalated, de-escalated) — visible in the **Sweep Delta** panel on the dashboard
 4. Generates LLM trade ideas (if configured)
@@ -181,10 +181,10 @@ Alerts are delivered as rich embeds with color-coded sidebars: red for FLASH, ye
 **Optional dependency:** The full bot requires `discord.js`. Install it with `npm install discord.js`. If it's not installed, Crucix automatically falls back to webhook-only mode.
 
 ### Optional LLM Layer
-Connect any of 8 LLM providers for enhanced analysis:
+Connect any of 9 LLM providers for enhanced analysis:
 - **AI trade ideas** — quantitative analyst producing 5-8 actionable ideas citing specific data
 - **Smarter alert evaluation** — LLM classifies signals into FLASH/PRIORITY/ROUTINE tiers with cross-domain correlation and confidence scoring
-- Providers: Anthropic Claude, OpenAI, Google Gemini, OpenRouter (Unified API), OpenAI Codex (ChatGPT subscription), MiniMax, Mistral, Grok
+- Providers: Anthropic Claude, OpenAI, Google Gemini, OpenRouter (Unified API), OpenAI Codex (ChatGPT subscription), MiniMax, Mistral, Grok, Ollama (local)
 - Graceful fallback — when LLM is unavailable, a rule-based engine takes over alert evaluation. LLM failures never crash the sweep cycle.
 
 ---
@@ -213,12 +213,13 @@ These three unlock the most valuable economic and satellite data. Each takes abo
 |-----|--------|------------|
 | `ACLED_EMAIL` + `ACLED_PASSWORD` | Armed conflict event data | [acleddata.com/register](https://acleddata.com/register/) — free, OAuth2 |
 | `AISSTREAM_API_KEY` | Live vessel counts at maritime chokepoints (see [Live AIS](#live-ais-vessel-data)) | [aisstream.io](https://aisstream.io/) — free |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare Radar internet outages & traffic anomalies | [dash.cloudflare.com](https://dash.cloudflare.com/profile/api-tokens) — free, custom token with Account Analytics Read |
 | `ADSB_API_KEY` | Unfiltered flight tracking | [RapidAPI](https://rapidapi.com/adsbexchange/api/adsbexchange-com1) — ~$10/mo |
 | `OPENSKY_CLIENT_ID` + `OPENSKY_CLIENT_SECRET` | Higher OpenSky flight-tracking limits (4,000 credits/day vs 400 anonymous) | [opensky-network.org](https://opensky-network.org/) — free account, then Account → create API client |
 
 ### LLM Provider (optional, for AI-enhanced ideas)
 
-Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, `grok`
+Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, `ollama`, `grok`
 
 | Provider | Key Required | Default Model |
 |----------|-------------|---------------|
@@ -229,6 +230,7 @@ Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrou
 | `codex` | None (uses `~/.codex/auth.json`) | gpt-5.3-codex |
 | `minimax` | `LLM_API_KEY` | MiniMax-M2.5 |
 | `mistral` | `LLM_API_KEY` | mistral-large-latest |
+| `ollama` | None (local; set `OLLAMA_BASE_URL` if not `http://localhost:11434`) | llama3.1:8b |
 | `grok` | `LLM_API_KEY` | grok-4-latest |
 
 For Codex, run `npx @openai/codex login` to authenticate via your ChatGPT subscription.
@@ -300,19 +302,19 @@ crucix/
 ├── docs/                      # Screenshots for README
 │
 ├── apis/
-│   ├── briefing.mjs           # Master orchestrator — runs all 27 sources in parallel
+│   ├── briefing.mjs           # Master orchestrator — runs all 29 sources in parallel
 │   ├── save-briefing.mjs      # CLI: save timestamped + latest.json
 │   ├── BRIEFING_PROMPT.md     # Intelligence synthesis protocol
 │   ├── BRIEFING_TEMPLATE.md   # Briefing output structure
 │   ├── utils/
 │   │   ├── fetch.mjs          # safeFetch() — timeout, retries, abort, auto-JSON
 │   │   └── env.mjs            # .env loader (no dotenv dependency)
-│   └── sources/               # 27 self-contained source modules
+│   └── sources/               # 29 self-contained source modules
 │       ├── gdelt.mjs          # Each exports briefing() → structured data
 │       ├── fred.mjs           # Can run standalone: node apis/sources/fred.mjs
 │       ├── space.mjs          # CelesTrak satellite tracking
 │       ├── yfinance.mjs       # Yahoo Finance — free live market data
-│       └── ...                # 23 more
+│       └── ...                # 25 more
 │
 ├── dashboard/
 │   ├── inject.mjs             # Data synthesis + standalone HTML injection
@@ -320,7 +322,7 @@ crucix/
 │       └── jarvis.html        # Self-contained Jarvis HUD
 │
 ├── lib/
-│   ├── llm/                   # LLM abstraction (8 providers, raw fetch, no SDKs)
+│   ├── llm/                   # LLM abstraction (9 providers, raw fetch, no SDKs)
 │   │   ├── provider.mjs       # Base class
 │   │   ├── anthropic.mjs      # Claude
 │   │   ├── openai.mjs         # GPT
@@ -330,6 +332,7 @@ crucix/
 │   │   ├── codex.mjs          # Codex (ChatGPT subscription)
 │   │   ├── minimax.mjs        # MiniMax (M2.5, 204K context)
 │   │   ├── mistral.mjs        # Mistral AI
+│   │   ├── ollama.mjs         # Ollama (local models)
 │   │   ├── ideas.mjs          # LLM-powered trade idea generation
 │   │   └── index.mjs          # Factory: createLLMProvider()
 │   ├── delta/                 # Change tracking between sweeps
@@ -348,14 +351,14 @@ crucix/
 ### Design Principles
 - **Pure ESM** — every file is `.mjs` with explicit imports
 - **Minimal dependencies** — Express is the only runtime dependency. `discord.js` is optional (for Discord bot). LLM providers use raw `fetch()`, no SDKs.
-- **Parallel execution** — `Promise.allSettled()` fires all 27 sources simultaneously
+- **Parallel execution** — `Promise.allSettled()` fires all 29 sources simultaneously
 - **Graceful degradation** — missing keys produce errors, not crashes. LLM failures don't kill sweeps.
 - **Each source is standalone** — run `node apis/sources/gdelt.mjs` to test any source independently
 - **Self-contained dashboard** — the HTML file works with or without the server
 
 ---
 
-## Data Sources (27)
+## Data Sources (29)
 
 ### Tier 1: Core OSINT & Geopolitical (11)
 
@@ -409,6 +412,13 @@ crucix/
 |--------|---------------|------|
 | **Yahoo Finance** | Real-time prices: SPY, QQQ, BTC, Gold, WTI, VIX + 9 more | None |
 
+### Tier 6: Cyber & Infrastructure (2)
+
+| Source | What It Tracks | Auth |
+|--------|---------------|------|
+| **CISA KEV** | Known Exploited Vulnerabilities catalog — CVEs actively exploited in the wild | None |
+| **Cloudflare Radar** | Internet traffic anomalies and outages | Free token |
+
 ---
 
 ## npm Scripts
@@ -420,6 +430,7 @@ crucix/
 | `npm run inject` | `node dashboard/inject.mjs` | Inject latest data into static HTML |
 | `npm run brief:save` | `node apis/save-briefing.mjs` | Run sweep + save timestamped JSON |
 | `npm run diag` | `node diag.mjs` | Run diagnostics (Node version, imports, port check) |
+| `npm test` | `node --test` | Run unit tests (integration tests skip without keys) |
 
 ---
 
@@ -431,7 +442,7 @@ All settings are in `.env` with sensible defaults:
 |----------|---------|-------------|
 | `PORT` | `3117` | Dashboard server port |
 | `REFRESH_INTERVAL_MINUTES` | `15` | Auto-refresh interval |
-| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, or `grok` |
+| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, `ollama`, or `grok` |
 | `LLM_API_KEY` | — | API key (not needed for codex) |
 | `LLM_MODEL` | per-provider default | Override model selection |
 | `TELEGRAM_BOT_TOKEN` | disabled | For Telegram alerts + bot commands |
@@ -506,7 +517,7 @@ Crucix requires Node.js 22 or later. If you have an older version, download the 
 
 ### Dashboard shows empty panels after first start
 
-This is normal — the first sweep takes 30–60 seconds to query all 27 sources. The dashboard will populate automatically once the sweep completes. Check the terminal for sweep progress logs.
+This is normal — the first sweep takes 30–60 seconds to query all 29 sources. The dashboard will populate automatically once the sweep completes. Check the terminal for sweep progress logs.
 
 ### Some sources show errors
 
@@ -549,7 +560,7 @@ To update them: run the dashboard, wait for a sweep to complete, then use your b
 
 ## Contributing
 
-Found a bug? Want to add a 28th source? PRs welcome. Each source is a standalone module in `apis/sources/` — just export a `briefing()` function that returns structured data and add it to the orchestrator in `apis/briefing.mjs`.
+Found a bug? Want to add a 30th source? PRs welcome. Each source is a standalone module in `apis/sources/` — just export a `briefing()` function that returns structured data and add it to the `SOURCES` registry in `apis/briefing.mjs`.
 
 If you find this useful, a star helps others find it too.
 

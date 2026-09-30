@@ -1,11 +1,12 @@
 {
   "name": "crucix",
   "version": "2.0.0",
-  "description": "Local intelligence engine - 27 OSINT sources, live dashboard, public demo at crucix.live, auto-refresh, optional LLM layer.",
+  "description": "Local intelligence engine - 29 OSINT sources, live dashboard, public demo at crucix.live, auto-refresh, optional LLM layer.",
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
     "dev": "node --trace-warnings server.mjs",
+    "test": "node --test",
     "sweep": "node apis/briefing.mjs",
     "inject": "node dashboard/inject.mjs",
     "brief": "node apis/briefing.mjs",
