@@ -12,6 +12,9 @@ import { exec } from 'child_process';
 import config from '../crucix.config.mjs';
 import { createLLMProvider } from '../lib/llm/index.mjs';
 import { generateLLMIdeas } from '../lib/llm/ideas.mjs';
+import { summarizeSourceHealth } from '../lib/source-health.mjs';
+import { summarizeCyber } from '../lib/cyber.mjs';
+import { getLocale } from '../lib/i18n.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -557,9 +560,8 @@ export async function synthesize(data) {
     }))
   };
 
-  const health = Object.entries(data.sources).map(([name, src]) => ({
-    n: name, err: Boolean(src.error), stale: Boolean(src.stale)
-  }));
+  const { health, counts } = summarizeSourceHealth(data);
+  const { cyber, internet } = summarizeCyber(data.sources);
 
   // === Yahoo Finance live market data ===
   const yfData = data.sources.YFinance || {};
@@ -618,7 +620,7 @@ export async function synthesize(data) {
   const news = await fetchAllNews();
 
   const V2 = {
-    meta: data.crucix, air, thermal, tSignals, chokepoints, maritime, nuke, nukeSignals,
+    meta: { ...data.crucix, ...counts }, air, thermal, tSignals, chokepoints, maritime, nuke, nukeSignals,
     airMeta: {
       fallback: Boolean(airFallback),
       liveTotal: sumAirHotspots(liveAirHotspots),
@@ -630,6 +632,7 @@ export async function synthesize(data) {
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
     tg: { posts: tgData.totalPosts || 0, urgent: tgUrgent, topPosts: tgTop },
     who, fred, energy, metals, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, news,
+    cyber, internet,
     markets, // Live Yahoo Finance market data
     ideas: [], ideasSource: 'disabled',
     // newsFeed for ticker (merged RSS + GDELT + Telegram)
@@ -741,7 +744,7 @@ async function cliInject() {
   }
   console.log(`Generated ${V2.ideas.length} leverageable ideas`);
 
-  const json = JSON.stringify(V2);
+  const json = JSON.stringify(V2).replace(/</g, '\\u003c');
   console.log('\n--- Synthesis ---');
   console.log('Size:', json.length, 'bytes | Air:', V2.air.length, '| Thermal:', V2.thermal.length,
     '| News:', V2.news.length, '| Ideas:', V2.ideas.length, '| Sources:', V2.health.length);
@@ -750,6 +753,9 @@ async function cliInject() {
   let html = readFileSync(htmlPath, 'utf8');
   // Use a replacer function so JSON is inserted literally even if it contains `$`.
   html = html.replace(/^(let|const) D = .*;\s*$/m, () => 'let D = ' + json + ';');
+  const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(getLocale()).replace(/</g, '\\u003c')};</script>`;
+  html = html.replace(/<script>window\.__CRUCIX_LOCALE__ = [\s\S]*?<\/script>/g, '');
+  html = html.replace('</head>', () => `${localeScript}\n</head>`);
   writeFileSync(htmlPath, html);
   console.log('Data injected into jarvis.html!');
 

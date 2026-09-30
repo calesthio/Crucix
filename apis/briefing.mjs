@@ -6,6 +6,7 @@
 import './utils/env.mjs'; // Load API keys from .env
 import { pathToFileURL } from 'node:url';
 import { VERSION } from '../lib/version.mjs';
+import { summarizeSourceHealth } from '../lib/source-health.mjs';
 
 // === Tier 1: Core OSINT & Geopolitical ===
 import { briefing as gdelt } from './sources/gdelt.mjs';
@@ -139,7 +140,8 @@ export async function fullBriefing() {
     ),
   };
 
-  console.error(`[Crucix] Sweep complete in ${totalMs}ms — ${output.crucix.sourcesOk}/${sources.length} sources returned data`);
+  Object.assign(output.crucix, summarizeSourceHealth(output).counts);
+  console.error(`[Crucix] Sweep complete in ${totalMs}ms — ${output.crucix.sourcesOk}/${sources.length} healthy, ${output.crucix.sourcesDegraded} degraded, ${output.crucix.sourcesUnconfigured} unconfigured, ${output.crucix.sourcesFailed} failed`);
   return output;
 }
 

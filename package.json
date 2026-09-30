@@ -1,6 +1,6 @@
 {
   "name": "crucix",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Local intelligence engine - 29 OSINT sources, live dashboard, public demo at crucix.live, auto-refresh, optional LLM layer.",
   "type": "module",
   "scripts": {

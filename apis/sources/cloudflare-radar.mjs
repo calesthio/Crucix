@@ -28,12 +28,13 @@ async function fetchAnnotations() {
   if (!headers) return { error: 'no_credentials' };
 
   // Cloudflare Radar Annotations — internet outages and government shutdowns
-  const url = `${RADAR_BASE}/annotations/outages?dateRange=30d&format=json`;
-  const data = await safeFetch(url, { timeout: 15000, headers });
+  const url = `${RADAR_BASE}/annotations/outages?dateRange=30d&format=json&limit=100`;
+  const data = await safeFetch(url, { timeout: 15000, retries: 0, headers });
 
   if (data.error) return { error: data.error };
+  if (data.success === false || !Array.isArray(data.result?.annotations)) return { error: 'Invalid Cloudflare outage response' };
 
-  const annotations = data.result?.annotations || [];
+  const annotations = data.result.annotations.filter(item => !item.eventType || item.eventType === 'OUTAGE');
   return annotations.map(a => ({
     id: a.id,
     description: (a.description || '').substring(0, 500),
@@ -54,22 +55,25 @@ async function fetchAttackSummary() {
   // Layer 3 DDoS attack summaries by protocol and vector
   // API requires a dimension: /summary/{dimension}
   const [byProtocol, byVector] = await Promise.all([
-    safeFetch(`${RADAR_BASE}/attacks/layer3/summary/protocol?dateRange=7d&format=json`, { timeout: 15000, headers }),
-    safeFetch(`${RADAR_BASE}/attacks/layer3/summary/vector?dateRange=7d&format=json`, { timeout: 15000, headers }),
+    safeFetch(`${RADAR_BASE}/attacks/layer3/summary/protocol?dateRange=7d&format=json`, { timeout: 15000, retries: 0, headers }),
+    safeFetch(`${RADAR_BASE}/attacks/layer3/summary/vector?dateRange=7d&format=json`, { timeout: 15000, retries: 0, headers }),
   ]);
 
   const result = {};
 
-  if (!byProtocol.error && byProtocol.result) {
+  if (!byProtocol.error && byProtocol.success !== false && byProtocol.result) {
     result.byProtocol = byProtocol.result.summary_0 || byProtocol.result;
   }
-  if (!byVector.error && byVector.result) {
+  if (!byVector.error && byVector.success !== false && byVector.result) {
     result.byVector = byVector.result.summary_0 || byVector.result;
   }
 
   if (!result.byProtocol && !result.byVector) {
     return { error: byProtocol.error || byVector.error || 'No attack data returned' };
   }
+
+  if (!result.byProtocol) result.protocolError = byProtocol.error || 'Protocol summary unavailable';
+  if (!result.byVector) result.vectorError = byVector.error || 'Vector summary unavailable';
 
   return result;
 }
@@ -80,11 +84,12 @@ async function fetchTrafficAnomalies() {
 
   // Traffic anomalies — significant deviations from normal patterns
   const url = `${RADAR_BASE}/traffic_anomalies?dateRange=7d&format=json&limit=50`;
-  const data = await safeFetch(url, { timeout: 15000, headers });
+  const data = await safeFetch(url, { timeout: 15000, retries: 0, headers });
 
   if (data.error) return { error: data.error };
+  if (data.success === false || !Array.isArray(data.result?.trafficAnomalies)) return { error: 'Invalid Cloudflare anomaly response' };
 
-  const anomalies = data.result?.trafficAnomalies || [];
+  const anomalies = data.result.trafficAnomalies;
   return anomalies.map(a => ({
     startDate: a.startDate,
     endDate: a.endDate,
@@ -111,7 +116,7 @@ function buildSignals(outages, anomalies) {
     const countries = [...new Set(watchlistOutages.flatMap(o => o.locations))].filter(l => WATCHLIST_COUNTRIES.includes(l));
     signals.push({
       severity: 'high',
-      signal: `Internet outages detected in ${countries.join(', ')} — possible government shutdown or infrastructure attack`,
+      signal: `Internet outages observed in ${countries.join(', ')} — cause and attribution not established`,
     });
   }
 
@@ -151,6 +156,7 @@ export async function briefing() {
       source: 'Cloudflare-Radar',
       timestamp: new Date().toISOString(),
       status: 'no_credentials',
+      error: 'No CLOUDFLARE_API_TOKEN configured',
       message: 'Set CLOUDFLARE_API_TOKEN in .env. Get a free token at https://dash.cloudflare.com/profile/api-tokens with Account → Account Analytics → Read permission.',
     };
   }
@@ -176,7 +182,8 @@ export async function briefing() {
   // Separate active vs resolved outages
   const now = new Date();
   const activeOutages = outageList.filter(o => !o.endDate || new Date(o.endDate) > now);
-  const recentResolved = outageList.filter(o => o.endDate && new Date(o.endDate) <= now).slice(0, 10);
+  const recentResolved = outageList.filter(o => o.endDate && new Date(o.endDate) <= now)
+    .sort((first, second) => new Date(second.endDate) - new Date(first.endDate)).slice(0, 10);
 
   // Group outages by location
   const outagesByLocation = {};
@@ -202,6 +209,7 @@ export async function briefing() {
     source: 'Cloudflare-Radar',
     timestamp: new Date().toISOString(),
     outages: {
+      ...(outages?.error ? { error: outages.error } : {}),
       total: outageList.length,
       active: activeOutages.length,
       activeEvents: activeOutages.slice(0, 20),
@@ -209,6 +217,7 @@ export async function briefing() {
       topAffectedLocations,
     },
     anomalies: {
+      ...(anomalies?.error ? { error: anomalies.error } : {}),
       total: anomalyList.length,
       events: anomalyList.slice(0, 20),
     },

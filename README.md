@@ -124,6 +124,9 @@ A self-contained Jarvis-style HUD with:
 - **Cross-source signals** — notable patterns in NASA FIRMS satellite fire detections (requires `FIRMS_MAP_KEY`; the panel says so when the key is missing)
 - **Nuclear watch** — real-time radiation readings from Safecast + EPA RadNet
 - **Space watch** — CelesTrak satellite tracking: recent launches, ISS, military constellations, Starlink/OneWeb counts
+- **Cyber Watch** — CISA's known-exploited vulnerability catalogue: recent additions, affected products and ransomware links. New CVEs appear in Sweep Delta; entries are not incident counts or evidence that your systems are compromised
+- **Internet Disruptions** — Cloudflare Radar active outages, affected locations, duration, recent recoveries and traffic anomalies (requires `CLOUDFLARE_API_TOKEN`). Outages alone do not establish a cyberattack or attribution
+- **Source Integrity** — every queried source, including timeouts, classified as healthy, degraded, unconfigured or failed. `/api/health` exposes the same breakdown; missing data shows `--` in the cyber and internet panels
 - **Tooltips everywhere** — hover, focus or tap any panel row, card, header, legend entry or map popup to see what that number means, why it matters and what it does *not* prove. Toggle with **TOOLTIPS ON/OFF** in the top bar
 - **Leverageable ideas** — AI-generated trade ideas (with LLM) or signal-correlated ideas (without)
 

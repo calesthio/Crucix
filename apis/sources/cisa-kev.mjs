@@ -71,11 +71,11 @@ function summarizeVulnerabilities(vulns) {
 export async function briefing() {
   const data = await safeFetch(KEV_URL, { timeout: 20000 });
 
-  if (data.error) {
+  if (data.error || !Array.isArray(data.vulnerabilities)) {
     return {
       source: 'CISA-KEV',
       timestamp: new Date().toISOString(),
-      error: data.error,
+      error: data.error || 'Invalid CISA KEV response',
     };
   }
 

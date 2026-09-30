@@ -208,6 +208,17 @@ body.tips-off .sig-term{border-bottom:none;cursor:inherit}
 .sd{width:5px;height:5px;border-radius:50%}
 .sd.ok{background:var(--accent);box-shadow:0 0 4px rgba(100,240,200,0.4)}
 .sd.err{background:var(--danger);box-shadow:0 0 4px rgba(255,95,99,0.4)}
+.sd.degraded{background:var(--warn)}
+.sd.unconfigured{background:var(--dim)}
+.lower .lp-cyber,.lower .lp-internet{flex:1 1 300px}
+.lower .lp-sources{flex:1 1 100%}
+.watch-list{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.watch-item{padding:8px;border:1px solid var(--border);font-size:11px;overflow-wrap:anywhere}
+.watch-item a{color:var(--accent)}
+.watch-meta{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:4px}
+.src-item{flex-wrap:wrap;overflow-wrap:anywhere}
+.src-status{font-family:var(--mono);font-size:9px;color:var(--dim)}
+.src-detail{flex-basis:100%;font-size:10px;color:var(--dim)}
 
 /* RIGHT: OSINT FEED */
 .feed{flex:1;overflow-y:auto;max-height:calc(100vh - 160px);padding-right:3px}
@@ -423,6 +434,14 @@ let isFlat = shouldStartFlat();
 let currentRegion = 'world';
 let flatSvg, flatProjection, flatPath, flatG, flatZoom, flatW, flatH;
 const signalGuideItems = [
+  {
+    id:'cyberWatch',term:t('panels.cyberWatch','Cyber Watch'),category:t('panels.cyberWatch','Cyber Watch'),
+    meaning:t('cyber.explanation'),matters:t('cyber.use'),notMeaning:t('cyber.caution'),example:t('cyber.example')
+  },
+  {
+    id:'internetWatch',term:t('internet.title'),category:t('internet.title'),
+    meaning:t('internet.explanation'),matters:t('internet.use'),notMeaning:t('internet.caution'),example:t('internet.example')
+  },
   {
     id:'noCallsign',
     term:'No Callsign',
@@ -2120,7 +2139,11 @@ function renderLower(){
   const rateCards = (mkt.rates||[]).map(mktCard).join('');
   const hasMarkets = indexCards || cryptoCards;
 
-  const srcHtml=D.health.map(s=>`<div class="src-item"><div class="sd ${s.err?'err':'ok'}"></div><span>${s.n}</span></div>`).join('');
+  const srcHtml=(D.health||[]).map(source=>{
+    const status = ['healthy','degraded','unconfigured','failed'].includes(source.status) ? source.status : source.err ? 'failed' : 'healthy';
+    const dot = {healthy:'ok',failed:'err',degraded:'degraded',unconfigured:'unconfigured'}[status];
+    return `<div class="src-item"><span class="sd ${dot}"></span><span>${escAttr(source.n)}</span><span class="src-status">${escAttr(t('sourceHealth.'+status,status))}</span>${source.detail?`<span class="src-detail">${escAttr(source.detail)}</span>`:''}</div>`;
+  }).join('');
 
   // NEWS TICKER — merges RSS + GDELT + Telegram into flowing cards (moved from right rail)
   const feed = (D.newsFeed || []).slice(0, 20);
@@ -2205,7 +2228,8 @@ function renderLower(){
       ${ideasHtml}
       <div class="disclosure">FOR INFORMATIONAL PURPOSES ONLY. This is not financial advice, a recommendation to buy or sell any security, or a solicitation of any kind. All signal-based observations are derived from publicly available OSINT data and should not be relied upon for investment decisions. Consult a licensed financial advisor before making any investment. Past performance does not guarantee future results.</div>
     </div>`;
-  document.getElementById('lowerGrid').innerHTML=`${tickerPanel}${osintPanel}${macroPanel}${ideasPanel}`;
+  const sourcePanel = `<div class="g-panel lp-sources"><div class="sec-head"><h3>${t('sourceHealth.title','Source Integrity')}</h3><span class="badge">${D.meta.sourcesOk}/${D.meta.sourcesQueried} ${t('sourceHealth.healthy','Healthy')}</span></div><div class="src-grid">${srcHtml}</div></div>`;
+  document.getElementById('lowerGrid').innerHTML=`${tickerPanel}${osintPanel}${macroPanel}${ideasPanel}${buildCyberPanels()}${sourcePanel}`;
   applyAllFeedStates();
   if(macroFocus) renderMarketDetail();
 }
@@ -2239,7 +2263,7 @@ function renderRight(){
   const newSigs = (delta.signals?.new || []).slice(0,4);
   const deltaRows = [];
   for(const s of newSigs){
-    deltaRows.push(`<div class="delta-row new sig-box"${sigAttrs('deltaNew')}><span class="delta-badge new">NEW</span><span class="delta-label">${s.reason||s.label||s.key}</span></div>`);
+    deltaRows.push(`<div class="delta-row new sig-box"${sigAttrs('deltaNew')}><span class="delta-badge new">NEW</span><span class="delta-label">${escAttr(s.reason||s.label||s.key)}</span></div>`);
   }
   for(const s of escalated){
     const sev = s.severity==='critical'?'style="color:var(--warn);font-weight:600"':s.severity==='high'?'style="color:#ffab40"':'';
@@ -2248,7 +2272,8 @@ function renderRight(){
   }
   for(const s of deescalated){
     const val = s.pctChange!==undefined?`${s.pctChange}%`:`${s.change}`;
-    deltaRows.push(`<div class="delta-row sig-box"${sigAttrs('deltaDeescalated')}><span class="delta-badge down">&#9660;</span><span class="delta-label">${s.label||s.key}</span><span class="delta-val">${s.from}→${s.to} (${val})</span></div>`);
+    const change = s.direction==='resolved' ? t('delta.resolved','Resolved') : `${s.from}→${s.to} (${val})`;
+    deltaRows.push(`<div class="delta-row sig-box"${sigAttrs('deltaDeescalated')}><span class="delta-badge down">&#9660;</span><span class="delta-label">${escAttr(s.label||s.key)}</span><span class="delta-val">${escAttr(change)}</span></div>`);
   }
   const deltaHtml = hasDelta ? deltaRows.join('') : `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${t('delta.noChanges','No changes since last sweep')}</div>`;
 
@@ -2353,6 +2378,35 @@ const mktHistoryFailed = new Set();
 let macroFocus = null;               // { key: 'sym:^GSPC' | 'ser:DFF', range }
 
 function escAttr(v){ return String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function buildCyberPanels(){
+  if (!D.cyber && !D.internet) return '';
+  const cyber = D.cyber || {};
+  const internet = D.internet || {};
+  const metric = (label,value) => `<div class="mc"><div class="ml">${escAttr(label)}</div><span class="mv" style="color:var(--accent)">${value==null?'--':escAttr(value)}</span></div>`;
+  const date = value => Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : '--';
+  const vulnerabilities = (cyber.vulnerabilities || []).slice(0,6).map(entry=>{
+    const cve = String(entry.cveID || '');
+    const link = /^CVE-\d{4}-\d{4,}$/.test(cve) ? `https://www.cisa.gov/known-exploited-vulnerabilities-catalog?search_api_fulltext=${encodeURIComponent(cve)}` : null;
+    return `<div class="watch-item">${link?`<a href="${escAttr(link)}" target="_blank" rel="noopener noreferrer">${escAttr(cve)}</a>`:escAttr(cve)} · ${escAttr(entry.vendorProject || '')} ${escAttr(entry.product || '')}<div class="watch-meta">${escAttr(t('cyber.added'))}: ${escAttr(entry.dateAdded || '--')} · ${escAttr(t('cyber.ransomware'))}: ${escAttr(entry.knownRansomwareCampaignUse==='Known'?t('cyber.known'):t('cyber.unknown'))}</div></div>`;
+  }).join('');
+  const outageRow = (event,resolved) => {
+    const locations = (event.locations || []).map(location => typeof location==='string'?location:location.code||location.name||'').filter(Boolean).join(', ');
+    const start = Date.parse(event.startDate);
+    const end = resolved ? Date.parse(event.endDate) : Date.now();
+    const duration = Number.isFinite(start) && Number.isFinite(end) ? Math.max(0,Math.floor((end-start)/60000)) : null;
+    return `<div class="watch-item">${escAttr(locations || t('internet.network'))} · ${escAttr(event.description || t('internet.outage'))}<div class="watch-meta">${escAttr(resolved?t('internet.resolved'):t('internet.active'))} · ${escAttr(date(event.startDate))} · ${duration==null?'--':duration} ${escAttr(t('internet.minutes'))}</div></div>`;
+  };
+  const outageRows = (internet.activeEvents || []).slice(0,6).map(event=>outageRow(event,false)).join('');
+  const resolvedRows = (internet.recentResolved || []).slice(0,3).map(event=>outageRow(event,true)).join('');
+  return `<div class="g-panel lp-cyber"><div class="sec-head sig-box"${sigAttrs('cyberWatch')}><h3>${escAttr(t('panels.cyberWatch','Cyber Watch'))}</h3><span class="badge">CISA KEV</span></div>
+    ${cyber.available?`<div class="metrics-row">${metric(t('cyber.additions30d'),cyber.recentAdditions)}${metric(t('cyber.catalogue'),cyber.total)}${metric(t('cyber.ransomwareCatalogue'),cyber.ransomwareLinked)}</div><div class="watch-meta">${escAttr(t('cyber.updated'))}: ${escAttr(date(cyber.catalogDate))}</div><div class="watch-list">${vulnerabilities || `<div class="panel-note">${escAttr(t('cyber.noEntries'))}</div>`}</div>`:`<div class="panel-note">${escAttr(t('cyber.unavailable'))}</div>`}
+    <div class="panel-note">${escAttr(t('cyber.caution'))}</div></div>
+    <div class="g-panel lp-internet"><div class="sec-head sig-box"${sigAttrs('internetWatch')}><h3>${escAttr(t('internet.title'))}</h3><span class="badge">CLOUDFLARE</span></div>
+    <div class="metrics-row">${metric(t('internet.active'),internet.active)}${metric(t('internet.anomalies7d'),internet.anomalies)}</div>
+    ${internet.outagesAvailable?`<div class="watch-meta">${escAttr(t('cyber.updated'))}: ${escAttr(date(internet.timestamp))}</div><div class="watch-list">${outageRows || `<div class="panel-note">${escAttr(t('internet.noOutages'))}</div>`}${resolvedRows}</div>`:`<div class="panel-note">${escAttr(internet.status==='unconfigured'?t('internet.needsKey'):t('internet.unavailable'))}</div>`}
+    ${internet.status==='degraded'?`<div class="panel-note">${escAttr(t('internet.partial'))}</div>`:''}<div class="panel-note">${escAttr(t('internet.caution'))}</div></div>`;
+}
 
 function findMarketQuote(sym){
   const m = D.markets || {};
