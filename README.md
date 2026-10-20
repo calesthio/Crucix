@@ -231,7 +231,7 @@ Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrou
 | `gemini` | `LLM_API_KEY` | gemini-3.1-pro |
 | `openrouter` | `LLM_API_KEY` | openrouter/auto |
 | `codex` | None (uses `~/.codex/auth.json`) | gpt-5.3-codex |
-| `minimax` | `LLM_API_KEY` | MiniMax-M2.5 |
+| `minimax` | `LLM_API_KEY` | MiniMax-M3.1-Flash (also supports MiniMax-M3 and explicit legacy overrides) |
 | `mistral` | `LLM_API_KEY` | mistral-large-latest |
 | `grok` | `LLM_API_KEY` | grok-4-latest |
 
@@ -311,7 +311,7 @@ crucix/
 │   │   ├── grok.mjs           # Grok
 │   │   ├── openrouter.mjs     # OpenRouter (Unified API)
 │   │   ├── codex.mjs          # Codex (ChatGPT subscription)
-│   │   ├── minimax.mjs        # MiniMax (M2.5, 204K context)
+│   │   ├── minimax.mjs        # MiniMax (M3.1-Flash, M3; explicit legacy overrides preserved)
 │   │   ├── mistral.mjs        # Mistral AI
 │   │   ├── ideas.mjs          # LLM-powered trade idea generation
 │   │   └── index.mjs          # Factory: createLLMProvider()
