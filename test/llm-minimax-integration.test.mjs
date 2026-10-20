@@ -9,8 +9,8 @@ import { MiniMaxProvider } from '../lib/llm/minimax.mjs';
 const API_KEY = process.env.MINIMAX_API_KEY;
 
 describe('MiniMax integration', { skip: !API_KEY && 'MINIMAX_API_KEY not set' }, () => {
-  it('should complete a prompt with MiniMax-M3', async () => {
-    const provider = new MiniMaxProvider({ apiKey: API_KEY, model: 'MiniMax-M3' });
+  it('should complete a prompt with MiniMax-M3.1-Flash', async () => {
+    const provider = new MiniMaxProvider({ apiKey: API_KEY, model: 'MiniMax-M3.1-Flash' });
     assert.equal(provider.isConfigured, true);
 
     const result = await provider.complete(
@@ -28,8 +28,8 @@ describe('MiniMax integration', { skip: !API_KEY && 'MINIMAX_API_KEY not set' },
     console.log(`  Model: ${result.model}`);
   });
 
-  it('should complete a prompt with MiniMax-M2.7', async () => {
-    const provider = new MiniMaxProvider({ apiKey: API_KEY, model: 'MiniMax-M2.7' });
+  it('should complete a prompt with MiniMax-M3', async () => {
+    const provider = new MiniMaxProvider({ apiKey: API_KEY, model: 'MiniMax-M3' });
     assert.equal(provider.isConfigured, true);
 
     const result = await provider.complete(
